@@ -55,7 +55,7 @@ class StreamlineDatasetManager(object):
                 f"The saving path {saving_path} does not exist.")
 
         if dataset_to_augment_path is not None:
-            LOGGER.info("Loading the dataset to augment: ", dataset_to_augment_path)
+            LOGGER.info("Loading the dataset to augment: {}".format(dataset_to_augment_path))
             self.current_train_nb_streamlines, self.current_test_nb_streamlines = self._load_and_verify_streamline_dataset(
                 dataset_to_augment_path)
 
