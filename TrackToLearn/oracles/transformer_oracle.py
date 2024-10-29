@@ -196,7 +196,7 @@ class TransformerOracle(LightningLikeModule):
 
         y = self.head(hidden[:, 0])
 
-        if not logits and self.loss == nn.BCEWithLogitsLoss:
+        if not logits and self.loss != nn.BCEWithLogitsLoss:
             y = self.out_activation(y)
 
         return y.squeeze(-1)

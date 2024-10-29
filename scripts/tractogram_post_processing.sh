@@ -6,6 +6,7 @@ set -e
 
 DEST_FOLDER=$1
 DATASETDIR=$2
+FORCE=$3
 
 if [ -z "${DEST_FOLDER}" ] || [ ! -d "${DEST_FOLDER}" ]; then
     echo "Please provide a valid destination folder."
@@ -21,6 +22,17 @@ else
     if [ ! -d "${DATASETDIR}/scoring_data" ]; then
         echo "The dataset directory must contain a scoring_data folder."
         exit 1
+    fi
+fi
+
+# If FORCE is not empty, make sure it is the -f flag
+force_args=()
+if [ ! -z "${FORCE}" ] && [ "${FORCE}" != "-f" ]; then
+    echo "The FORCE argument must be -f."
+    exit 1
+else
+    if [ "${FORCE}" == "-f" ]; then
+        force_args+=("-f")
     fi
 fi
 
@@ -63,7 +75,8 @@ do
         ${output_folder}/${tractogram_post} \
         --minL 20 \
         --maxL 200 \
-        --reference ${DATASETDIR}/scoring_data/t1.nii.gz
+        --reference ${DATASETDIR}/scoring_data/t1.nii.gz \
+        "${force_args[@]}"
 
     # Re-score the tractogram, this time with streamlines
     # of length between 20mm and 200mm
@@ -78,7 +91,8 @@ do
             ${DATASETDIR}/scoring_data/scil_scoring_config.json \
             ${output_folder}/scores \
             --gt_dir ${DATASETDIR}/scoring_data \
-            --reference ${DATASETDIR}/scoring_data/t1.nii.gz
+            --reference ${DATASETDIR}/scoring_data/t1.nii.gz \
+            "${force_args[@]}"
 
         echo "RESULTS: ================================"
         head -n 25 ${output_folder}/scores/results.json

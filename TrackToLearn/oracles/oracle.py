@@ -82,7 +82,11 @@ class OracleSingleton:
                 batch = streamlines[start:end]
                 # Resample streamlines to fixed number of point to set all
                 # sequences to same length
-                data = set_number_of_points(batch, 128)
+                if isinstance(streamlines, ArraySequence):
+                    data = set_number_of_points(batch, 128)
+                else:
+                    assert streamlines.shape[1] == 128
+                    data = batch
                 # Compute streamline features as the directions between points
                 dirs = np.diff(data, axis=1)
                 # Put the directions in pinned memory
