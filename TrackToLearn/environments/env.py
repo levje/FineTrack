@@ -31,7 +31,7 @@ from TrackToLearn.environments.stopping_criteria import (
     BinaryStoppingCriterion, OracleStoppingCriterion,
     StoppingFlags)
 from TrackToLearn.environments.utils import (  # is_looping,
-    is_too_curvy, is_too_long)
+    is_too_curvy, is_too_long, has_reached_gm)
 from TrackToLearn.utils.utils import normalize_vectors
 from TrackToLearn.environments.rollout_env import RolloutEnvironment
 
@@ -161,11 +161,11 @@ class BaseEnv(object):
 
             try:
                 (sub_id, input_volume, tracking_mask, seeding_mask,
-                 peaks, reference) = next(self.loader_iter)[0]
+                 peaks, reference, gm_mask) = next(self.loader_iter)[0]
             except StopIteration:
                 self.loader_iter = iter(self.loader)
                 (sub_id, input_volume, tracking_mask, seeding_mask,
-                 peaks, reference) = next(self.loader_iter)[0]
+                 peaks, reference, gm_mask) = next(self.loader_iter)[0]
 
             self.subject_id = sub_id
             # Affines
@@ -178,7 +178,7 @@ class BaseEnv(object):
                 input_volume.data).to(self.device, dtype=torch.float32)
         else:
             (input_volume, tracking_mask, seeding_mask, peaks,
-             reference) = self.subject_data
+             reference, gm_mask) = self.subject_data
 
             self.affine_vox2rasmm = input_volume.affine_vox2rasmm
             self.affine_rasmm2vox = np.linalg.inv(self.affine_vox2rasmm)
@@ -200,6 +200,8 @@ class BaseEnv(object):
         self.peaks = peaks
         mask_data = tracking_mask.data.astype(np.uint8)
         self.seeding_data = seeding_mask.data.astype(np.uint8)
+
+        self.gm_data = gm_mask.data.astype(np.uint8) if gm_mask else None
 
         self.step_size = convert_length_mm2vox(
             self.step_size_mm,
@@ -249,6 +251,11 @@ class BaseEnv(object):
         self.stopping_criteria[
             StoppingFlags.STOPPING_CURVATURE] = \
             functools.partial(is_too_curvy, max_theta=self.theta)
+        
+        # GM criterion
+        self.stopping_criteria[
+            StoppingFlags.STOPPING_TARGET] = \
+            functools.partial(has_reached_gm, mask=self.gm_data, threshold=0.5)
 
         # Stopping criterion according to an oracle
         if self.oracle_crit_checkpoint and self.oracle_stopping_criterion:
@@ -356,22 +363,24 @@ class BaseEnv(object):
         in_odf = env_dto['in_odf']
         in_seed = env_dto['in_seed']
         in_mask = env_dto['in_mask']
+        gm_mask = env_dto['gm_mask']
         sh_basis = env_dto['sh_basis']
         is_sh_basis_legacy = env_dto['is_sh_basis_legacy']
         reference = env_dto['reference']
         target_sh_order = env_dto['target_sh_order']
 
-        (input_volume, peaks_volume, tracking_mask, seeding_mask) = \
-            BaseEnv._load_files(
-                in_odf,
-                in_seed,
-                in_mask,
-                sh_basis,
-                is_sh_basis_legacy,
-                target_sh_order)
+        (input_volume, peaks_volume, tracking_mask, seeding_mask,
+         gm_mask) = BaseEnv._load_files(
+             in_odf,
+             in_seed,
+             in_mask,
+             sh_basis,
+             is_sh_basis_legacy,
+             target_sh_order,
+             gm_mask=gm_mask)
 
         subj_files = (input_volume, tracking_mask, seeding_mask,
-                      peaks_volume, reference)
+                      peaks_volume, reference, gm_mask)
 
         return cls(subj_files, 'testing', env_dto)
 
@@ -384,6 +393,7 @@ class BaseEnv(object):
         sh_basis,
         is_sh_basis_legacy,
         target_sh_order=6,
+        gm_mask=None
     ):
         """ Load data volumes and masks from files. This is useful for
         tracking from a trained model.
@@ -476,8 +486,14 @@ class BaseEnv(object):
             seeding.get_fdata(), seeding.affine)
         tracking_volume = MRIDataVolume(
             tracking.get_fdata(), tracking.affine)
-
-        return (signal_volume, peaks_volume, tracking_volume, seeding_volume)
+        
+        gm_volume = None
+        if gm_mask:
+            gm = nib.load(gm_mask)
+            gm_volume = MRIDataVolume(
+                gm.get_fdata(), gm.affine)
+        
+        return (signal_volume, peaks_volume, tracking_volume, seeding_volume, gm_volume)
 
     def get_state_size(self):
         """ Returns the size of the state space by computing the size of

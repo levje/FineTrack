@@ -200,6 +200,7 @@ class Experiment(object):
             'is_sh_basis_legacy': self.is_sh_basis_legacy,
             'input_wm': self.input_wm,
             'reference': self.reference_file,
+            'gm_mask': self.gm_mask if hasattr(self, 'gm_mask') else None,
             # file instead of being passed directly.
         })
 

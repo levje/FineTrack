@@ -51,9 +51,10 @@ class SubjectDataset(Dataset):
         seeding = tracto_data.seeding
 
         reference = tracto_data.reference
+        gm_mask = tracto_data.gm
 
         return (subject_id, input_volume, tracking_mask,
-                seeding, peaks, reference)
+                seeding, peaks, reference, gm_mask)
 
     def __len__(self):
         """

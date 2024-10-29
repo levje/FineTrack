@@ -99,10 +99,11 @@ def add_subject_to_hdf5(
     tracking_file = config['tracking']
     seeding_file = config['seeding']
     anat_file = config['anat']
+    gm_file = config['gm']
 
     # Process subject's data
     process_subject(hdf_subject, input_files, peaks_file, tracking_file,
-                    seeding_file, anat_file)
+                    seeding_file, anat_file, gm_file)
 
 
 def process_subject(
@@ -112,6 +113,7 @@ def process_subject(
     tracking: str,
     seeding: str,
     anat: str,
+    gm: str,
 ):
     """ Process a subject's data and save it in the hdf5 file.
 
@@ -162,6 +164,9 @@ def process_subject(
 
     anat_image = nib.load(anat)
     add_volume_to_hdf5(hdf_subject, anat_image, 'anat_volume')
+
+    gm_mask_image = nib.load(gm)
+    add_volume_to_hdf5(hdf_subject, gm_mask_image, 'gm_volume')
 
 
 def add_volume_to_hdf5(hdf_subject, volume_img, volume_name):
