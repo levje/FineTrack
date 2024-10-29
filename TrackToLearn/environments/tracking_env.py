@@ -219,11 +219,12 @@ class TrackingEnvironment(BaseEnv):
             self.new_continue_idx.sort()
 
             self.stopping_idx = new_stopping_idx
-            new_flags[stopping] = new_stopping_flags
-
+            
             # Remove "saved" streamlines from stopping
             new_not_stopping_indices = np.where(np.isin(self.continue_idx, new_continuing_streamlines))[0]
             stopping[new_not_stopping_indices] = False
+            new_flags[stopping] = new_stopping_flags[new_stopping_flags != 0]
+
 
         # Keep the reason why tracking stopped
         self.flags[
@@ -231,6 +232,13 @@ class TrackingEnvironment(BaseEnv):
 
         # Keep which trajectory is over
         self.dones[self.stopping_idx] = 1
+
+        assert self.dones.shape[0] == self.streamlines.shape[0]
+        assert np.all(self.flags[self.stopping_idx] != 0)
+
+        # Make sure there are no same indices between new_continue_idx and stopping_idx
+        assert np.intersect1d(self.new_continue_idx, self.stopping_idx).size \
+            == 0, "Duplicate indices between new_continue_idx & stopping_idx"
 
         reward = np.zeros(self.streamlines.shape[0])
         reward_info = {}

@@ -103,7 +103,7 @@ class Tracker(object):
             compress_th_vox = self.compress / vox_size
 
             # Track for every seed in the environment
-            for start in tqdm(range(0, len(env.seeds), batch_size)):
+            for start in tqdm(range(0, len(env.seeds), batch_size), desc="Tracking"):
                 # Last batch might not be "full"
                 end = min(start + batch_size, len(env.seeds))
 

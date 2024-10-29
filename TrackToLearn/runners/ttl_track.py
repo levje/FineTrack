@@ -26,7 +26,8 @@ from TrackToLearn.datasets.utils import MRIDataVolume
 from TrackToLearn.experiment.experiment import Experiment
 from TrackToLearn.tracking.tracker import Tracker
 from TrackToLearn.utils.torch_utils import get_device
-from TrackToLearn.environments.rollout_env import RolloutEnvironment
+from TrackToLearn.environments.rollout_env import \
+    (RolloutEnvironment, RolloutUtilityTracker)
 from TrackToLearn.oracles.oracle import OracleSingleton
 
 # Define the example model paths from the install folder.
@@ -56,6 +57,7 @@ class TrackToLearnTrack(Experiment):
         self.in_seed = track_dto['in_seed']
         self.in_mask = track_dto['in_mask']
         self.input_wm = track_dto['input_wm']
+        self.gm_mask = track_dto['gm_mask']
 
         self.dataset_file = None
         self.subject_id = None
@@ -192,10 +194,12 @@ class TrackToLearnTrack(Experiment):
 
         if self.mc_oracle_checkpoint:
             oracle = OracleSingleton(self.mc_oracle_checkpoint, device=self.device)
+            utility_tracker = RolloutUtilityTracker(self.n_actor)
             rollout_env = RolloutEnvironment(
                 ref_img, oracle,
                 min_streamline_steps=env.min_nb_steps + 1,
-                max_streamline_steps=env.max_nb_steps + 1)
+                max_streamline_steps=env.max_nb_steps + 1,
+                utility_tracker=utility_tracker)
             rollout_env.setup_rollout_agent(alg.agent)
 
         # Initialize Tracker, which will handle streamline generation
@@ -314,6 +318,8 @@ def add_monte_carlo_args(parser):
                         'This oracle will be used to evaluate the streamlines.'
                         '\n It should be able to predict streamlines at \n'
                         'any length.')
+    parser.add_argument('--gm_mask', type=str,
+                        help='Grey matter mask (.nii.gz).')
 
 def parse_args():
     """ Generate a tractogram from a trained model. """

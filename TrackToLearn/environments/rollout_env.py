@@ -6,20 +6,152 @@ import nibabel as nib
 from nibabel.streamlines.array_sequence import ArraySequence
 from dipy.tracking.streamline import set_number_of_points
 from TrackToLearn.algorithms.shared.offpolicy import ActorCritic
-from TrackToLearn.environments.stopping_criteria import (
-    is_flag_set, StoppingFlags)
+from TrackToLearn.environments.stopping_criteria import (StoppingFlags)
 from TrackToLearn.oracles.transformer_oracle import LightningLikeModule
+
+class RolloutStats(object):
+    """
+    The objective of this class is to store an average of different
+    interesting metrics that can be used to monitor the performance
+    of the rollout procedure.
+    """
+    def __init__(self):
+        self.n_rollouts = None
+        self.reset()
+
+    def reset(self):
+        self.stats = {
+            "nr": self.n_rollouts,
+            "perc_saved": [],
+            "perc_reach_gm": [],
+            "perc_not_saved": [],
+            "rdist": []
+        }
+
+    def set_nb_rollouts(self, n_rollouts):
+        self.n_rollouts = n_rollouts
+        self.stats["nr"] = n_rollouts
+
+    def update_step(self, **kwargs):
+        self.stats["perc_saved"].append(kwargs.get("perc_saved", None))
+        self.stats["perc_reach_gm"].append(kwargs.get("perc_reach_gm", None))
+        self.stats["perc_not_saved"].append(kwargs.get("perc_not_saved", None))
+        self.stats["rdist"].append(kwargs.get("rdist", None))
+
+    def get_stats(self, reduce='mean'):
+        # Round everything to 2 decimals
+        if reduce == 'mean':
+            reduced_stats = {k: np.round(np.mean(v), 2) for k, v in self.stats.items()}
+        elif reduce == 'sum':
+            reduced_stats = {k: np.round(np.sum(v), 2) for k, v in self.stats.items()}
+        else:
+            raise ValueError("Invalid reduce argument. Please use 'mean' or 'sum'.")
+
+        return reduced_stats
+    
+class RolloutUtilityTracker(object):
+    """
+    The objective of this class is to track what's happening to streamlines
+    that were backtracked. If we save a streamline, what happens to it in the
+    following steps? Does it reach the target? Does it stop again? If so, why
+    and how many times do we have to save this streamline?
+    """
+    def __init__(self, nb_actors: int):
+        # This holds the number of times a streamlines was backtracked
+        self.n_backtrack_streamline = np.zeros((nb_actors,), dtype=np.uint32)
+
+        # This holds the last flag that stopped the streamline (if any)
+        self.last_flag = np.zeros((nb_actors,), dtype=np.uint16)
+
+    def reset(self):
+        self.n_backtrack_streamline.fill(0)
+        self.last_flag.fill(0)
+
+    def update(self,
+               backtracked_idx: np.ndarray,
+               not_backtracked_idx: np.ndarray,
+               flags: np.ndarray,
+               ):
+        """
+        At the end of a rollout, we increment the number of times a streamline
+        was rolled out according to the streamline_idx provided. We also
+        update the flag associated to that streamline at the end of the
+        rollout.
+
+        Parameters
+        ----------
+        streamline_idx : np.ndarray
+            Index of all the streamlines that were backtracked.
+        flags : np.ndarray
+            Flags associated to the streamlines that were backtracked.
+        """
+        self.n_backtrack_streamline[backtracked_idx] += 1
+        self.last_flag[backtracked_idx] = flags
+
+        # Streamlines that were not backtracked are streamlines
+        # that reached the target. We set the flag to STOPPING_TARGET
+        # only if the corresponding streamline was backtracked at least once
+        backtracked_once_mask = \
+            self.n_backtrack_streamline[not_backtracked_idx] > 0
+        
+        self.last_flag[not_backtracked_idx[backtracked_once_mask]] = \
+            StoppingFlags.STOPPING_TARGET.value
+
+    def get_stats(self):
+        """
+        This function will compile the stats of the utility tracker and
+        return them as a dictionary.
+
+        Returns
+        -------
+        dict
+            Dictionary containing the stats of the utility tracker.
+        """
+        backtracked_once_mask = self.n_backtrack_streamline > 0
+
+        tot_n_backtracked = np.sum(backtracked_once_mask)
+        tot_n_never_backtracked = np.sum(~backtracked_once_mask)
+        assert tot_n_backtracked + tot_n_never_backtracked == self.n_backtrack_streamline.size
+        
+        tot_n_reached_gm_after = \
+            np.sum(self.last_flag == StoppingFlags.STOPPING_TARGET.value)
+        
+        avg_n_backtrack_streamline = np.mean(self.n_backtrack_streamline)
+        
+        nb_streamlines_cant_be_saved = np.sum(self.last_flag[backtracked_once_mask] != 8)
+        assert nb_streamlines_cant_be_saved + tot_n_reached_gm_after == np.sum(backtracked_once_mask)
+
+        return {
+            "n_streamlines": self.n_backtrack_streamline.size,
+            "tot_n_backtracked": tot_n_backtracked,
+            "tot_perc_backtracked": tot_n_backtracked / self.n_backtrack_streamline.size,
+
+            "tot_n_never_backtracked": tot_n_never_backtracked,
+            "tot_perc_never_backtracked": tot_n_never_backtracked / self.n_backtrack_streamline.size,
+
+            "tot_n_reached_gm_after": tot_n_reached_gm_after,
+            "tot_perc_reached_gm_after": tot_n_reached_gm_after / tot_n_backtracked,
+
+            "tot_n_never_reached_gm_after": nb_streamlines_cant_be_saved,
+            "tot_perc_never_reached_gm_after": nb_streamlines_cant_be_saved / tot_n_backtracked,
+
+            "avg_n_backtracks_per_streamline": avg_n_backtrack_streamline,
+        }
+        
+
 
 class RolloutEnvironment(object):
 
     def __init__(self,
                  reference: nib.Nifti1Image,
                  oracle: LightningLikeModule,
-                 n_rollouts: int = 20,  # Nb of rollouts to try
+                 n_rollouts: int = 5,  # Nb of rollouts to try
                  backup_size: int = 2,  # Nb of steps we are backtracking
-                 extra_n_steps: int = 6,  # Nb of steps further we need to compare the different rollouts
+                 extra_n_steps: int = 4,  # Nb of steps further we need to compare the different rollouts
                  min_streamline_steps: int = 1,  # Min length of a streamline
-                 max_streamline_steps: int = 256  # Max length of a streamline
+                 max_streamline_steps: int = 256,  # Max length of a streamline
+                 rollout_stats: RolloutStats = RolloutStats(),
+                 utility_tracker: RolloutUtilityTracker = None
                  ):
 
         self.rollout_agent = None
@@ -31,7 +163,9 @@ class RolloutEnvironment(object):
         self.extra_n_steps = extra_n_steps
         self.min_streamline_steps = min_streamline_steps
         self.max_streamline_steps = max_streamline_steps
-
+        self.rollout_stats = rollout_stats
+        self.rollout_stats.set_nb_rollouts(n_rollouts)
+        self.utility_tracker = utility_tracker
 
     def setup_rollout_agent(self, agent: ActorCritic):
         self.rollout_agent = agent
@@ -91,22 +225,28 @@ class RolloutEnvironment(object):
             prob: float = 1.1
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         self._verify_rollout_agent()
-
+        INITIAL_FLAGS = in_stopping_flags.copy()
         assert self.max_streamline_steps == streamlines.shape[1]
 
         # Backtrack streamline length
         backup_length = current_length - self.backup_size
+        start = backup_length
+
+        # For statistics purposes
+        n_og_reached_target = np.sum(in_stopping_flags == StoppingFlags.STOPPING_TARGET.value)
 
         # If the original streamline isn't long enough to backtrack, just do nothing.
         # We don't backtrack in that case, there's no need to compute the rest
         if backup_length < 1 or backup_length == current_length:  
             return streamlines, np.array([], dtype=in_stopping_idx.dtype), in_stopping_idx, in_stopping_flags
 
+        n_streamlines = in_stopping_idx.shape[0]
         # If some streamlines are stopping in the gray matter, we don't want
         # to backtrack them, since they are probably valid. We only want to
         # backtrack prematurely stopped streamlines. (e.g. out of mask).
         backtrackable_mask = self._get_backtrackable_mask(in_stopping_flags)
         backtrackable_idx = in_stopping_idx[backtrackable_mask]
+        not_backtracked_streamlines = in_stopping_idx[~backtrackable_mask]
 
         if backtrackable_idx.size <= 0:
             # Can't backtrack, because we're at the start or every streamline ends correctly (in the target).
@@ -168,44 +308,79 @@ class RolloutEnvironment(object):
 
             backup_length += 1
 
+        # Get the mean distance between each path produced by the rollouts
+        # to make sure that there is a good diversity in the rollouts.
+        # We don't want all the rollouts to be the same, otherwise the Monte
+        # Carlo exploration can't be efficient.
+        effective_rollouts = rollouts[:, :, start:, :] # (n_rollouts, n_streamlines, n_points, 3)
+        mean_rollout_distance = np.mean(
+            np.linalg.norm(
+                np.diff(effective_rollouts, axis=2),
+                axis=-1
+            )
+        )
+
         # Get the best rollout for each streamline.
         best_rollouts, new_flags, best_true_lengths = \
             self._filter_best_rollouts(rollouts, flags, backtrackable_idx, true_lengths)
-        streamline_improvement_idx = self._get_improvement_idx(current_length, best_true_lengths, flags)
+        
+        # Get the indices of the rollouts that improved the streamline
+        # and convert it to the actual streamline index.
+        rollout_improvement_idx = self._get_improvement_idx(current_length, best_true_lengths, flags)
+        streamline_improvement_idx = backtrackable_idx[rollout_improvement_idx]
 
         # Squash the retained rollouts to the current_length
         best_rollouts[:, current_length:, :] = 0
 
         # Replace the original streamlines with the best rollouts.
-        streamlines[backtrackable_idx[streamline_improvement_idx], :, :] = best_rollouts[streamline_improvement_idx]
+        streamlines[streamline_improvement_idx, :, :] = best_rollouts[rollout_improvement_idx]
 
-        # Get the indices of the streamlines that were "saved" and are not
-        # stopping anymore, which would be the new continuing streamlines.
-        # The new flags should be 0 (not stopped) and it should be an index
-        # of a rollout streamline that was improved.
-        continuing_rollouts = np.where(
-            np.logical_and(
-                new_flags == 0, 
-                np.isin(backtrackable_idx, backtrackable_idx[streamline_improvement_idx])
-            )
-        )[0]
-
-        new_continuing_streamlines = in_stopping_idx[continuing_rollouts]
+        # We want to get the indices of the streamlines that were improved
+        # and that does not end.
+        not_ending_rollouts = np.where(new_flags == 0)[0]
+        new_continuing_streamlines = backtrackable_idx[not_ending_rollouts]
 
         # Update the stopping flags of the streamlines that were changed.
         # For example, streamlines that aren't stopping anymore have their
         # flags reset to 0, while if we have a streamline that is now stopping
         # in the gray matter (STOPPING_TARGET), that new flag is kept.
-        indices = np.arange(in_stopping_idx.shape[0])[backtrackable_mask][streamline_improvement_idx]
-        in_stopping_flags[indices] = \
-            new_flags[streamline_improvement_idx]
+        indices = np.searchsorted(in_stopping_idx, streamline_improvement_idx)
+        new_in_stopping_flags = in_stopping_flags.copy()
+        new_in_stopping_flags[indices] = \
+            new_flags[rollout_improvement_idx]
 
         # Remove the stopping indices that are not stopping anymore
-        in_stopping_idx = in_stopping_idx[in_stopping_flags > 0]
+        new_in_stopping_idx = in_stopping_idx[new_in_stopping_flags > 0]
 
-        assert in_stopping_idx.shape[0] == np.sum(in_stopping_flags > 0)
+        assert new_in_stopping_idx.shape[0] == np.sum(new_in_stopping_flags > 0)
 
-        return streamlines, new_continuing_streamlines, in_stopping_idx, in_stopping_flags
+        # Update the stats
+        if self.rollout_stats:
+            n_reached_target = np.sum(new_in_stopping_flags == StoppingFlags.STOPPING_TARGET.value) - n_og_reached_target
+            n_saved = new_continuing_streamlines.shape[0]
+            n_not_saved = n_streamlines - n_saved - n_reached_target
+            self.rollout_stats.update_step(rdist=mean_rollout_distance,
+                                           perc_saved=n_saved/n_streamlines,
+                                           perc_reach_gm=n_reached_target/n_streamlines,
+                                           perc_not_saved=n_not_saved/n_streamlines)
+
+
+        if self.utility_tracker:
+            self.utility_tracker.update(
+                backtrackable_idx, # All streamlines indices that were backtracked
+                not_backtracked_streamlines,
+                new_in_stopping_flags[backtrackable_mask] # All flags of the stopping streamlines
+            )
+
+        intersection = np.intersect1d(new_in_stopping_idx, new_continuing_streamlines)
+
+        # Find the indices where the values in the intersection are in the in_stopping_idx
+        flag_indices = np.where(np.isin(in_stopping_idx, intersection))[0]
+        flags_of_intersection = new_in_stopping_flags[flag_indices]
+        assert intersection.size == 0, \
+            "Conflict of indices between stopping and continuing streamlines."
+
+        return streamlines, new_continuing_streamlines, new_in_stopping_idx, new_in_stopping_flags
     
     @staticmethod
     def _padded_streamlines_to_array_sequence(

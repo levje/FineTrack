@@ -1,8 +1,10 @@
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from TrackToLearn.environments.env import BaseEnv
 from TrackToLearn.utils.torch_utils import get_device
+from TrackToLearn.utils.utils import prettier_dict
 
 class RLAlgorithm(object):
     """
@@ -60,6 +62,7 @@ class RLAlgorithm(object):
         initial_state,
         env: BaseEnv,
         prob: float = 1.,
+        enable_pbar: bool = True,
     ):
         """
         Main loop for the algorithm
@@ -83,19 +86,50 @@ class RLAlgorithm(object):
 
         running_reward = 0
         state = initial_state
+        n_streamlines = state.shape[0]
         done = False
+        current_nb_dones = 0
+        pbar = tqdm(total=n_streamlines, desc='Val episode',
+                    leave=False, disable=enable_pbar)
+        if hasattr(env, 'rollout_env') and env.rollout_env:
+            env.rollout_env.rollout_stats.reset()
+        step = 0
         while not np.all(done):
             # Select action according to policy + noise to make tracking
             # probabilistic
             with torch.no_grad():
                 action = self.agent.select_action(state, probabilistic=prob)
+
             # Perform action
-            
             if isinstance(action, torch.Tensor):
                 action = action.to(device='cpu', copy=True).numpy()
 
             next_state, _, reward, done, *_ = env.step(
                 action)
+            
+            new_nb_dones = np.sum(done)
+            
+            # Make sure we don't have more done streamlines than we started
+            # with. That should never happen and could happen if the indices
+            # for continuing streamlines are not correctly handled in the 
+            # environment. That would lead the tqdm progress bar to break and
+            # "overflow" to higher than 100%.
+            current_nb_dones += new_nb_dones
+            assert current_nb_dones <= n_streamlines
+
+            pbar.update(new_nb_dones)
+
+            if hasattr(env, 'rollout_env') and env.rollout_env:
+                stats = env.rollout_env.rollout_stats.get_stats(reduce='mean')
+                # Make sure that each value of the stats is exactly two decimals long
+                # stats = {k: f'{v:.2f}' for k, v in stats.items()}
+                for k, v in stats.items():
+                    if isinstance(v, float) and not v.is_integer():
+                        stats[k] = f'{v:.2f}'
+                stats.update({'step': step})
+                pbar.set_postfix(stats)
+            else:
+                pbar.set_postfix({'step': step})
 
             # Keep track of reward
             running_reward += sum(reward)
@@ -104,7 +138,15 @@ class RLAlgorithm(object):
             # from state. This line also set the next_state as the
             # state
             state, _, _ = env.harvest()
+            step += 1
 
         # env.render()
+
+        if hasattr(env.rollout_env, 'utility_tracker') \
+            and env.rollout_env.utility_tracker:
+
+            stats = env.rollout_env.utility_tracker.get_stats()
+            print(prettier_dict(stats, 'Rollout utility stats'))
+            env.rollout_env.utility_tracker.reset()
 
         return running_reward
