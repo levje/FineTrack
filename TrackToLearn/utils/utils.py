@@ -11,6 +11,10 @@ import pstats
 import io
 import numpy as np
 import torch
+from functools import wraps
+from typing import Optional, Type
+from types import TracebackType
+
 
 COLOR_CODES = {
     'black': '\u001b[30m',
@@ -112,6 +116,102 @@ class Timer:
 
         print("{:.10f} sec.".format(time() - self.start))
 
+    @classmethod
+    def decorator(cls, enabled=True, color=None):
+        def _decorator(func):
+            
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                with cls(f"Running {func.__name__}", newline=True,
+                         color=color):
+                    result = func(*args, **kwargs)
+                return result
+            return wrapper
+        
+        _identity = lambda func: func
+
+        return _decorator if enabled else _identity
+
+class ManualProfiler:
+    """
+    Since a profiler often gives way too much information at one, this class
+    aims to be able to manually profile certain parts of the code instead of
+    using time.time() several times manually. This class is meant to be used
+    as a context manager for a similar purpose.
+
+    Usage:
+    with ManualProfiler("Some title") as profiler:
+        # Code to profile 1
+        profiler.point("Code 1")
+        # Code to profile 2
+        profiler.point("Code 2")
+        # Code to profile 3
+        profiler.point("Code 3")
+    
+    # On exit, the profiler will print the time taken between each point with
+    # their associated text. It will also compute the percentage of time spent
+    # between each point.
+        
+    """
+    def __init__(self, title=None):
+        self.title = title
+        self.points_txt = []
+        self.point_times = []
+
+        try:
+            self.error_color = COLOR_CODES['red']
+            self.reset_color = COLOR_CODES['reset']
+        except KeyError:
+            self.error_color = ''
+            self.reset_color = ''
+
+    def __enter__(self):
+        self.start = time()
+        self.points_txt.append("start")
+        self.point_times.append(0)
+        return self
+    
+    def __exit__(self, exctype: Optional[Type[BaseException]],
+                 excinst: Optional[BaseException],
+                 tb: Optional[TracebackType]) -> bool:
+        self.end = time()
+        self.points_txt.append("end")
+        self.point_times.append(self.end - self.start)
+
+        self.total_time = self.end - self.start
+        
+        if self.title:
+            print("==============================================")
+            print(f"ManualProfiler: {self.title}")
+        
+        print("==============================================")
+
+        if exctype is not None:
+            print(self.error_color + "An exception has occurred: "
+                  f"{exctype.__name__}. The results may be incomplete."
+                  + self.reset_color)
+
+        print("Time between each point:")
+
+        for i in range(1, len(self.points_txt)):
+            duration = self.point_times[i] - self.point_times[i - 1]
+            percentage = (duration / self.total_time) * 100
+
+            millisecond_str = ""
+            if duration < 1:
+                millisecond_str = f"{(duration*1000):.1f} ms - "
+
+            print(f"{self.points_txt[i - 1]} => {self.points_txt[i]}: {duration:.4f} s ({millisecond_str}{percentage:.2f}%)")
+
+        print("====================================")
+
+
+    def point(self, text):
+        point_time = time()
+        point_duration = point_time - self.start
+        self.points_txt.append(text)
+        self.point_times.append(point_duration)
+    
 
 def from_sphere(actions, sphere, norm=1.):
     vertices = sphere.vertices[actions]
