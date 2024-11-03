@@ -21,17 +21,17 @@ class OracleMonitor(object):
         self.experiment.set_name(experiment_id)
 
         delims = ['_', '-', '/']
-        if metrics_prefix[0] in delims:
+        if metrics_prefix is None:
+            self.metrics_prefix = None
+        elif metrics_prefix[0] in delims:
             self.metrics_prefix = metrics_prefix[1:]
         else:
             self.metrics_prefix = f"{metrics_prefix}/"
 
         self.use_comet = use_comet
         if not self.use_comet:
-            LOGGER.warn(
+            LOGGER.warning(
                 "Comet is not being used. No metrics will be logged for the Oracle training.")
-            
-        self.metrics_prefix = metrics_prefix
 
     def log_parameters(self, hyperparameters: dict):
         if not self.use_comet:

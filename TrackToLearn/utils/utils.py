@@ -153,10 +153,11 @@ class ManualProfiler:
     # between each point.
         
     """
-    def __init__(self, title=None):
+    def __init__(self, title=None, print_enabled=True):
         self.title = title
         self.points_txt = []
         self.point_times = []
+        self.print_enabled = print_enabled
 
         try:
             self.error_color = COLOR_CODES['red']
@@ -180,6 +181,9 @@ class ManualProfiler:
 
         self.total_time = self.end - self.start
         
+        if not self.print_enabled:
+            return False
+
         if self.title:
             print("==============================================")
             print(f"ManualProfiler: {self.title}")
