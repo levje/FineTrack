@@ -42,11 +42,8 @@ if [ $islocal -eq 1 ]; then
     DATASETDIR=$DATADIR
     # ORACLECHECKPOINT=custom_models/ismrm_ppo_pretrain/model/ismrm_paper_oracle.ckpt
     # AGENTCHECKPOINT=custom_models/ismrm_ppo_pretrain/model
-    # ORACLE_CRIT_CHECKPOINT=custom_models/ismrm_paper_oracle/ismrm_paper_oracle.ckpt
-    # ORACLE_REWARD_CHECKPOINT=custom_models/ismrm_classif_oracle/ismrm_classif_oracle.ckpt
-
-    ORACLE_CRIT_CHECKPOINT=custom_models/ismrm_neg_regressor_oracle/ismrm_neg_regressor_oracle.ckpt
-    ORACLE_REWARD_CHECKPOINT=custom_models/ismrm_neg_regressor_oracle/ismrm_neg_regressor_oracle.ckpt
+    ORACLE_CRIT_CHECKPOINT=custom_models/ismrm_paper_oracle/ismrm_paper_oracle.ckpt
+    ORACLE_REWARD_CHECKPOINT=custom_models/ismrm_classif_oracle/ismrm_classif_oracle.ckpt
 else
     echo "Running training on a cluster node..."
     module load python/3.10 cuda cudnn httpproxy
