@@ -224,7 +224,7 @@ class StreamlineDatasetManager(object):
 
             # Actually add the streamlines to the dataset using the precalculated
             # indices.
-            for i, (sft_train_indices, sft_test_indices) in enumerate(tqdm(zip(train_indices, test_indices), desc="Adding tractograms to dataset", total=len(filtered_tractograms))):
+            for i, (sft_train_indices, sft_test_indices) in enumerate(tqdm(zip(train_indices, test_indices), desc="Adding tractograms to dataset", total=len(filtered_tractograms), leave=False)):
                 # Unpack and setup
                 pos_train_indices, neg_train_indices = sft_train_indices
                 pos_test_indices, neg_test_indices = sft_test_indices
@@ -284,6 +284,8 @@ class StreamlineDatasetManager(object):
 
             self.current_train_nb_streamlines += train_nb_streamlines
             self.current_test_nb_streamlines += test_nb_streamlines
+
+            return train_nb_streamlines + test_nb_streamlines
 
     def _add_streamlines_to_hdf5(self, f, sft, nb_points, idx, sub_pbar_desc="", batch_size=1000):
         """ Add the streamlines to the hdf5 file.

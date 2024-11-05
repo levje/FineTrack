@@ -24,6 +24,8 @@ from TrackToLearn.trainers.oracle.data_module import StreamlineDataModule
 from TrackToLearn.trainers.oracle.streamline_dataset_manager import StreamlineDatasetManager
 from TrackToLearn.utils.torch_utils import assert_accelerator
 from TrackToLearn.utils.utils import prettier_metrics, prettier_dict
+from TrackToLearn.filterers.streamlines_sampler import StreamlinesSampler
+from TrackToLearn.utils.tqdm_utils import tqdm, tqdm_redirect_context, tqdm_redirect_class
 
 assert_accelerator()
 
@@ -74,6 +76,8 @@ class RlhfRefactored(TrackToLearnTraining):
         self.oracle_batch_size = rlhf_train_dto['oracle_batch_size']
         grad_accumulation_steps = rlhf_train_dto.get(
             'grad_accumulation_steps', 1)
+        self.nb_new_streamlines_per_iter = rlhf_train_dto.get(
+            'nb_new_streamlines_per_iter', 500000)
 
         ################################################
         # Start by initializing the agent trainer.     #
@@ -246,9 +250,11 @@ class RlhfRefactored(TrackToLearnTraining):
 
         # Setup filterers which will be used to filter tractograms
         # for the RLHF pipeline.
+        sampler = StreamlinesSampler()
         self.filterers = [
             TractometerFilterer(self.scoring_data, self.tractometer_reference,
-                                dilate_endpoints=self.tractometer_dilate)
+                                dilate_endpoints=self.tractometer_dilate,
+                                sampler=sampler)
         ]
 
         # RLHF loop to fine-tune the oracle to the RL agent and vice-versa.
@@ -260,38 +266,48 @@ class RlhfRefactored(TrackToLearnTraining):
                 LOGGER.info("Oracle training is disabled. Only the agent will be trained and the dataset will not be augmented.\n",
                                  "This is equivalent to just training the agent for an additional {} ({} x {}) epochs.".format(self.agent_train_steps*max_ep, max_ep, self.agent_train_steps))
             else:
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    # Generate a tractogram
-                    tractograms_path = os.path.join(tmpdir, "tractograms")
-                    if not os.path.exists(tractograms_path):
-                        os.makedirs(tractograms_path)
-                    LOGGER.info(
-                        "Generating tractograms for RLHF training...")
-                    tractograms = self.generate_and_save_tractograms(
-                        self.tracker, self.tracker_env, tractograms_path)
+                total_added = 0
+                
+                with tqdm_redirect_class(total=self.nb_new_streamlines_per_iter,
+                                desc="Adding new streamlines to the dataset",
+                                mininterval=5.0) as sub_pbar:
+                    while total_added < self.nb_new_streamlines_per_iter:
+                        with tempfile.TemporaryDirectory() as tmpdir:
+                            # Generate a tractogram
+                            tractograms_path = os.path.join(tmpdir, "tractograms")
+                            if not os.path.exists(tractograms_path):
+                                os.makedirs(tractograms_path)
+                            LOGGER.info(
+                                "Generating tractograms for RLHF training...")
+                            tractograms = self.generate_and_save_tractograms(
+                                self.tracker, self.tracker_env, tractograms_path)
 
-                    # Filter the tractogram
-                    filtered_path = os.path.join(tmpdir, "filtered")
-                    if not os.path.exists(filtered_path):
-                        os.makedirs(filtered_path)
-                    LOGGER.info(
-                        "Filtering tractograms for RLHF training...")
-                    # Need to filter for each filterer and keep the same order.
-                    filtered_tractograms = self.filter_tractograms(
-                        tractograms, filtered_path)
+                            # Filter the tractogram
+                            filtered_path = os.path.join(tmpdir, "filtered")
+                            if not os.path.exists(filtered_path):
+                                os.makedirs(filtered_path)
 
-                    LOGGER.info(
-                        "Adding filtered tractograms to the dataset...")
-                    self.dataset_manager.add_tractograms_to_dataset(
-                        filtered_tractograms)
-                    data_stats = self.dataset_manager.fetch_dataset_stats()
-                    LOGGER.info(
-                        prettier_dict(data_stats, title="Dataset stats (iter {})".format(i)))
+                            # Need to filter for each filterer and keep the same order.
+                            filtered_tractograms = self.filter_tractograms(
+                                tractograms, filtered_path)
 
-                    # Train reward model
-                    LOGGER.info("Training reward model...")
-                    self.train_reward()
-                    self.train_stopping_criterion()
+                            LOGGER.info(
+                                "Adding filtered tractograms to the dataset...")
+                            nb_new_streamlines = \
+                                self.dataset_manager.add_tractograms_to_dataset(
+                                filtered_tractograms)
+                            
+                            total_added += nb_new_streamlines
+                            sub_pbar.update(nb_new_streamlines)
+
+                data_stats = self.dataset_manager.fetch_dataset_stats()
+                LOGGER.info(
+                    prettier_dict(data_stats, title="Dataset stats (iter {})".format(i)))
+
+                # Train reward model
+                LOGGER.info("Training reward model...")
+                self.train_reward()
+                self.train_stopping_criterion()
 
             # Train the RL agent
             self.agent_trainer.rl_train(alg,
@@ -489,6 +505,8 @@ def add_rlhf_training_args(parser: argparse.ArgumentParser):
     rlhf_group.add_argument("--rlhf_inter_npv", type=int, default=None,
                             help="Number of seeds to use when generating intermediate tractograms\n"
                             "for the RLHF training pipeline. If None, the general npv will be used.")
+    rlhf_group.add_argument("--nb_new_streamlines_per_iter", type=int, default=500000,
+                            help="Number of new streamlines to add to the dataset at each iteration.")
 
     # The following arguments are usually used for PPO, but we are also testing it for other algorithms.
     parser.add_argument('--adaptive_kl', action='store_true',

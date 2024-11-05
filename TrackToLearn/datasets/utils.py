@@ -5,7 +5,9 @@ from dipy.data import get_sphere
 from dipy.reconst.csdeconv import sph_harm_ind_list
 from scilpy.reconst.utils import get_sh_order_and_fullness
 from scilpy.reconst.sh import convert_sh_basis
+from TrackToLearn.utils.logging import get_logger
 
+LOGGER = get_logger(__name__)
 
 class MRIDataVolume(object):
     """
@@ -27,7 +29,7 @@ class MRIDataVolume(object):
             affine_vox2rasmm = np.array(
                 hdf[group].attrs['vox2rasmm'], dtype=np.float32)
         except KeyError:
-            print('Missing {} from dataset'.format(group))
+            LOGGER.debug('Missing {} from dataset'.format(group))
             data = np.zeros_like(hdf[default]['data'], dtype=np.float32)
             affine_vox2rasmm = np.array(
                 hdf[default].attrs['vox2rasmm'], dtype=np.float32)
@@ -154,14 +156,14 @@ def set_sh_order_basis(
 
     # If SH in full basis, convert them
     if full_basis is True:
-        print('SH coefficients are in "full" basis, only even coefficients '
+        LOGGER.info('SH coefficients are in "full" basis, only even coefficients '
               'will be used.')
         _, orders = sph_harm_ind_list(sh_order, full_basis)
         sh = sh[..., orders % 2 == 0]
 
     # If SH are not of target order, convert them
     if sh_order != target_order:
-        print('SH coefficients are of order {}, '
+        LOGGER.info('SH coefficients are of order {}, '
               'converting them to order {}.'.format(sh_order, target_order))
         target_n_coefs = len(sph_harm_ind_list(target_order)[0])
 
@@ -175,7 +177,7 @@ def set_sh_order_basis(
 
     # If SH are not in the descoteaux07 basis, convert them
     if sh_basis != target_basis:
-        print('SH coefficients are in the {} basis, '
+        LOGGER.info('SH coefficients are in the {} basis, '
               'converting them to {}.'.format(sh_basis, target_basis))
         sh = convert_sh_basis(
             sh, sphere, input_basis=sh_basis, nbr_processes=1)

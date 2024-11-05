@@ -11,6 +11,7 @@ from dipy.io.streamline import load_tractogram
 from dipy.io.streamline import save_tractogram
 
 from TrackToLearn.filterers.filterer import Filterer
+from TrackToLearn.filterers.streamlines_sampler import StreamlinesSampler
 from TrackToLearn.experiment.tractometer_validator import load_and_verify_everything
 from pathlib import Path
 
@@ -22,8 +23,10 @@ class TractometerFilterer(Filterer):
         reference,
         dilate_endpoints=1,
         invalid_score=0,
-        bbox_valid_check=True
+        bbox_valid_check=True,
+        sampler: StreamlinesSampler = None
     ):
+        super().__init__(sampler)
         self.name = 'Tractometer'
         self.gt_config = os.path.join(base_dir, 'scil_scoring_config.json')
         self.gt_dir = base_dir
@@ -45,7 +48,7 @@ class TractometerFilterer(Filterer):
                 self.gt_dir,
                 False)
 
-    def __call__(self, tractogram, out_dir, scored_extension="trk"):
+    def _filter(self, tractogram, out_dir, scored_extension="trk"):
         assert os.path.exists(tractogram), f"Tractogram {tractogram} does not exist."
         filtered_path_valid = os.path.join(out_dir, "valid_scored_{}.{}".format(Path(tractogram).stem, scored_extension))
         filtered_path_invalid = os.path.join(out_dir, "invalid_scored_{}.{}".format(Path(tractogram).stem, scored_extension))
