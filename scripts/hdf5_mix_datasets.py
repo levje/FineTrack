@@ -1,8 +1,8 @@
 import h5py
 import numpy as np
 
-# _f1 = "/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/RLHF_test/oracle/new_dataset.hdf5"
-_f2 = "/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/RLHF_test/oracle/new_dataset.hdf5"
+# _f1 = "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/experiments/RLHF_test/oracle/new_dataset.hdf5"
+_f2 = "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/experiments/RLHF_test/oracle/new_dataset.hdf5"
 # _f2 = "/home/local/USHERBROOKE/levj1404/Documents/TractOracleNet/TractOracleNet/datasets/ismrm2015_1mm/ismrm_test2.hdf5"
 _new = "/home/local/USHERBROOKE/levj1404/Documents/TractOracleNet/TractOracleNet/datasets/ismrm2015_1mm/ismrm_test2_combined_new_ds.hdf5"
 

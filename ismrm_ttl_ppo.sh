@@ -14,8 +14,8 @@ islocal=1
 RUN_OFFLINE=0
 
 # Expriment parameters
-EXPNAME="TrackToLearnPPO"
-COMETPROJECT="TrackToLearnPPO"
+EXPNAME="FineTrack-PPO"
+COMETPROJECT="FineTrack-PPO"
 EXPID="testing_Base_"_$(date +"%F-%H_%M_%S")
 # RLHFINTERNPV=20         # Number of seeds per tractogram generated during the RLHF pipeline
 MAXEP=100                # Number of PPO iterations

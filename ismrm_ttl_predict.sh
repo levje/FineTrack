@@ -11,7 +11,7 @@ IN_ODF=data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz
 IN_SEED=data/datasets/ismrm2015_2mm/masks/ismrm2015_interface.nii.gz
 IN_MASK=data/datasets/ismrm2015_2mm/masks/ismrm2015_wm.nii.gz
 IN_GM_MASK=data/datasets/ismrm2015_2mm/masks/t1_gm_resampled.nii.gz
-python TrackToLearn/runners/ttl_track.py \
+python FineTrack/runners/ttl_track.py \
     ${IN_ODF} \
     ${IN_SEED} \
     ${IN_MASK} \

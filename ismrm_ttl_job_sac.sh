@@ -13,8 +13,8 @@ set -e
 islocal=1
 
 # Expriment parameters
-EXPNAME="TrackToLearn"
-COMETPROJECT="TrackToLearn"
+EXPNAME="FineTrack-PT"
+COMETPROJECT="FineTrack-PT"
 EXPID="SAC-negRegressor-scaledReward-"_$(date +"%F-%H_%M_%S")
 MAXEP=1000
 BATCHSIZE=4096

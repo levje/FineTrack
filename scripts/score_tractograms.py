@@ -1,7 +1,7 @@
 import argparse
 import os
 import tempfile
-from TrackToLearn.filterers.tractometer_filterer import TractometerFilterer
+from FineTrack.filterers.tractometer_filterer import TractometerFilterer
 
 
 def parse_args() -> argparse.Namespace:

@@ -10,8 +10,8 @@ import torch
 from dipy.io.streamline import save_tractogram
 from dipy.tracking.streamline import set_number_of_points
 from scilpy.viz.color import get_lookup_table
-from TrackToLearn.utils.torch_utils import get_device, get_device_str
-from TrackToLearn.oracles.transformer_oracle import TransformerOracle
+from FineTrack.utils.torch_utils import get_device, get_device_str
+from FineTrack.oracles.transformer_oracle import TransformerOracle
 
 
 device = get_device()
