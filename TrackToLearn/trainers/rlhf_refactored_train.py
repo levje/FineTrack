@@ -78,6 +78,8 @@ class RlhfRefactored(TrackToLearnTraining):
             'grad_accumulation_steps', 1)
         self.nb_new_streamlines_per_iter = rlhf_train_dto.get(
             'nb_new_streamlines_per_iter', 500000)
+        self.max_dataset_size = rlhf_train_dto.get(
+            'max_dataset_size', 5000000)
 
         ################################################
         # Start by initializing the agent trainer.     #
@@ -108,7 +110,8 @@ class RlhfRefactored(TrackToLearnTraining):
 
         dataset_to_augment = rlhf_train_dto.get('dataset_to_augment', None)
         self.dataset_manager = StreamlineDatasetManager(saving_path=self.oracle_training_dir,
-                                                        dataset_to_augment_path=dataset_to_augment)
+                                                        dataset_to_augment_path=dataset_to_augment,
+                                                        max_dataset_size=self.max_dataset_size)
 
         self.oracle_reward_trainer = OracleTrainer(
             oracle_experiment,
@@ -507,6 +510,8 @@ def add_rlhf_training_args(parser: argparse.ArgumentParser):
                             "for the RLHF training pipeline. If None, the general npv will be used.")
     rlhf_group.add_argument("--nb_new_streamlines_per_iter", type=int, default=500000,
                             help="Number of new streamlines to add to the dataset at each iteration.")
+    rlhf_group.add_argument("--max_dataset_size", type=int, default=5000000,
+                            help="Maximum number of streamlines to keep in the dataset.")
 
     # The following arguments are usually used for PPO, but we are also testing it for other algorithms.
     parser.add_argument('--adaptive_kl', action='store_true',
