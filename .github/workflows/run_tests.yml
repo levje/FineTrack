@@ -15,7 +15,6 @@ jobs:
         env:
           SETUPTOOLS_USE_DISTUTILS: "stdlib"
         run: |
-          echo setuptools_use_dist_utils: $SETUPTOOLS_USE_DISTUTILS
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           ./install.sh
