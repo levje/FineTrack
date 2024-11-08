@@ -357,7 +357,9 @@ class StreamlineDatasetManager(object):
             new_train_nb_streamlines = self.current_train_nb_streamlines + train_nb_streamlines
             new_valid_nb_streamlines = self.current_valid_nb_streamlines + valid_nb_streamlines
             new_test_nb_streamlines = self.current_test_nb_streamlines + test_nb_streamlines
-            (file_train_indices, file_valid_indices, file_test_indices) = \
+
+            (file_train_indices, file_valid_indices, file_test_indices,
+             nb_new_train_indices, nb_new_valid_indices, nb_new_test_indices) = \
                 self._get_file_indices(new_train_nb_streamlines,
                                        new_valid_nb_streamlines,
                                        new_test_nb_streamlines)
@@ -455,9 +457,16 @@ class StreamlineDatasetManager(object):
             assert len(
                 file_test_indices) == 0, "Not all testing streamlines were added."
 
-            self.current_train_nb_streamlines += train_nb_streamlines
-            self.current_valid_nb_streamlines += valid_nb_streamlines
-            self.current_test_nb_streamlines += test_nb_streamlines
+            self.current_train_nb_streamlines += nb_new_train_indices
+            self.current_valid_nb_streamlines += nb_new_valid_indices
+            self.current_test_nb_streamlines += nb_new_test_indices
+
+            assert self.current_train_nb_streamlines <= self.max_train_size, \
+                "The training dataset is exceeding the maximum size."
+            assert self.current_valid_nb_streamlines <= self.max_valid_size, \
+                "The validation dataset is exceeding the maximum size."
+            assert self.current_test_nb_streamlines <= self.max_test_size, \
+                "The testing dataset is exceeding the maximum size."
 
             return train_nb_streamlines + valid_nb_streamlines + test_nb_streamlines
 
@@ -491,6 +500,10 @@ class StreamlineDatasetManager(object):
         file_test_indices = np.arange(
             self.current_test_nb_streamlines, new_test_nb_streamlines)
 
+        nb_new_train_indices = len(file_train_indices)
+        nb_new_valid_indices = len(file_valid_indices)
+        nb_new_test_indices = len(file_test_indices)
+
         # In the following conditions, some indices are going out of bounds
         # with respect to the maximum dataset size. We need to overwrite those
         # with random indices taken from the current dataset to overwrite some
@@ -515,23 +528,26 @@ class StreamlineDatasetManager(object):
         # Which means we overwrite all indices in the file_indices list.
 
         if new_train_nb_streamlines > self.max_train_size:
-            max_pos = self.max_train_size - self.current_train_nb_streamlines
-            nb_to_overwrite = len(file_train_indices) - max_pos
-            file_train_indices[max_pos:] = self.rng.choice(
+            nb_new_train_indices = \
+                self.max_train_size - self.current_train_nb_streamlines
+            nb_to_overwrite = len(file_train_indices) - nb_new_train_indices
+            file_train_indices[nb_new_train_indices:] = self.rng.choice(
                 self.current_train_nb_streamlines,
                 nb_to_overwrite, replace=False)
 
         if new_valid_nb_streamlines > self.max_valid_size:
-            max_pos = self.max_valid_size - self.current_valid_nb_streamlines
-            nb_to_overwrite = len(file_valid_indices) - max_pos
-            file_valid_indices[max_pos:] = self.rng.choice(
+            nb_new_valid_indices = \
+                self.max_valid_size - self.current_valid_nb_streamlines
+            nb_to_overwrite = len(file_valid_indices) - nb_new_valid_indices
+            file_valid_indices[nb_new_valid_indices:] = self.rng.choice(
                 self.current_valid_nb_streamlines,
                 nb_to_overwrite, replace=False)
             
         if new_test_nb_streamlines > self.max_test_size:
-            max_pos = self.max_test_size - self.current_test_nb_streamlines
-            nb_to_overwrite = len(file_test_indices) - max_pos
-            file_test_indices[max_pos:] = self.rng.choice(
+            nb_new_test_indices = \
+                self.max_test_size - self.current_test_nb_streamlines
+            nb_to_overwrite = len(file_test_indices) - nb_new_test_indices
+            file_test_indices[nb_new_test_indices:] = self.rng.choice(
                 self.current_test_nb_streamlines,
                 nb_to_overwrite, replace=False)
 
@@ -539,27 +555,30 @@ class StreamlineDatasetManager(object):
         self.rng.shuffle(file_valid_indices)
         self.rng.shuffle(file_test_indices)
 
-        return file_train_indices, file_valid_indices, file_test_indices
+        return (file_train_indices, file_valid_indices, file_test_indices,
+                nb_new_train_indices, nb_new_valid_indices,
+                nb_new_test_indices)
 
     def _resize_datasets(self,
                          train_group, new_train_nb_streamlines,
                          valid_group, new_valid_nb_streamlines,
                          test_group, new_test_nb_streamlines):
-        if self.current_train_nb_streamlines != self.max_train_size:
+
+        if self.current_train_nb_streamlines < self.max_train_size:
             LOGGER.debug("Resizing the training dataset.")
             train_group[DATA].resize(
                 min(new_train_nb_streamlines, self.max_train_size), axis=0)
             train_group[SCORES].resize(
                 min(new_train_nb_streamlines, self.max_train_size), axis=0)
         
-        if self.current_valid_nb_streamlines != self.max_valid_size:
+        if self.current_valid_nb_streamlines < self.max_valid_size:
             LOGGER.debug("Resizing the validation dataset.")
             valid_group[DATA].resize(
                 min(new_valid_nb_streamlines, self.max_valid_size), axis=0)
             valid_group[SCORES].resize(
                 min(new_valid_nb_streamlines, self.max_valid_size), axis=0)
 
-        if self.current_test_nb_streamlines != self.max_test_size:
+        if self.current_test_nb_streamlines < self.max_test_size:
             LOGGER.debug("Resizing the testing dataset.")
             test_group[DATA].resize(
                 min(new_test_nb_streamlines, self.max_test_size), axis=0)

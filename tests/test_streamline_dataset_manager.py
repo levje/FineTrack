@@ -215,6 +215,16 @@ def test_add_normal_streamlines_to_empty(setup_dataset_manager_empty_ds):
 
     assert total_added == 10
 
+    sft_valid, sft_invalid = \
+        _pack_into_sft(rng.rand(10, NB_POINTS, DIRECTION_DIM), score=1), \
+        _pack_into_sft(rng.rand(10, NB_POINTS, DIRECTION_DIM), score=0)  
+    
+    total_added = setup_dataset_manager_empty_ds.add_tractograms_to_dataset(
+        [(sft_valid, sft_invalid)]
+    )
+
+    assert total_added == 20
+
 def test_add_normal_streamlines_to_init(setup_dataset_manager_with_initial_ds):
     # We just expect that the streamlines are correctly added to the dataset.
     rng = np.random.RandomState(42)
@@ -267,6 +277,18 @@ def test_add_when_reaching_max_size(setup_dataset_manager_with_initial_ds):
         _pack_into_sft(rng.rand(40, NB_POINTS, DIRECTION_DIM), score=1), \
         _pack_into_sft(rng.rand(40, NB_POINTS, DIRECTION_DIM), score=0)
     
+    total_added = setup_dataset_manager_with_initial_ds.add_tractograms_to_dataset(
+        [(sft_valid, sft_invalid)]
+    )
+
+    assert total_added == 80
+    with h5py.File(setup_dataset_manager_with_initial_ds.dataset_file_path, "r") as f:
+        assert _has_expected_structure(f, 96, 12, 12)
+        assert not _data_has_zeros(f)
+        assert _has_valid_scores(f)
+    
+
+    # Add a second time to make sure the dataset is not growing.
     total_added = setup_dataset_manager_with_initial_ds.add_tractograms_to_dataset(
         [(sft_valid, sft_invalid)]
     )
