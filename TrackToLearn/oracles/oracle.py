@@ -34,6 +34,7 @@ class OracleSingleton:
             if is_pl_checkpoint else "hyperparameters"
 
         hyper_parameters = self.checkpoint[hparams_key]
+        self.nb_points = hyper_parameters.get('nb_streamlines_points', 128)
         models = {
             'TransformerOracle': TransformerOracle
         }
@@ -60,9 +61,9 @@ class OracleSingleton:
         # Resample streamlines to fixed number of point to set all
         # sequences to same length
         if isinstance(streamlines, ArraySequence):
-            data = set_number_of_points(batch, 128)
+            data = set_number_of_points(batch, self.nb_points)
         else:
-            assert streamlines.shape[1] == 128
+            assert streamlines.shape[1] == self.nb_points
             data = batch
 
         # Compute streamline features as the directions between points
@@ -83,9 +84,9 @@ class OracleSingleton:
                 # Resample streamlines to fixed number of point to set all
                 # sequences to same length
                 if isinstance(streamlines, ArraySequence):
-                    data = set_number_of_points(batch, 128)
+                    data = set_number_of_points(batch, self.nb_points)
                 else:
-                    assert streamlines.shape[1] == 128
+                    assert streamlines.shape[1] == self.nb_points
                     data = batch
                 # Compute streamline features as the directions between points
                 dirs = np.diff(data, axis=1)

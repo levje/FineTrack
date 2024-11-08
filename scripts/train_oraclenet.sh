@@ -7,16 +7,17 @@ else
     echo "Running on HPC..."
 fi
 
-EXPNAME=OracleTrainTestFibercup
+EXPNAME=OracleNet-Transformer-Crit-64
 EXPPATH=data/experiments/TractOracleNet/${EXPNAME}
-EXPID=Transformer-Classif-Zero-Big-MSELoss-
+EXPID=OracleNet-Transformer-Crit-64
 MAXEPOCHS=500
-#DATASET_FILE=/home/local/USHERBROOKE/levj1404/Documents/TractOracleNet/TractOracleNet/datasets/ismrm2015_1mm/train_test_classical_tracts_dataset.hdf5
+DATASET_FILE=/home/local/USHERBROOKE/levj1404/Documents/TractOracleNet/TractOracleNet/datasets/ismrm2015_1mm/train_test_classical_tracts_dataset.hdf5
 # DATASET_FILE=antoine-pft.hdf5
 # DATASET_FILE=full-antoine.hdf5
 # DATASET_FILE=data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine_modrange.hdf5
 # DATASET_FILE=data/datasets/fibercup/streamlines/stable/fibercup_tracts.hdf5
-DATASET_FILE=data/datasets/fibercup/streamlines/stable/fibercup_tracts_big.hdf5
+# DATASET_FILE=data/datasets/fibercup/streamlines/stable/fibercup_tracts_big.hdf5
+NB_STREAMLINES_POINTS=64
 
 mkdir -p ${EXPPATH}
 
@@ -26,7 +27,7 @@ mkdir -p ${EXPPATH}
 # compensate for the smaller batch size. The original batch size is 2048 and we want
 # to use a batch size of 512.
 TOTAL_BATCH_SIZE=2048
-MICRO_BATCH_SIZE=2048 #512 # Should reduce or increase this based on the GPU memory available.
+MICRO_BATCH_SIZE=1024 #512 # Should reduce or increase this based on the GPU memory available.
 GRAD_ACCUM_STEPS=$((TOTAL_BATCH_SIZE / MICRO_BATCH_SIZE)) # 88
 
 echo "Total batch size: ${TOTAL_BATCH_SIZE}"
@@ -45,8 +46,9 @@ python TrackToLearn/trainers/tractoraclenet_train.py \
     --use_comet \
     --n_head 4 \
     --n_layers 4 \
-    --out_activation sigmoid 
-    # --dense \
-    # --partial
+    --out_activation sigmoid \
+    --nb_streamlines_points ${NB_STREAMLINES_POINTS} \
+    --dense \
+    --partial
 
 

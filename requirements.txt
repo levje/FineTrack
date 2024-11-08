@@ -1,2 +1,3 @@
 dwi-ml @ git+https://github.com/levje/dwi_ml@update_scilpy
+torchmetrics
 pytest
