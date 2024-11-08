@@ -1,6 +1,14 @@
 name: Run Integration tests via Pytest
 
-on: [pull_request]
+on:
+  push:
+    branches:
+      - main
+      - levje/dpo
+  pull_request:
+    branches:
+      - main
+      - levje/dpo
 jobs:
   build:
     runs-on: ubuntu-latest
