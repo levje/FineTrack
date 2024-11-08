@@ -248,6 +248,7 @@ class RlhfRefactored(TrackToLearnTraining):
 
         # Setup environment
         self.tracker_env = self.get_valid_env(npv=self.rlhf_inter_npv)
+        self.tracker_env.compute_reward = False # For faster tracking
         self.tracker = Tracker(
             alg, self.n_actor, prob=1.0, compress=0.0)
 
@@ -271,7 +272,7 @@ class RlhfRefactored(TrackToLearnTraining):
             else:
                 total_added = 0
                 
-                with tqdm_redirect_class(total=self.nb_new_streamlines_per_iter,
+                with tqdm(total=self.nb_new_streamlines_per_iter,
                                 desc="Adding new streamlines to the dataset",
                                 mininterval=5.0) as sub_pbar:
                     while total_added < self.nb_new_streamlines_per_iter:
