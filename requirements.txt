@@ -1,5 +1,2 @@
-numpy==1.25.*
-Cython==3.0.*
-packaging==23.2.*
-dwi-ml @ git+https://github.com/levje/dwi_ml@jeremi_for_beluga_scilpy2
+dwi-ml @ git+https://github.com/levje/dwi_ml@update_scilpy
 pytest
