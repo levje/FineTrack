@@ -61,7 +61,7 @@ class StreamlineBatchDataset(Dataset):
             if self.partial:
                 LOGGER.debug("Partial mode is enabled. Scores will be scaled.")
 
-        assert stage in ["train", "test"], \
+        assert stage in ["train", "valid", "test"], \
             "The stage should be either 'train' or 'test'."
 
         self.stage = stage
@@ -176,6 +176,8 @@ class StreamlineBatchDataset(Dataset):
             # to use set_number_of_points
             array_seq = ArraySequence([streamlines[i, :new_lengths[i]]
                                        for i in range(len(new_lengths))])
+
+            # print("resampling stage {} streamlines to {} points".format(self.stage, self.nb_points))
             streamlines = set_number_of_points(array_seq, self.nb_points)
             streamlines = np.asarray(streamlines)
 
@@ -186,7 +188,18 @@ class StreamlineBatchDataset(Dataset):
                 loc=0.0, scale=self.noise, size=streamlines.shape
             ).astype(dtype)
 
+        if streamlines.shape[1] != self.nb_points:
+            # print("resampling stage {} streamlines to {} points".format(self.stage, self.nb_points))
+            array_seq = ArraySequence(streamlines)
+            streamlines = set_number_of_points(array_seq, self.nb_points)
+
         # Compute the directions
         dirs = np.diff(streamlines, axis=1)
+
+        # if self.stage == 'test':
+        #     print("streamlines shape: ", streamlines.shape)
+        #     print("dirs shape: ", dirs.shape)
+        #     print(f"debug streamlines 2:2:... ", streamlines[:2, :2, :])
+        #     print(f"debug dirs 2:2:... ", dirs[:2, :2, :])
 
         return dirs, score

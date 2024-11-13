@@ -46,15 +46,15 @@ class TractOracleNetPredict(object):
         if not os.path.exists(root_dir):
             os.makedirs(root_dir)
 
-        # Get example input to define NN input size
-        # 128 points directions -> 127 3D directions
-        self.input_size = (128-1) * 3  # Get this from datamodule ?
-        self.output_size = 1
 
         if self.checkpoint:
             checkpoint = torch.load(self.checkpoint)
             model = TransformerOracle.load_from_checkpoint(checkpoint)
         else:
+            # Get example input to define NN input size
+            # 128 points directions -> 127 3D directions
+            self.input_size = (128-1) * 3  # Get this from datamodule ?
+            self.output_size = 1
             model = TransformerOracle(
                 self.input_size, self.output_size, self.n_head,
                 self.n_layers, self.lr)
@@ -83,9 +83,11 @@ class TractOracleNetPredict(object):
         oracle_trainer.setup_model_training(model)
 
         # Instanciate the datamodule
+        nb_points = (model.input_size // 3) + 1
         dm = StreamlineDataModule(self.dataset_file,
                                   batch_size=self.oracle_batch_size,
-                                  num_workers=self.num_workers)
+                                  num_workers=self.num_workers,
+                                  nb_points=nb_points)
 
         # Test the model
         dm.setup('test')

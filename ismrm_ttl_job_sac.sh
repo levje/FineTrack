@@ -15,7 +15,7 @@ islocal=1
 # Expriment parameters
 EXPNAME="TrackToLearn"
 COMETPROJECT="TrackToLearn"
-EXPID="SAC-negRegressor-scaledReward-"_$(date +"%F-%H_%M_%S")
+EXPID="64pts-reward-crit-"_$(date +"%F-%H_%M_%S")
 MAXEP=1000
 BATCHSIZE=4096
 SEEDS=(1111)
@@ -42,8 +42,17 @@ if [ $islocal -eq 1 ]; then
     DATASETDIR=$DATADIR
     # ORACLECHECKPOINT=custom_models/ismrm_ppo_pretrain/model/ismrm_paper_oracle.ckpt
     # AGENTCHECKPOINT=custom_models/ismrm_ppo_pretrain/model
-    ORACLE_CRIT_CHECKPOINT=custom_models/ismrm_paper_oracle/ismrm_paper_oracle.ckpt
-    ORACLE_REWARD_CHECKPOINT=custom_models/ismrm_classif_oracle/ismrm_classif_oracle.ckpt
+    # ORACLE_CRIT_CHECKPOINT=custom_models/ismrm_paper_oracle/ismrm_paper_oracle.ckpt
+    # ORACLE_REWARD_CHECKPOINT=custom_models/ismrm_classif_oracle/ismrm_classif_oracle.ckpt
+
+    # Streamlines resampled to 32 points
+    # ORACLE_CRIT_CHECKPOINT=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/TractOracleNet/OracleNet-Transformer-Crit-32/OracleNet-Transformer-Crit-32/OracleNet-Transformer-Crit-32/_best_vc_epoch.ckpt
+    # ORACLE_REWARD_CHECKPOINT=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/TractOracleNet/OracleNet-Transformer-Crit-32/OracleNet-Transformer-Crit-32/OracleNet-Transformer-Crit-32/_best_vc_epoch.ckpt
+
+    # Streamlines resampled to 64 points
+    ORACLE_CRIT_CHECKPOINT=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/TractOracleNet/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/_best_vc_epoch.ckpt
+    ORACLE_REWARD_CHECKPOINT=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/TractOracleNet/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/_best_vc_epoch.ckpt
+
 else
     echo "Running training on a cluster node..."
     module load python/3.10 cuda cudnn httpproxy

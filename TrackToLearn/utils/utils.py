@@ -87,6 +87,19 @@ class LossHistory(object):
         with open(pjoin(directory, '{}.npy'.format(self.filename)), 'wb') as f:
             np.save(f, self.epochs)
 
+class SimpleTimer:
+    def __init__(self):
+        self.start = None
+        self.end = None
+        self.interval = None
+    
+    def __enter__(self):
+        self.start = time()
+        return self
+    
+    def __exit__(self, exctype, excinst, tb):
+        self.end = time()
+        self.interval = self.end - self.start
 
 class Timer:
     """ Times code within a `with` statement, optionally adding color. """

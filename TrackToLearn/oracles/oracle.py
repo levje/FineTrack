@@ -5,6 +5,7 @@ from dipy.tracking.streamline import set_number_of_points
 from TrackToLearn.oracles.transformer_oracle import TransformerOracle
 from TrackToLearn.utils.torch_utils import get_device_str, get_device
 from nibabel.streamlines.array_sequence import ArraySequence
+from TrackToLearn.environments.utils import resample_streamlines_if_needed
 import contextlib
 
 autocast_context = torch.cuda.amp.autocast if torch.cuda.is_available(
@@ -34,7 +35,7 @@ class OracleSingleton:
             if is_pl_checkpoint else "hyperparameters"
 
         hyper_parameters = self.checkpoint[hparams_key]
-        self.nb_points = hyper_parameters.get('nb_streamlines_points', 128)
+        self.nb_points = hyper_parameters['input_size'] // 3 + 1
         models = {
             'TransformerOracle': TransformerOracle
         }
@@ -52,7 +53,7 @@ class OracleSingleton:
         N = len(streamlines)
         # Placeholders for input and output data
         placeholder = torch.zeros(
-            (self.batch_size, 127, 3), pin_memory=get_device_str() == "cuda")
+            (self.batch_size, self.nb_points - 1, 3), pin_memory=get_device_str() == "cuda")
         result = torch.zeros((N), dtype=torch.float, device=self.device)
 
         # Get the first batch
@@ -60,14 +61,11 @@ class OracleSingleton:
         N_batch = len(batch)
         # Resample streamlines to fixed number of point to set all
         # sequences to same length
-        if isinstance(streamlines, ArraySequence):
-            data = set_number_of_points(batch, self.nb_points)
-        else:
-            assert streamlines.shape[1] == self.nb_points
-            data = batch
+        data = resample_streamlines_if_needed(batch, self.nb_points)
 
         # Compute streamline features as the directions between points
         dirs = np.diff(data, axis=1)
+
         # Send the directions to pinned memory
         placeholder[:N_batch] = torch.from_numpy(dirs)
         # Send the pinned memory to GPU asynchronously
@@ -80,14 +78,9 @@ class OracleSingleton:
             end = min(start + self.batch_size, N)
             # Prefetch the next batch
             if start < end:
-                batch = streamlines[start:end]
                 # Resample streamlines to fixed number of point to set all
                 # sequences to same length
-                if isinstance(streamlines, ArraySequence):
-                    data = set_number_of_points(batch, self.nb_points)
-                else:
-                    assert streamlines.shape[1] == self.nb_points
-                    data = batch
+                data = resample_streamlines_if_needed(streamlines[start:end], self.nb_points)
                 # Compute streamline features as the directions between points
                 dirs = np.diff(data, axis=1)
                 # Put the directions in pinned memory

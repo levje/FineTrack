@@ -51,7 +51,7 @@ class StreamlineDataModule(object):
 
         # Select a random distribution of indices for the training and validation sets.
         num_streamlines = len(StreamlineBatchDataset(
-            self.dataset_file, stage="train"))
+            self.dataset_file, stage="train", nb_points=nb_points))
         self.indices = np.arange(num_streamlines)
         np.random.shuffle(self.indices)
 
