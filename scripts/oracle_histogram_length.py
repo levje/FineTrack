@@ -135,8 +135,8 @@ def load_sft(tractogram, reference, filter_for_score=1):
             "Reference should be provided for hdf5 files."
         with h5py.File(tractogram, 'r') as f:
             group = f["test"] if "test" in f else f["train"]
-            streamlines = np.array(group["data"])
-            scores = np.array(group["scores"])
+            streamlines = group["data"][:]
+            scores = group["scores"][:]
 
             if filter_for_score is not None:
                 print("Nb streamlines before filtering: ", len(streamlines))
@@ -183,9 +183,8 @@ def plot_length_acc_histogram(model: OracleSingleton, tractograms,
         sft.to_vox()
         sft.to_corner()
         
-        predictions = model.predict(sft.streamlines)
+        predictions = model.predict(sft.streamlines, prefetch_streamlines=False)
         predictions = (predictions > 0.5).astype(np.uint8)
-        # predictions = predict(sft.streamlines, scores, model)
 
         #################################
         # RASMM space: Compute the lengths
