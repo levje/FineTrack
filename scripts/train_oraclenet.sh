@@ -1,23 +1,48 @@
-islocal=1
+#!/bin/bash
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=22000M
+#SBATCH --time=0-20:00:00
+#SBATCH --mail-user=jeremi.levesque@usherbrooke.ca
+#SBATCH --mail-type=ALL
 
-# if is local
-if [ $islocal -eq 1 ]; then
-    echo "Running locally"
+EXPNAME=OracleNet-Transformer-Crit-32-FixValid
+EXPID=OracleNet-Transformer-Crit-32-FixValid
+MAXEPOCHS=75
+NB_STREAMLINES_POINTS=32
+
+# Check if the script is ran locally or on a cluster node.
+if [ -z $SLURM_JOB_ID ]; then
+    islocal=1
 else
-    echo "Running on HPC..."
+    islocal=0
 fi
 
-EXPNAME=OracleNet-Transformer-Crit-64
-EXPPATH=data/experiments/TractOracleNet/${EXPNAME}
-EXPID=OracleNet-Transformer-Crit-64
-MAXEPOCHS=500
-DATASET_FILE=/home/local/USHERBROOKE/levj1404/Documents/TractOracleNet/TractOracleNet/datasets/ismrm2015_1mm/train_test_classical_tracts_dataset.hdf5
-# DATASET_FILE=antoine-pft.hdf5
-# DATASET_FILE=full-antoine.hdf5
-# DATASET_FILE=data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine_modrange.hdf5
-# DATASET_FILE=data/datasets/fibercup/streamlines/stable/fibercup_tracts.hdf5
-# DATASET_FILE=data/datasets/fibercup/streamlines/stable/fibercup_tracts_big.hdf5
-NB_STREAMLINES_POINTS=64
+if [ $islocal -eq 1 ]; then
+    echo "Running locally"
+    EXPPATH=data/experiments/TractOracleNet/${EXPNAME}
+    DATASET_FILE=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine_valid.hdf5
+    # DATASET_FILE=/home/local/USHERBROOKE/levj1404/Documents/TractOracleNet/TractOracleNet/datasets/ismrm2015_1mm/train_test_classical_tracts_dataset.hdf5
+    # DATASET_FILE=antoine-pft.hdf5
+    # DATASET_FILE=full-antoine.hdf5
+    # DATASET_FILE=data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine_modrange.hdf5
+    # DATASET_FILE=data/datasets/fibercup/streamlines/stable/fibercup_tracts.hdf5
+    # DATASET_FILE=data/datasets/fibercup/streamlines/stable/fibercup_tracts_big.hdf5
+else
+    echo "Running on HPC..."
+    module load python/3.10 cuda cudnn httpproxy
+    source ~/ENV-TTL-2/bin/activate
+    export COMET_API_KEY=$(cat ~/.comet_api_key)
+
+    EXPPATH=${SLURM_TMPDIR}/experiment/${EXPNAME}
+    mkdir -p ${EXPPATH}
+
+    # Prepare datasets
+    echo "Copying dataset..."
+    cp ~/projects/def-pmjodoin/levje/datasets/train_test_classical_tracts_antoine_valid.hdf5 $SLURM_TMPDIR
+    DATASET_FILE=$SLURM_TMPDIR/train_test_classical_tracts_antoine_valid.hdf5
+fi
+
 
 mkdir -p ${EXPPATH}
 
@@ -51,4 +76,11 @@ python TrackToLearn/trainers/tractoraclenet_train.py \
     --dense \
     --partial
 
+# Archive into .tar.gz everything in $SCRATCH_TMPDIR and copy it to ~/scratch/ with the name TractOracleNet-aaaa-mm-dd-hh-mm-ss.tar.gz
+if [ $islocal -ne 1 ]; then
+    echo "Archiving experiment..."
+    ARCHIVE_NAME=TractOracleNet-$(date +"%Y-%m-%d-%H%M%S").tar.gz
+    tar -cvf ${SLURM_TMPDIR}/${ARCHIVE_NAME} $EXPPATH
+    cp ${SLURM_TMPDIR}/${ARCHIVE_NAME} ~/scratch/${ARCHIVE_NAME}
+fi
 
