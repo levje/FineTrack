@@ -2,7 +2,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=22000M
-#SBATCH --time=0-20:00:00
+#SBATCH --time=0-40:00:00
 #SBATCH --mail-user=jeremi.levesque@usherbrooke.ca
 #SBATCH --mail-type=ALL
 
@@ -54,7 +54,7 @@ else
     cp ~/projects/def-pmjodoin/levje/datasets/train_test_classical_tracts_antoine_valid.hdf5 $SLURM_TMPDIR
     DATASET_FILE=$SLURM_TMPDIR/train_test_classical_tracts_antoine_valid.hdf5
     
-    NUM_WORKERS=4
+    NUM_WORKERS=3
 fi
 
 
