@@ -49,15 +49,14 @@ def _create_datasets_hdf5(group: h5py.File, size, nb_points, point_dim,
         maxshape=(maxsize,))
     
     LOGGER.debug(f"Created datasets with shape: {data.shape} and "
-                 "{scores.shape}")
+                 f"{scores.shape}")
 
     return data, scores
 
 def _copy_to_hdf5_by_chunks(original, target, train_indices, valid_indices, test_indices, enable_pbar=True):
     """
-    Copy data to train/valid/test datasets in target HDF5 file.
-    Data is read in sequential chunks to improve efficiency and triaged into datasets
-    based on given train, valid, and test indices.
+    This function 'efficiently' copies the data from the original 'train' dataset
+    and splits it into 'train', 'valid' and 'test' datasets in the target file.
     """
     
     # Quick sanity to make sure we don't overwrite any data.
@@ -85,6 +84,10 @@ def _copy_to_hdf5_by_chunks(original, target, train_indices, valid_indices, test
     original_scores = original[f'train/{SCORES}']
     global_indices = np.arange(total_size)
 
+    train_write_pos = 0 # Position in the file where we should 
+    valid_write_pos = 0 # start writing the data.
+    test_write_pos = 0
+
     for batch_start in tqdm(range(0, total_size, batch_size),
                             desc="Processing data", total=num_batches,
                             leave=False, disable=not enable_pbar):
@@ -104,18 +107,37 @@ def _copy_to_hdf5_by_chunks(original, target, train_indices, valid_indices, test
         with SimpleTimer() as t_write:
             # Write data to target datasets
             if train_mask.any():
-                target['train/data'][-train_mask.sum():] = data[train_mask]
-                target['train/scores'][-train_mask.sum():] = scores[train_mask]
+                nb_new_train = train_mask.sum()
+                train_write_slice = slice(
+                    train_write_pos, train_write_pos + nb_new_train)
+                target['train/data'][train_write_slice] = data[train_mask]
+                target['train/scores'][train_write_slice] = scores[train_mask]
+                train_write_pos += nb_new_train
 
             if valid_mask.any():
-                target['valid/data'][-valid_mask.sum():] = data[valid_mask]
-                target['valid/scores'][-valid_mask.sum():] = scores[valid_mask]
+                nb_new_valid = valid_mask.sum()
+                valid_write_slice = slice(
+                    valid_write_pos, valid_write_pos + nb_new_valid)
+                target['valid/data'][valid_write_slice] = data[valid_mask]
+                target['valid/scores'][valid_write_slice] = scores[valid_mask]
+                valid_write_pos += nb_new_valid
 
             if test_mask.any():
-                target['test/data'][-test_mask.sum():] = data[test_mask]
-                target['test/scores'][-test_mask.sum():] = scores[test_mask]
+                nb_new_test = test_mask.sum()
+                test_write_slice = slice(
+                    test_write_pos, test_write_pos + nb_new_test)
+                target['test/data'][test_write_slice] = data[test_mask]
+                target['test/scores'][test_write_slice] = scores[test_mask]
+                test_write_pos += nb_new_test
 
         LOGGER.debug(f"Read time: {t_read.interval}s | Write time: {t_write.interval}s")
+
+    assert train_write_pos == train_indices.size, \
+        "Not all training streamlines were copied."
+    assert valid_write_pos == valid_indices.size, \
+        "Not all validation streamlines were copied."
+    assert test_write_pos == test_indices.size, \
+        "Not all testing streamlines were copied."
 
 def _copy_to_hdf5_target(original, target, indices=None, enable_pbar=True):
     """
