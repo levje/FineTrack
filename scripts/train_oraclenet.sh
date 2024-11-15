@@ -6,10 +6,22 @@
 #SBATCH --mail-user=jeremi.levesque@usherbrooke.ca
 #SBATCH --mail-type=ALL
 
-EXPNAME=OracleNet-Transformer-Crit-32-FixValid
-EXPID=OracleNet-Transformer-Crit-32-FixValid
+EXPNAME=OracleNet-Transformer-Crit-32-Classif
+EXPID=OracleNet-Transformer-Crit-32-Classif
 MAXEPOCHS=75
 NB_STREAMLINES_POINTS=32
+NUM_WORKERS=20
+DENSE=0
+PARTIAL=0
+
+additionnal_args=()
+if [ $DENSE -eq 1 ]; then
+    additionnal_args+=("--dense")
+fi
+
+if [ $PARTIAL -eq 1 ]; then
+    additionnal_args+=("--partial")
+fi
 
 # Check if the script is ran locally or on a cluster node.
 if [ -z $SLURM_JOB_ID ]; then
@@ -41,6 +53,8 @@ else
     echo "Copying dataset..."
     cp ~/projects/def-pmjodoin/levje/datasets/train_test_classical_tracts_antoine_valid.hdf5 $SLURM_TMPDIR
     DATASET_FILE=$SLURM_TMPDIR/train_test_classical_tracts_antoine_valid.hdf5
+    
+    NUM_WORKERS=4
 fi
 
 
@@ -73,8 +87,8 @@ python TrackToLearn/trainers/tractoraclenet_train.py \
     --n_layers 4 \
     --out_activation sigmoid \
     --nb_streamlines_points ${NB_STREAMLINES_POINTS} \
-    --dense \
-    --partial
+    --num_workers ${NUM_WORKERS} \
+    "${additionnal_args[@]}"
 
 # Archive into .tar.gz everything in $SCRATCH_TMPDIR and copy it to ~/scratch/ with the name TractOracleNet-aaaa-mm-dd-hh-mm-ss.tar.gz
 if [ $islocal -ne 1 ]; then
