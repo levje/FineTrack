@@ -48,8 +48,118 @@ def _create_datasets_hdf5(group: h5py.File, size, nb_points, point_dim,
         shape=(size,),
         maxshape=(maxsize,))
     
+    LOGGER.debug(f"Created datasets with shape: {data.shape} and "
+                 "{scores.shape}")
+
     return data, scores
 
+def _copy_to_hdf5_by_chunks(original, target, train_indices, valid_indices, test_indices, enable_pbar=True):
+    """
+    Copy data to train/valid/test datasets in target HDF5 file.
+    Data is read in sequential chunks to improve efficiency and triaged into datasets
+    based on given train, valid, and test indices.
+    """
+    
+    # Quick sanity to make sure we don't overwrite any data.
+    has_valid = 'valid' in original.keys()
+    has_test = 'test' in original.keys()
+    assert not has_valid or valid_indices.size == 0, \
+        "The dataset already contains a 'valid' group."
+    assert not has_test or test_indices.size == 0, \
+        "The dataset already contains a 'test' group."
+    assert not np.intersect1d(train_indices, valid_indices).any(), \
+        "The train and valid indices overlap."
+    assert not np.intersect1d(train_indices, test_indices).any(), \
+        "The train and test indices overlap."
+    assert not np.intersect1d(valid_indices, test_indices).any(), \
+        "The valid and test indices overlap."
+    
+    
+    from TrackToLearn.utils.utils import SimpleTimer
+
+    batch_size = 1000000
+    total_size = original[f'train/{DATA}'].shape[0]
+    num_batches = (total_size // batch_size) + (total_size % batch_size != 0)
+
+    original_data = original[f'train/{DATA}']
+    original_scores = original[f'train/{SCORES}']
+    global_indices = np.arange(total_size)
+
+    for batch_start in tqdm(range(0, total_size, batch_size),
+                            desc="Processing data", total=num_batches,
+                            leave=False, disable=not enable_pbar):
+        with SimpleTimer() as t_read:
+            batch_end = min(batch_start + batch_size, total_size)
+            data = original_data[batch_start:batch_end]
+            scores = original_scores[batch_start:batch_end]
+
+            # Map chunk indices to global indices
+            chunk_global_indices = global_indices[batch_start:batch_end]
+
+            # Split batch into train, valid, and test
+            train_mask = np.isin(chunk_global_indices, train_indices)
+            valid_mask = np.isin(chunk_global_indices, valid_indices)
+            test_mask = np.isin(chunk_global_indices, test_indices)
+
+        with SimpleTimer() as t_write:
+            # Write data to target datasets
+            if train_mask.any():
+                target['train/data'][-train_mask.sum():] = data[train_mask]
+                target['train/scores'][-train_mask.sum():] = scores[train_mask]
+
+            if valid_mask.any():
+                target['valid/data'][-valid_mask.sum():] = data[valid_mask]
+                target['valid/scores'][-valid_mask.sum():] = scores[valid_mask]
+
+            if test_mask.any():
+                target['test/data'][-test_mask.sum():] = data[test_mask]
+                target['test/scores'][-test_mask.sum():] = scores[test_mask]
+
+        LOGGER.debug(f"Read time: {t_read.interval}s | Write time: {t_write.interval}s")
+
+def _copy_to_hdf5_target(original, target, indices=None, enable_pbar=True):
+    """
+    Copy data indexed by indices from the original dataset to the target
+    dataset sequentially. We need to copy data with batches to track progress
+    and avoid freezes.
+    """
+    from TrackToLearn.utils.utils import SimpleTimer
+    if indices is None:
+        indices = np.arange(original[DATA].shape[0])
+    
+    batch_size = 1000
+    num_indices = len(indices)
+    num_batches = (num_indices // batch_size) + \
+        (num_indices % batch_size != 0)
+    
+    mean_time_read = 0
+    mean_time_write = 0
+    nb_loops = 0
+
+    original_data = original[DATA]
+    original_scores = original[SCORES]
+
+    for batch_start in tqdm(range(0, num_indices, batch_size),
+                            desc="Copying data", total=num_batches,
+                            leave=False, disable=not enable_pbar):
+        batch_end = min(batch_start + batch_size, num_indices)
+        batch_indices = indices[batch_start:batch_end]
+        
+        with SimpleTimer() as t_read:
+            # print("reading batch indices: ", batch_indices[:10])
+            data = original_data[batch_indices]
+            scores = original_scores[batch_indices]
+
+        with SimpleTimer() as t_write:
+            target[DATA][batch_start:batch_end] = data
+            target[SCORES][batch_start:batch_end] = scores
+
+        mean_time_read += t_read.interval
+        mean_time_write += t_write.interval
+        nb_loops += 1
+
+        print(f"Mean time read: {mean_time_read / nb_loops}s | "
+              f"Mean time write: {mean_time_write / nb_loops}s")
 
 def _copy_and_update_dataset(original, target, rng):
     """
@@ -65,6 +175,8 @@ def _copy_and_update_dataset(original, target, rng):
     has_test = 'test' in original.keys()
 
     if has_train and has_valid and has_test:
+        LOGGER.info("The dataset already contains the 'train', 'valid' "
+                     "and 'test' groups. Copying them.")
         original.copy('train', target)
         original.copy('valid', target)
         original.copy('test', target)
@@ -79,18 +191,21 @@ def _copy_and_update_dataset(original, target, rng):
     if nb_train_streamlines <= 0:
         raise ValueError("The training dataset is empty.") 
 
+    LOGGER.info("Generating the indices for the training, validation and "
+                 "test sets.")
+
     indices = np.arange(nb_train_streamlines)
     rng.shuffle(indices)
 
     # Split the training dataset into training and validation
-    nb_valid_streamlines = round(nb_train_streamlines * 0.1)
-    nb_test_streamlines = round(nb_train_streamlines * 0.1)
+    nb_valid_streamlines = 0 if has_valid else round(nb_train_streamlines * 0.1)
+    nb_test_streamlines = 0 if has_test else round(nb_train_streamlines * 0.1)
     nb_train_streamlines = nb_train_streamlines - nb_valid_streamlines - nb_test_streamlines
 
     # Select randomly indices for the validation set
     train_indices = indices[:nb_train_streamlines]
-    valid_indices = indices[nb_train_streamlines:nb_train_streamlines + nb_valid_streamlines]
-    test_indices = indices[nb_train_streamlines + nb_valid_streamlines:]
+    valid_indices = np.array([]) if has_valid else indices[nb_train_streamlines:nb_train_streamlines + nb_valid_streamlines]
+    test_indices = np.array([]) if has_test else indices[nb_train_streamlines + nb_valid_streamlines:]
 
     # Need to sort to be able to index HDF5 files.
     train_indices.sort()
@@ -104,33 +219,39 @@ def _copy_and_update_dataset(original, target, rng):
                               original.attrs['nb_points'],
                               train_group[DATA].shape[-1])
     
-    train_data[...] = original['train'][DATA][train_indices]
-    train_scores[...] = original['train'][SCORES][train_indices]
+    LOGGER.info("Copying the training dataset to the target file.")
+    # train_scores[...] = original[f'train/{SCORES}'][train_indices]
+    # train_data[...] = original_train_data
+    # or
+    # _copy_to_hdf5_target(original['train'], target_train_group, train_indices)
 
     # Add/copy VALID dataset
     if not has_valid:
+        LOGGER.info("Creating the validation dataset.")
         target_valid_group = target.create_group('valid')
         valid_data, valid_scores = \
             _create_datasets_hdf5(target_valid_group, nb_valid_streamlines,
                                   original.attrs['nb_points'],
                                   train_group[DATA].shape[-1])
-        
-        valid_data[...] = original['train'][DATA][valid_indices]
-        valid_scores[...] = original['train'][SCORES][valid_indices]
-    else:
-        original.copy('valid', target)
     
     # Add/copy TEST dataset
     if not has_test:
+        LOGGER.info("Creating the test dataset.")
         target_test_group = target.create_group('test')
         test_data, test_scores = \
             _create_datasets_hdf5(target_test_group, nb_test_streamlines,
                                     original.attrs['nb_points'],
                                     train_group[DATA].shape[-1])
-        
-        test_data[...] = original['train'][DATA][test_indices]
-        test_scores[...] = original['train'][SCORES][test_indices]
-    else:
+
+    # Copy the data to the target file
+    _copy_to_hdf5_by_chunks(original, target, train_indices,
+                            valid_indices, test_indices)
+
+    if has_valid:
+        LOGGER.info("Copying the already existing validation dataset.")
+        original.copy('valid', target)
+    if has_test:
+        LOGGER.info("Copying the already existing test dataset.")
         original.copy('test', target)
 
     target.attrs['version'] = original.attrs['version']

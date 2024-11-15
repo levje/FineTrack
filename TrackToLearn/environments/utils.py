@@ -7,7 +7,9 @@ from nibabel.streamlines.array_sequence import ArraySequence
 from typing import Union
 
 from TrackToLearn.utils.utils import normalize_vectors
+from TrackToLearn.utils.logging import get_logger
 
+LOGGER = get_logger(__name__)
 
 def get_neighborhood_directions(
     radius: float
@@ -289,16 +291,19 @@ def resample_streamlines_if_needed(streamlines: Union[ArraySequence, list, np.nd
     assert nb_points > 3, "nb_points must be greater than 1"
 
     if isinstance(streamlines, ArraySequence) or isinstance(streamlines, list):
-        data = set_number_of_points(streamlines, nb_points)
+        if not np.all([len(sl) == nb_points for sl in streamlines]):
+            LOGGER.debug("resample ArraySequence")
+            data = set_number_of_points(streamlines, nb_points)
+        else:
+            data = streamlines
     elif isinstance(streamlines, np.ndarray):
         if streamlines.shape[1] != nb_points:
+            LOGGER.debug("resample np.ndarray from {} to {}".format(streamlines.shape[1], nb_points))
             data = ArraySequence(streamlines)
             data = set_number_of_points(data, nb_points)
         else:
-            # TODO: Remove the ArraySequence tag.
-            # without the ArraySequence tag, the performances
-            # are must worst...?
-            data = ArraySequence(streamlines)
+            LOGGER.debug("not resampling np.ndarray")
+            data = streamlines
     else:
         raise ValueError("streamlines must be a list, ArraySequence or "
                             "np.ndarray")
