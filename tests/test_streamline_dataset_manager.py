@@ -329,3 +329,35 @@ def test_empty_list(setup_dataset_manager_empty_ds):
     # We expect nothing to happen.
     total_added = setup_dataset_manager_empty_ds.add_tractograms_to_dataset([])
     assert total_added == 0
+
+def test_initial_dataset_too_big(setup_dataset_manager_with_initial_ds):
+    # Create a dataset with 100 streamlines.
+    # Create a dataset manager with the dataset.
+    with TemporaryDirectory() as temp_dir:
+        rng = np.random.RandomState(42)
+        train_data = rng.rand(120, NB_POINTS, DIRECTION_DIM)
+        train_scores = rng.choice([0, 1], 120)
+        valid_data = rng.rand(20, NB_POINTS, DIRECTION_DIM)
+        valid_scores = rng.choice([0, 1], 20)
+        test_data = rng.rand(20, NB_POINTS, DIRECTION_DIM)
+        test_scores = rng.choice([0, 1], 20)
+
+        path = f"{temp_dir}/test_dataset.hdf5"
+        f = _create_dataset(path,
+                            train_data, train_scores,
+                            valid_data, valid_scores,
+                            test_data, test_scores)
+
+        dataset_manager = StreamlineDatasetManager(
+            saving_path=temp_dir,
+            dataset_to_augment_path=f,
+            valid_ratio=0.1,
+            test_ratio=0.1,
+            max_dataset_size=100, # 80-10-10 max
+            rng_seed=RNG_SEED
+        )
+
+        with h5py.File(dataset_manager.dataset_file_path, "r") as f:
+            assert _has_expected_structure(f, 80, 10, 10)
+            assert not _data_has_zeros(f)
+            assert _has_valid_scores(f)
