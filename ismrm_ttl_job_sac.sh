@@ -65,6 +65,7 @@ else
     EXPDIR=$SLURM_TMPDIR/experiments
     LOGSDIR=$SLURM_TMPDIR/logs
     PYTHONEXEC=python
+    PROJECTS_DIR=~/projects/def-pmjodoin/levje
     export COMET_API_KEY=$(cat ~/.comet_api_key)
 
     # Prepare virtualenv
@@ -76,7 +77,7 @@ else
     mkdir -p $EXPDIR
 
     echo "Unpacking datasets..."
-    tar xf ~/projects/def-pmjodoin/levj1404/datasets/ismrm2015_2mm_ttl.tar.gz -C $DATADIR
+    tar xf ${PROJECTS_DIR}/datasets/ismrm2015_2mm_ttl.tar.gz -C $DATADIR
     DATASETDIR=$DATADIR/ismrm2015_2mm
 
     echo "Copying oracle checkpoint..."
