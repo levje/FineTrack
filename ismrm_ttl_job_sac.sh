@@ -15,7 +15,8 @@ islocal=1
 # Expriment parameters
 EXPNAME="TrackToLearn"
 COMETPROJECT="TrackToLearn"
-EXPID="64pts-reward-crit-"_$(date +"%F-%H_%M_%S")
+NB_STREAMLINES_POINTS=128
+EXPID="${NB_STREAMLINES_POINTS}pts-"_$(date +"%F-%H_%M_%S")
 MAXEP=1000
 BATCHSIZE=4096
 SEEDS=(1111)
@@ -50,9 +51,12 @@ if [ $islocal -eq 1 ]; then
     # ORACLE_REWARD_CHECKPOINT=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/TractOracleNet/OracleNet-Transformer-Crit-32/OracleNet-Transformer-Crit-32/OracleNet-Transformer-Crit-32/_best_vc_epoch.ckpt
 
     # Streamlines resampled to 64 points
-    ORACLE_CRIT_CHECKPOINT=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/TractOracleNet/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/_best_vc_epoch.ckpt
-    ORACLE_REWARD_CHECKPOINT=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/TractOracleNet/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/_best_vc_epoch.ckpt
+    # ORACLE_CRIT_CHECKPOINT=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/TractOracleNet/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/_best_vc_epoch.ckpt
+    # ORACLE_REWARD_CHECKPOINT=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/TractOracleNet/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/_best_vc_epoch.ckpt
 
+    ORACLES_DIR=custom_models
+    ORACLE_CRIT_CHECKPOINT=${ORACLES_DIR}/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-${NB_STREAMLINES_POINTS}-Dense/_best_vc_epoch.ckpt
+    ORACLE_REWARD_CHECKPOINT=${ORACLES_DIR}/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-${NB_STREAMLINES_POINTS}-Classif/_best_vc_epoch.ckpt
 else
     echo "Running training on a cluster node..."
     module load python/3.10 cuda cudnn httpproxy
@@ -76,11 +80,17 @@ else
     DATASETDIR=$DATADIR/ismrm2015_2mm
 
     echo "Copying oracle checkpoint..."
-    cp ~/projects/def-pmjodoin/levje/oracles/ismrm_paper_oracle.ckpt $DATADIR
-    cp ~/projects/def-pmjodoin/levje/oracles/ismrm_classif_oracle.ckpt $DATADIR
+    # cp ~/projects/def-pmjodoin/levje/oracles/ismrm_paper_oracle.ckpt $DATADIR
+    # cp ~/projects/def-pmjodoin/levje/oracles/ismrm_classif_oracle.ckpt $DATADIR
     
-    ORACLE_CRIT_CHECKPOINT=$DATADIR/ismrm_paper_oracle.ckpt
-    ORACLE_REWARD_CHECKPOINT=$DATADIR/ismrm_classif_oracle.ckpt
+    # ORACLE_CRIT_CHECKPOINT=$DATADIR/ismrm_paper_oracle.ckpt
+    # ORACLE_REWARD_CHECKPOINT=$DATADIR/ismrm_classif_oracle.ckpt
+    
+    ORACLES_DIR=~/projects/def-pmjodoin/levje/oracles
+    cp ${ORACLES_DIR}/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-${NB_STREAMLINES_POINTS}-Classif/_best_vc_epoch.ckpt $DATADIR/oracle_classif.ckpt
+    cp ${ORACLES_DIR}/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-${NB_STREAMLINES_POINTS}-Dense/_best_vc_epoch.ckpt $DATADIR/oracle_dense.ckpt
+    ORACLE_CRIT_CHECKPOINT=$DATADIR/oracle_dense.ckpt
+    ORACLE_REWARD_CHECKPOINT=$DATADIR/oracle_classif.ckpt
 fi
 
 for RNGSEED in "${SEEDS[@]}"
