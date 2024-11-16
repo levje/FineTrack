@@ -90,7 +90,7 @@ class RLAlgorithm(object):
         done = False
         current_nb_dones = 0
         pbar = tqdm(total=n_streamlines, desc='Val episode',
-                    leave=False, disable=enable_pbar)
+                    leave=False, disable=not enable_pbar)
         if hasattr(env, 'rollout_env') and env.rollout_env:
             env.rollout_env.rollout_stats.reset()
         step = 0

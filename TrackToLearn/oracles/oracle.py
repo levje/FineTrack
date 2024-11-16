@@ -104,7 +104,7 @@ class OracleSingleton:
                     self.device, non_blocking=True, dtype=torch.float)
 
         else:
-            for batch_idx in tqdm(range(0, N, self.batch_size)):
+            for batch_idx in tqdm(range(0, N, self.batch_size), disable=True):
                 start = batch_idx
                 end = min(start + self.batch_size, N)
 

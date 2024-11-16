@@ -235,7 +235,7 @@ class Tracker(object):
 
             # Track for every seed in the environment
             for i, start in enumerate(
-                    tqdm(range(0, len(env.seeds), self.n_actor))):
+                    tqdm(range(0, len(env.seeds), self.n_actor), disable=True)):
 
                 # Last batch might not be "full"
                 end = min(start + self.n_actor, len(env.seeds))
@@ -244,7 +244,7 @@ class Tracker(object):
 
                 # Track forward
                 reward = self.alg.validation_episode(
-                    state, env, self.prob)
+                    state, env, self.prob, enable_pbar=False)
 
                 batch_tractogram = env.get_streamlines()
 
