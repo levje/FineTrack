@@ -8,6 +8,7 @@ from tqdm import tqdm
 from dataclasses import dataclass, field
 
 from TrackToLearn.utils.logging import get_logger
+from TrackToLearn.utils.hdf5_utils import copy_by_batch
 
 DEFAULT_DATASET_NAME = "new_dataset.hdf5"
 DATA = 'data'
@@ -114,7 +115,8 @@ def _split_train_by_chunks(original, target, train_indices, valid_indices, test_
     test_write_pos = 0
 
     for batch_start in tqdm(range(0, total_size, batch_size),
-                            desc="Processing data", total=num_batches,
+                            desc="Splitting/copying into new dataset",
+                            total=num_batches,
                             leave=False, disable=not enable_pbar):
         with SimpleTimer() as t_read:
             batch_end = min(batch_start + batch_size, total_size)
@@ -188,20 +190,24 @@ def _hdf5_resample_and_copy(original, target, group, rng, indices=None):
     original_scores = original_group[SCORES]
 
     # Resample the data
-    LOGGER.debug(f"Resampling the '{group}' dataset.")
-    data = original_data[indices]
-    scores = original_scores[indices]
+    # LOGGER.info(f"Resampling the '{group}' dataset.")
+    # data = original_data[indices]
+    # scores = original_scores[indices]
 
     # Copy the data to the target file
-    LOGGER.debug(f"Creating the '{group}' group in the target file.")
+    LOGGER.info(f"Creating the '{group}' group in the target file.")
     target_group = target.create_group(group)
-    data, scores = _create_datasets_hdf5(target_group, len(indices),
+    ds_data, ds_scores = _create_datasets_hdf5(target_group, len(indices),
                                             original.attrs['nb_points'],
                                             original_data.shape[-1])
     
-    LOGGER.debug(f"Copying the '{group}' data to the target file.")
-    data[:] = data
-    scores[:] = scores
+    LOGGER.info(f"Copying the '{group}' data to the target file.")
+    # ds_data[:] = data
+    # ds_scores[:] = scores
+    copy_by_batch([original_data, original_scores],
+                  [ds_data, ds_scores],
+                  indices, f"Copying {group} data/scores")
+    
 
 def _copy_and_update_dataset(original, target, rng, max_sizes: MaxDatasetSize):
     """
@@ -211,6 +217,10 @@ def _copy_and_update_dataset(original, target, rng, max_sizes: MaxDatasetSize):
     group. If it does not contain any of the 'valid' and 'test' groups, we
     will split the 'train' group into 'train', 'valid' and 'test' groups.
     """
+    LOGGER.info("Max sizes to respect: Train: {}, Valid: {}, Test: {}".format(
+        max_sizes.train, max_sizes.valid, max_sizes.test)
+    )
+
     target.attrs['version'] = original.attrs['version']
     target.attrs['nb_points'] = original.attrs['nb_points']
 
@@ -243,7 +253,7 @@ def _copy_and_update_dataset(original, target, rng, max_sizes: MaxDatasetSize):
         test_resampling_indices = None
         # Resample if we exceed the maximum size
         if max_sizes.test < original['test'][DATA].shape[0]:
-            LOGGER.info("Resampling the 'test' dataset.")
+            LOGGER.info(f"Resampling the 'test' dataset ({original['test'][DATA].shape[0]}->{max_sizes.test}).")
             test_resampling_indices = rng.choice(
                 original['test'][DATA].shape[0],
                 max_sizes.test, replace=False)
@@ -288,10 +298,20 @@ def _copy_and_update_dataset(original, target, rng, max_sizes: MaxDatasetSize):
         nb_test_streamlines = 0 if has_test else round(nb_train_streamlines * 0.1)
         nb_train_streamlines = nb_train_streamlines - nb_valid_streamlines - nb_test_streamlines
 
+        # NB: The number of indices has to respect our maximum sizes.
+        nb_valid_streamlines = min(nb_valid_streamlines, max_sizes.valid)
+        nb_test_streamlines = min(nb_test_streamlines, max_sizes.test)
+        nb_train_streamlines = min(nb_train_streamlines, max_sizes.train)
+
         # Select randomly indices for the validation set
         train_indices = indices[:nb_train_streamlines]
         valid_indices = np.array([]) if has_valid else indices[nb_train_streamlines:nb_train_streamlines + nb_valid_streamlines]
         test_indices = np.array([]) if has_test else indices[nb_train_streamlines + nb_valid_streamlines:]
+
+        LOGGER.info("New indices. Train: {}, Valid: {}, Test: {}".format(
+            train_indices.shape,
+            valid_indices.shape,
+            test_indices.shape))
 
         # Need to sort to be able to index HDF5 files.
         train_indices.sort()
