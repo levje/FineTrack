@@ -6,7 +6,8 @@ from TrackToLearn.utils.utils import SimpleTimer
 from TrackToLearn.utils.hdf5_utils import (
     copy_by_batch,
     copy_by_batch_multiproc,
-    read_hdf5_data_multiproc)
+    read_hdf5_data_multiproc,
+    copy_by_batch_efficient)
 from tempfile import TemporaryDirectory
 
 NB_POINTS = 128
@@ -55,6 +56,22 @@ def create_source_target_hdf5():
 def create_source_target_hdf5_huge():
     NB_FAKE_DATA = 500000
     NB_DATA_TARGET = 75000
+
+    with TemporaryDirectory() as tmpdir:
+        with h5py.File(tmpdir + "/source.hdf5", "w") as f:
+            train_group = f.create_group("train")
+            train_group.create_dataset("data", data=np.random.rand(NB_FAKE_DATA, NB_POINTS, DIR_DIM))
+            train_group.create_dataset("scores", data=np.random.rand(NB_FAKE_DATA, 1))
+        with h5py.File(tmpdir + "/target.hdf5", "w") as f:
+            train_group = f.create_group("train")
+            train_group.create_dataset("data", data=np.zeros((NB_DATA_TARGET, NB_POINTS, DIR_DIM)))
+            train_group.create_dataset("scores", data=np.zeros((NB_DATA_TARGET, 1)))
+        yield tmpdir + "/source.hdf5", tmpdir + "/target.hdf5", NB_FAKE_DATA, NB_DATA_TARGET
+
+@pytest.fixture
+def create_source_target_hdf5_enormous():
+    NB_FAKE_DATA = 1000000
+    NB_DATA_TARGET = 5000
 
     with TemporaryDirectory() as tmpdir:
         with h5py.File(tmpdir + "/source.hdf5", "w") as f:
@@ -189,19 +206,13 @@ def test_copy_by_batch_multiproc_multiple_ds(create_source_target_hdf5):
         assert np.allclose(f_src['train/data'][indices],
                            f_target['train/data'][:])
 
-
-def test_copy_by_batch_multiproc_faster(create_source_target_hdf5_huge):
+def test_copy_by_batch_multiproc_faster_than_normal(create_source_target_hdf5_huge):
     (source, target, nb_fake_data, nb_data_target) = \
         create_source_target_hdf5_huge
     
     indices = np.random.choice(nb_fake_data, nb_data_target, replace=False)
     indices.sort()
 
-    with SimpleTimer() as batch_timer:
-        with h5py.File(source, "r") as f_src, h5py.File(target, "a") as f_target:
-            source_ds = f_src["train/data"]
-            target_ds = f_target["train/data"]
-            copy_by_batch(source_ds, target_ds, indices)
     with SimpleTimer() as multiproc_timer:
         copy_by_batch_multiproc(source, target, 'train', 'data', indices,
                                 num_readers=None)
@@ -212,8 +223,79 @@ def test_copy_by_batch_multiproc_faster(create_source_target_hdf5_huge):
 
     # Here, simply make sure that the multiproc version is faster.
     print("Normal time:", normal_timer.interval)
-    print("Batch time:", batch_timer.interval)
     print("Multiproc time:", multiproc_timer.interval)
 
     assert normal_timer.interval > multiproc_timer.interval
-    assert batch_timer.interval > multiproc_timer.interval
+
+# NB: This test is commented out because it's not always faster to use multiprocessing
+#     depending on the type of machine this test is run on.
+#     It's also not a good idea to run this test on a CI/CD pipeline.
+#     Letting it here for future tests in case more optimizations are necessary.
+
+# def test_copy_by_batch_multiproc_faster_than_batch(create_source_target_hdf5_enormous):
+#     (source, target, nb_fake_data, nb_data_target) = \
+#         create_source_target_hdf5_enormous
+    
+#     indices = np.random.choice(nb_fake_data, nb_data_target, replace=False)
+#     indices.sort()
+
+#     with SimpleTimer() as batch_timer:
+#         with h5py.File(source, "r") as f_src, h5py.File(target, "a") as f_target:
+#             source_ds = f_src["train/data"]
+#             target_ds = f_target["train/data"]
+#             copy_by_batch(source_ds, target_ds, indices, batch_size=1000)
+#     with SimpleTimer() as multiproc_timer:
+#         copy_by_batch_multiproc(source, target, 'train', 'data', indices,
+#                                 num_readers=None)
+
+#     # Here, simply make sure that the multiproc version is faster.
+#     print("Batch time:", batch_timer.interval)
+#     print("Multiproc time:", multiproc_timer.interval)
+
+#     assert batch_timer.interval > multiproc_timer.interval
+
+
+def test_copy_by_batch_efficient(create_source_target_hdf5, create_source_target_hdf5_huge):
+    ###############################################################
+    # Test the version with less data first. (uses the batch version)
+    (source, target, nb_fake_data, nb_data_target) = \
+        create_source_target_hdf5
+    
+    indices = np.random.choice(nb_fake_data, nb_data_target, replace=False)
+    indices.sort()
+
+    with SimpleTimer() as efficient_timer:
+        copy_by_batch_efficient(source,
+                                target,
+                                'train',
+                                ['data', 'scores'],
+                                indices)
+    print("Efficient with lots of data took:", efficient_timer.interval)
+
+    with h5py.File(source, "r") as f_src, h5py.File(target, "r") as f_target:
+        # If there's too much data, that check might be slow.
+        assert np.allclose(f_src['train/data'][indices],
+                           f_target['train/data'][:])
+
+    ###############################################################
+    # Test the version with more data. (uses the multiproc version)
+    (source, target, nb_fake_data, nb_data_target) = \
+        create_source_target_hdf5_huge
+    
+    indices = np.random.choice(nb_fake_data, nb_data_target, replace=False)
+    indices.sort()
+
+    with SimpleTimer() as efficient_timer:
+        copy_by_batch_efficient(source,
+                                target,
+                                'train',
+                                ['data', 'scores'],
+                                indices)
+        
+    print("Efficient with lots of data took:", efficient_timer.interval)
+
+    
+    with h5py.File(source, "r") as f_src, h5py.File(target, "r") as f_target:
+        # If there's too much data, that check might be slow.
+        assert np.allclose(f_src['train/data'][indices],
+                           f_target['train/data'][:])

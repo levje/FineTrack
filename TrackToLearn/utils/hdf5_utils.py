@@ -158,7 +158,7 @@ def copy_by_batch_multiproc(src_file_path: str,
                             group_name: Union[str, list],
                             dataset_names: Union[str, list],
                             src_indices: Union[np.ndarray, list],
-                            num_readers: int=4):
+                            num_readers: int=None):
     """
     Use this if the default method to transfer data between two HDF5 datasets
     is too slow (potentially because of non-sequential indices).
@@ -351,9 +351,10 @@ def read_hdf5_data_multiproc(file_path: str,
         splits = np.array_split(np.arange(len(indices)), num_workers)
 
         pool.map(_read_hdf5_data_worker, splits)
+        output = np.frombuffer(SHARED_VARS['placeholder'], dtype=SHARED_VARS["placeholder_typecode"]).reshape(output_shape)
         SHARED_VARS.clear()
     
-    return np.frombuffer(SHARED_VARS['placeholder'], dtype=SHARED_VARS["placeholder_typecode"]).reshape(output_shape)
+    return output
 
 def _read_hdf5_data_worker(split):
     file_path = SHARED_VARS['file_path']
@@ -375,9 +376,7 @@ def copy_by_batch_efficient(src_file_path: str,
                             group_name: str,
                             dataset_names: Union[str, list],
                             src_indices: Union[np.ndarray, list],
-                            target_group_name: str=None,
-                            target_dataset_name: str=None,
-                            num_readers: int=4):
+                            num_readers: int=None):
     """
     This function is a convenience wrapper around the `copy_by_batch_multiproc`
     and `copy_by_batch` functions. Sometimes, especially with less data, the
@@ -398,20 +397,30 @@ def copy_by_batch_efficient(src_file_path: str,
     # Make sure all the dataset_names are within the group_name for the target and source files.
     
     _validate_copy_by_batch_multiproc_inputs(
-        src_file_path, target_file_path, group_name, dataset_names, src_indices,
-        target_group_name, target_dataset_name)
+        src_file_path, target_file_path, group_name, dataset_names,
+        src_indices)
 
-    if len(src_indices) < THRESHOLD:
+    do_multiproc = len(src_indices) >= THRESHOLD
+    do_multiproc = do_multiproc and mp.cpu_count() > 8
+    # Default to multiproc if num_readers is provided.
+    do_multiproc = do_multiproc or num_readers is not None 
+
+    if len(src_indices) < THRESHOLD and num_readers is None:
         with h5py.File(src_file_path, "r") as f_src, \
             h5py.File(target_file_path, "a") as f_target:
+            source_datasets = []
+            target_datasets = []
             for dataset_name in dataset_names:
                 source_ds = f_src[group_name][dataset_name] \
                     if group_name is not None else f_src[dataset_name]
-                target_ds = f_target[target_group_name][target_dataset_name] \
-                    if target_group_name is not None else f_target[target_dataset_name]
+                target_ds = f_target[group_name][dataset_name] \
+                    if group_name is not None else f_target[dataset_name]
+                
+                source_datasets.append(source_ds)
+                target_datasets.append(target_ds)
             
             LOGGER.debug("Copying data by batch.")
-            copy_by_batch(source_ds, target_ds, src_indices)
+            copy_by_batch(source_datasets, target_datasets, src_indices)
     else:
         LOGGER.debug("Copying data by batch with multiprocesses.")
         copy_by_batch_multiproc(src_file_path, target_file_path, group_name,
