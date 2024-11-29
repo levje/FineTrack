@@ -364,6 +364,13 @@ class TTLProfiler:
         self.enabled = enabled
         self.throw_at_stop = throw_at_stop
 
+    def __enter__(self):
+        self.start()
+        return self
+    
+    def __exit__(self, exctype, excinst, tb):
+        self.stop()
+
     def start(self):
         if not self.enabled:
             return

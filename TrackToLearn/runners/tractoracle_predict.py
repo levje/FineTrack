@@ -7,7 +7,7 @@ from TrackToLearn.utils.torch_utils import assert_accelerator, get_device
 from TrackToLearn.oracles.transformer_oracle import TransformerOracle
 from TrackToLearn.trainers.oracle.data_module import StreamlineDataModule
 from TrackToLearn.trainers.oracle.oracle_trainer import OracleTrainer
-from TrackToLearn.utils.utils import prettier_metrics
+from TrackToLearn.utils.utils import prettier_metrics, SimpleTimer
 
 
 assert_accelerator()
@@ -91,8 +91,10 @@ class TractOracleNetPredict(object):
 
         # Test the model
         dm.setup('test')
-        test_metrics = oracle_trainer.test(
-            test_dataloader=dm.test_dataloader(), compute_histogram_metrics=True)
+        with SimpleTimer() as t:
+            test_metrics = oracle_trainer.test(
+                test_dataloader=dm.test_dataloader(), compute_histogram_metrics=False)
+        print("Testing took {:.2f} seconds.".format(t.interval))
         print("Performance on the test set:\n",
               prettier_metrics(test_metrics))
 

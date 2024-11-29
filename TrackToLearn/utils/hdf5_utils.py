@@ -95,7 +95,7 @@ def copy_by_batch(src: Union[h5py.Dataset, list[h5py.Dataset]],
         LOGGER.warning(f"Number of indices copied ({total_copied}) does not "
                        f"match the target shape ({target.shape[0]}).")
 
-    return target
+    return total_copied
 
 def _validate_copy_by_batch_multiproc_inputs(
         src_file_path: str,

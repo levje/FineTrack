@@ -181,7 +181,7 @@ def _hdf5_resample_and_copy(original, target, group, rng, indices=None):
     # If no resampling needed, just use the faster method here.
     if indices is None:
         original.copy(group, target)
-        return
+        return original[group][DATA].shape[0]
     
     indices = np.sort(indices) # Required by h5py
     
@@ -202,12 +202,16 @@ def _hdf5_resample_and_copy(original, target, group, rng, indices=None):
                                             original_data.shape[-1])
     
     LOGGER.info(f"Copying the '{group}' data to the target file.")
-    # ds_data[:] = data
-    # ds_scores[:] = scores
-    copy_by_batch([original_data, original_scores],
-                  [ds_data, ds_scores],
-                  indices, f"Copying {group} data/scores")
+    # Copies data/scores from original to target efficiently.
+    # It replaces the following:
+    #   ds_data[:] = data
+    #   ds_scores[:] = scores
+    # Takes around ~1.5 minfor test set to be copied.
+    total_copied = copy_by_batch([original_data, original_scores],
+                                 [ds_data, ds_scores],
+                                 indices, f"Copying {group} data/scores")
     
+    return total_copied
 
 def _copy_and_update_dataset(original, target, rng, max_sizes: MaxDatasetSize):
     """
@@ -223,6 +227,8 @@ def _copy_and_update_dataset(original, target, rng, max_sizes: MaxDatasetSize):
 
     target.attrs['version'] = original.attrs['version']
     target.attrs['nb_points'] = original.attrs['nb_points']
+
+    train_len, valid_len, test_len = None, None, None
 
     has_train = 'train' in original.keys()
     has_valid = 'valid' in original.keys()
@@ -242,9 +248,9 @@ def _copy_and_update_dataset(original, target, rng, max_sizes: MaxDatasetSize):
             valid_resampling_indices = rng.choice(
                 original['valid'][DATA].shape[0],
                 max_sizes.valid, replace=False)
-            
-        _hdf5_resample_and_copy(original, target, 'valid', rng,
-                                valid_resampling_indices)
+
+        valid_len = _hdf5_resample_and_copy(original, target, 'valid', rng,
+                                            valid_resampling_indices)
     
     # If 'test' is there, just copy it while respecting the max dataset size.
     if has_test:
@@ -258,8 +264,8 @@ def _copy_and_update_dataset(original, target, rng, max_sizes: MaxDatasetSize):
                 original['test'][DATA].shape[0],
                 max_sizes.test, replace=False)
         
-        _hdf5_resample_and_copy(original, target, 'test', rng,
-                                test_resampling_indices)
+        test_len = _hdf5_resample_and_copy(original, target, 'test', rng,
+                                           test_resampling_indices)
     
     # If both 'valid' and 'test' were copied, then we can just copy the 
     # 'train' as well.
@@ -276,8 +282,8 @@ def _copy_and_update_dataset(original, target, rng, max_sizes: MaxDatasetSize):
                 original['train'][DATA].shape[0],
                 max_sizes.train, replace=False)
             
-        _hdf5_resample_and_copy(original, target, 'train', rng,
-                                train_resampling_indices)
+        train_len = _hdf5_resample_and_copy(original, target, 'train', rng,
+                                            train_resampling_indices)
     else:
         # Split the 'train' dataset into 'train', 'valid' and 'test' datasets
         # for any or both 'valid' or 'test' groups missing.
@@ -323,6 +329,7 @@ def _copy_and_update_dataset(original, target, rng, max_sizes: MaxDatasetSize):
         _create_datasets_hdf5(target_train_group, nb_train_streamlines,
                             original.attrs['nb_points'],
                             train_group[DATA].shape[-1])
+        train_len = nb_train_streamlines
 
         # Create VALID hdf5 dataset
         if not has_valid:
@@ -331,6 +338,7 @@ def _copy_and_update_dataset(original, target, rng, max_sizes: MaxDatasetSize):
             _create_datasets_hdf5(target_valid_group, nb_valid_streamlines,
                                 original.attrs['nb_points'],
                                 train_group[DATA].shape[-1])
+            valid_len = nb_valid_streamlines
         
         # Create TEST hdf5 dataset
         if not has_test:
@@ -339,10 +347,17 @@ def _copy_and_update_dataset(original, target, rng, max_sizes: MaxDatasetSize):
             _create_datasets_hdf5(target_test_group, nb_test_streamlines,
                                     original.attrs['nb_points'],
                                     train_group[DATA].shape[-1])
+            test_len = nb_test_streamlines
 
         # Copy the data to the target file
         _split_train_by_chunks(original, target, train_indices,
                                 valid_indices, test_indices)
+
+    assert train_len is not None
+    assert valid_len is not None
+    assert test_len is not None
+
+    return train_len, valid_len, test_len
 
 class StreamlineDatasetManager(object):
     def __init__(self,
@@ -381,10 +396,23 @@ class StreamlineDatasetManager(object):
                 # Copy the dataset to the saving path
                 with h5py.File(dataset_to_augment_path, 'r') as original:
                     with h5py.File(self.dataset_file_path, 'w') as target:
-                        _copy_and_update_dataset(original, target, self.rng, self.maxes)
+                        # Copy the dataset to the saving path.
+                        # Also makes sure that:
+                        # - The dataset is not exceeding the maximum size.
+                        # - The dataset is split into train/valid/test datasets.
+                        # If not, it will resample the dataset accordingly.
+                        (self.current_train_nb_streamlines,
+                         self.current_valid_nb_streamlines,
+                         self.current_test_nb_streamlines) = \
+                            _copy_and_update_dataset(original, target,
+                                                     self.rng, self.maxes)
             else:
                 # Let's just use the original dataset file.
                 self.dataset_file_path = dataset_to_augment_path
+
+                # It's not used for now, it will cause issues since we're not
+                # initially resampling the dataset to respect the maximum sizes.
+                raise NotImplementedError("Augmenting in place is not implemented yet.")
 
             self.file_is_created = True
         else:
