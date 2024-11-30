@@ -161,7 +161,7 @@ class Experiment(object):
 
         return env
 
-    def get_valid_env(self, npv=None) -> Tuple[BaseEnv, BaseEnv]:
+    def get_valid_env(self) -> Tuple[BaseEnv, BaseEnv]:
         """ Build environments
 
         Returns:
@@ -178,6 +178,29 @@ class Experiment(object):
             env_dto, 'training')
 
         return self.valid_env
+    
+    def get_rlhf_env(self, npv=None) -> Tuple[BaseEnv, BaseEnv]:
+        """ Build environment to be able to track streamlines
+        without computing the reward and without using the 
+        oracle stopping criterion.
+
+        It should be exactly the same as the validation environment
+        but with no oracle stopping criterion and no reward computation.
+
+        Returns:
+        --------
+        env: BaseEnv
+            "Forward" environment only initialized with seeds
+        """
+        class_dict, env_dto = self._get_env_dict_and_dto(True, npv)
+
+        env_dto.update({
+            'compute_reward': False,
+            'oracle_stopping_criterion': False,
+        })
+
+        self.valid_env = class_dict['tracking_env'].from_dataset(
+            env_dto, 'training')
 
     def get_tracking_env(self):
         """ Generate environments according to tracking parameters.

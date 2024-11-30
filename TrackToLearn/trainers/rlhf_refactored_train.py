@@ -80,6 +80,7 @@ class RlhfRefactored(TrackToLearnTraining):
             'nb_new_streamlines_per_iter', 500000)
         self.max_dataset_size = rlhf_train_dto.get(
             'max_dataset_size', 5000000)
+        self.warmup_agent_steps = rlhf_train_dto.get('warmup_agent_steps', None)
 
         ################################################
         # Start by initializing the agent trainer.     #
@@ -247,8 +248,7 @@ class RlhfRefactored(TrackToLearnTraining):
         self.oracle_crit_trainer.setup_model_training(self.oracle_crit.model)
 
         # Setup environment
-        self.tracker_env = self.get_valid_env(npv=self.rlhf_inter_npv)
-        self.tracker_env.compute_reward = False # For faster tracking
+        self.tracker_env = self.get_rlhf_env(npv=self.rlhf_inter_npv)
         self.tracker = Tracker(
             alg, self.n_actor, prob=1.0, compress=0.0)
 
@@ -261,22 +261,29 @@ class RlhfRefactored(TrackToLearnTraining):
                                 sampler=sampler)
         ]
 
-        # RLHF loop to fine-tune the oracle to the RL agent and vice-versa.
-        for i in range(max_ep):
+        do_warmup = self.warmup_agent_steps and current_ep < self.warmup_agent_steps - 1
 
-            self.start_finetuning_epoch(i)
+        # RLHF loop to fine-tune the oracle to the RL agent and vice-versa.
+        i = 0
+        while i < max_ep: 
+            self.start_finetuning_epoch(i, do_warmup)
 
             if self.disable_oracle_training:
                 LOGGER.info("Oracle training is disabled. Only the agent will be trained and the dataset will not be augmented.\n",
                                  "This is equivalent to just training the agent for an additional {} ({} x {}) epochs.".format(self.agent_train_steps*max_ep, max_ep, self.agent_train_steps))
-            else:
+            elif not do_warmup:
                 total_added = 0
                 
                 with tqdm(total=self.nb_new_streamlines_per_iter,
                                 desc="Adding new streamlines to the dataset",
                                 mininterval=5.0) as sub_pbar:
-                    while total_added < self.nb_new_streamlines_per_iter:
-                        with tempfile.TemporaryDirectory() as tmpdir:
+                    with tempfile.TemporaryDirectory() as tmpdir:
+                        # Those will hold the streamlines we are collecting
+                        # to add to the dataset once we have enough.
+                        sft_valid = None
+                        sft_invalid = None
+
+                        while total_added < self.nb_new_streamlines_per_iter:
                             # Generate a tractogram
                             tractograms_path = os.path.join(tmpdir, "tractograms")
                             if not os.path.exists(tractograms_path):
@@ -291,18 +298,30 @@ class RlhfRefactored(TrackToLearnTraining):
                             if not os.path.exists(filtered_path):
                                 os.makedirs(filtered_path)
 
+                            LOGGER.info(
+                                "Filtering tractograms for RLHF training...")
                             # Need to filter for each filterer and keep the same order.
                             filtered_tractograms = self.filter_tractograms(
                                 tractograms, filtered_path)
-
-                            LOGGER.info(
-                                "Adding filtered tractograms to the dataset...")
-                            nb_new_streamlines = \
-                                self.dataset_manager.add_tractograms_to_dataset(
-                                filtered_tractograms)
                             
+                            # Merge the valid and invalid tractograms
+                            for valid, invalid in filtered_tractograms:
+                                if sft_valid is None:
+                                    sft_valid = valid
+                                    sft_invalid = invalid
+                                else:
+                                    sft_valid += valid
+                                    sft_invalid += invalid
+
+                                nb_new_streamlines = len(valid) + len(invalid)
+
                             total_added += nb_new_streamlines
                             sub_pbar.update(nb_new_streamlines)
+
+                        LOGGER.info(
+                            "Adding filtered tractograms to the dataset...")
+                        self.dataset_manager.add_tractograms_to_dataset(
+                            [(sft_valid, sft_invalid)])
 
                 data_stats = self.dataset_manager.fetch_dataset_stats()
                 LOGGER.info(
@@ -314,17 +333,26 @@ class RlhfRefactored(TrackToLearnTraining):
                 self.train_stopping_criterion()
 
             # Train the RL agent
+            agent_nb_steps = self.agent_train_steps if not do_warmup else self.warmup_agent_steps
+            if do_warmup:
+                LOGGER.info(
+                    "Warmup agent for {} steps.".format(agent_nb_steps))
+
             self.agent_trainer.rl_train(alg,
                                         env,
                                         valid_env,
-                                        max_ep=self.agent_train_steps,
+                                        max_ep=agent_nb_steps,
                                         starting_ep=current_ep,
                                         save_model_dir=self.model_dir,
                                         test_before_training=False
                                         )
             current_ep += self.agent_train_steps
 
-            self.end_finetuning_epoch(i)
+            self.end_finetuning_epoch(i, do_warmup)
+
+            if not do_warmup:
+                i += 1
+            do_warmup = False
 
     def train_reward(self):
         """
@@ -335,7 +363,8 @@ class RlhfRefactored(TrackToLearnTraining):
         print(">>> Training reward model <<<")
         dm = StreamlineDataModule(self.dataset_manager.dataset_file_path,
                                   batch_size=self.oracle_batch_size,
-                                  num_workers=self.num_workers)
+                                  num_workers=self.num_workers,
+                                  nb_points=self.oracle_reward.nb_points)
         
 
         dm.setup('test', dense=False, partial=False)
@@ -359,14 +388,15 @@ class RlhfRefactored(TrackToLearnTraining):
         print(">>> Training stopping criterion model <<<")
         dm = StreamlineDataModule(self.dataset_manager.dataset_file_path,
                                   batch_size=self.oracle_batch_size,
-                                  num_workers=self.num_workers)
+                                  num_workers=self.num_workers,
+                                  nb_points=self.oracle_crit.nb_points)
         
         # Test the performance of the actual model BEFORE fine-tuning.
         dm.setup('test', dense=True, partial=False)
         metrics_before = self.oracle_crit_trainer.test(test_dataloader=dm.test_dataloader())
         print(prettier_metrics(metrics_before, title="Test metrics before fine-tuning"))
 
-        dm.setup('fit', dense=True, partial=False)
+        dm.setup('fit', dense=True, partial=True)
         self.oracle_crit_trainer.fit_iter(train_dataloader=dm.train_dataloader(),
                                      val_dataloader=dm.val_dataloader())
         
@@ -490,13 +520,21 @@ class RlhfRefactored(TrackToLearnTraining):
         # self.hyperparameters.update({})
         super().save_hyperparameters(filename='rlhf_hyperparameters.json')
 
-    def start_finetuning_epoch(self, epoch: int):
-        print("==================================================")
-        print("======= Starting RLHF finetuning epoch {}/{} =======".format(epoch+1, self.max_ep))
+    def start_finetuning_epoch(self, epoch: int, warmup: bool = False):
+        if warmup:
+            print("==================================================")    
+            print("=========== Starting WARMUP of {} steps =========".format(self.warmup_agent_steps))
+        else:
+            print("==================================================")
+            print("======= Starting RLHF finetuning epoch {}/{} =======".format(epoch+1, self.max_ep))
 
-    def end_finetuning_epoch(self, epoch: int):
-        print("======= Finished RLHF finetuning epoch {}/{} =======".format(epoch+1, self.max_ep))
-        print("==================================================")
+    def end_finetuning_epoch(self, epoch: int, warmup: bool = False):
+        if warmup:
+            print("=========== Finished WARMUP of {} steps =========".format(self.warmup_agent_steps))
+            print("==================================================")
+        else:
+            print("======= Finished RLHF finetuning epoch {}/{} =======".format(epoch+1, self.max_ep))
+            print("==================================================")
 
 
 def add_rlhf_training_args(parser: argparse.ArgumentParser):
@@ -513,6 +551,8 @@ def add_rlhf_training_args(parser: argparse.ArgumentParser):
                             help="Number of new streamlines to add to the dataset at each iteration.")
     rlhf_group.add_argument("--max_dataset_size", type=int, default=5000000,
                             help="Maximum number of streamlines to keep in the dataset.")
+    rlhf_group.add_argument("--warmup_agent_steps", type=int,
+                            help="Minimum number of steps to warm up the agent before starting the training of the oracle")
 
     # The following arguments are usually used for PPO, but we are also testing it for other algorithms.
     parser.add_argument('--adaptive_kl', action='store_true',
