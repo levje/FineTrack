@@ -877,10 +877,13 @@ class StreamlineDatasetManager(object):
 
         with h5py.File(self.dataset_file_path, 'r') as f:
             train_group = f['train']
+            valid_group = f['valid']
             test_group = f['test']
 
             train_nb_pos = np.sum(train_group[SCORES])
             train_nb_neg = train_group[SCORES].shape[0] - train_nb_pos
+            valid_nb_pos = np.sum(valid_group[SCORES])
+            valid_nb_neg = valid_group[SCORES].shape[0] - valid_nb_pos
             test_nb_pos = np.sum(test_group[SCORES])
             test_nb_neg = test_group[SCORES].shape[0] - test_nb_pos
 
@@ -890,15 +893,22 @@ class StreamlineDatasetManager(object):
             "The number of positive and negative streamlines in the training" \
             "set does not match the total number of streamlines."
         
+        assert valid_nb_pos + valid_nb_neg == \
+            self.current_valid_nb_streamlines, \
+            "The number of positive and negative streamlines in the validation" \
+            "set does not match the total number of streamlines."
+        
         assert test_nb_pos + test_nb_neg == \
             self.current_test_nb_streamlines, \
             "The number of positive and negative streamlines in the testing" \
             "set does not match the total number of streamlines."
 
         total_size = self.current_train_nb_streamlines + \
+            self.current_valid_nb_streamlines + \
             self.current_test_nb_streamlines
         
         real_train_ratio = self.current_train_nb_streamlines / total_size
+        real_valid_ratio = self.current_valid_nb_streamlines / total_size
         real_test_ratio = self.current_test_nb_streamlines / total_size
 
         stats = {
@@ -908,6 +918,13 @@ class StreamlineDatasetManager(object):
                 'nb_neg': train_nb_neg,
                 'ratio_pos': train_nb_pos / self.current_train_nb_streamlines,
                 'ratio_neg': train_nb_neg / self.current_train_nb_streamlines
+            },
+            'valid': {
+                'size': self.current_valid_nb_streamlines,
+                'nb_pos': valid_nb_pos,
+                'nb_neg': valid_nb_neg,
+                'ratio_pos': valid_nb_pos / self.current_valid_nb_streamlines,
+                'ratio_neg': valid_nb_neg / self.current_valid_nb_streamlines
             },
             'test': {
                 'size': self.current_test_nb_streamlines,
