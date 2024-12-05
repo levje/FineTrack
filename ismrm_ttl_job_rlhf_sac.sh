@@ -71,16 +71,16 @@ if [ $islocal -eq 1 ]; then
     DATASETDIR=$DATADIR
     
     # Oracle Antoine with partial streamlines (dense).
-    ORACLE_CRIT_CHECKPOINT=custom_models/ismrm_paper_oracle/ismrm_paper_oracle.ckpt
+    ORACLE_CRIT_CHECKPOINT=custom_models/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Dense/_best_vc_epoch.ckpt
 
     # Oracle trained on full streamlines (not dense).
-    ORACLE_REWARD_CHECKPOINT=custom_models/ismrm_classif_oracle/ismrm_classif_oracle.ckpt
+    ORACLE_REWARD_CHECKPOINT=custom_models/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Classif/_best_vc_epoch.ckpt
 
     # THIS IS THE CHECKPOINT WE ARE CURRENTLY USING.
     # AGENTCHECKPOINT=custom_models/sac_checkpoint/model/last_model_state.ckpt
 
     # Setup dataset to augment
-    DATASET_TO_AUGMENT= # data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine.hdf5
+    #DATASET_TO_AUGMENT=data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine.hdf5
 else
     echo "Running training on a cluster node..."
     module load python/3.10 cuda cudnn httpproxy
@@ -205,6 +205,9 @@ do
         --alg ${ALG} \
         --oracle_batch_size ${ORACLE_MICRO_BATCH_SIZE} \
         --grad_accumulation_steps ${GRAD_ACCUM_STEPS} \
+        --max_dataset_size 5000000 \
+        --nb_new_streamlines_per_iter 500000 \
+        --warmup_agent_steps 20 \
         "${additionnal_args[@]}"
 
     # POST-PROCESSING
