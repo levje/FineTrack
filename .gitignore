@@ -79,3 +79,5 @@ slurm*
 data/
 custom_models/
 out_tractograms/
+histograms/
+dipy_segment_*/
