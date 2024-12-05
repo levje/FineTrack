@@ -137,7 +137,7 @@ do
     fi
 
     # Start training
-    ${PYTHONEXEC} -O $SOURCEDIR/TrackToLearn/trainers/rlhf_refactored_train.py \
+    ${PYTHONEXEC} -O $SOURCEDIR/TrackToLearn/trainers/rlhf_train.py \
         ${DEST_FOLDER} \
         "${COMETPROJECT}" \
         "${EXPID}" \

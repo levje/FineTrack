@@ -31,7 +31,7 @@ assert_accelerator()
 
 LOGGER = get_logger(__name__)
 
-class RlhfRefactored(TrackToLearnTraining):
+class RlhfTraining(TrackToLearnTraining):
 
     def __init__(
         self,
@@ -647,7 +647,7 @@ def main():
     trainer_cls = get_trainer_cls_and_args(args.alg)
 
     # Create and run the experiment
-    rlhf_experiment = RlhfRefactored(
+    rlhf_experiment = RlhfTraining(
         vars(args),
         trainer_cls
     )
