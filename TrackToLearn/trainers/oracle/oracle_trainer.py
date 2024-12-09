@@ -72,7 +72,7 @@ class OracleTrainer(object):
                  saving_path,
                  max_epochs,
                  use_comet=True,
-                 enable_checkpointing=True,
+                 enable_auto_checkpointing=True,
                  checkpoint_prefix='',
                  val_interval=1,
                  log_interval=1,
@@ -84,13 +84,14 @@ class OracleTrainer(object):
         self.experiment_id = experiment_id
         self.saving_path = saving_path
 
-        self.checkpointing_enabled = enable_checkpointing
+        self.auto_checkpointing_enabled = enable_auto_checkpointing
         self.checkpoint_prefix = checkpoint_prefix
         self.device = device
         self.max_epochs = max_epochs
         self.val_interval = val_interval
 
         self._global_epoch = 0
+        self._last_valid_metrics = {}
         self.hooks_manager = HooksManager(OracleHookEvent)
         self.oracle_monitor = OracleMonitor(
             experiment=self.experiment,
@@ -147,6 +148,25 @@ class OracleTrainer(object):
         self.optimizer = optim_info['optimizer']
         self.scheduler = optim_info['lr_scheduler']['scheduler']
         self.scaler = optim_info['scaler']
+
+    def save_model_checkpoint(self, is_best=False):
+        """
+        This method is called automatically if self.auto_checkpointing_enabled
+        is enabled.
+        """
+        checkpoint_dict = self.oracle_model.pack_for_checkpoint(
+            self._global_epoch, self._last_valid_metrics, self.optimizer,
+            self.scheduler, self.scaler)
+
+        # Always have a copy of the latest model
+        if is_best:
+            filename = '{}/{}best_epoch.ckpt'.format(
+                    self.saving_path, self.checkpoint_prefix + '_')
+        else:
+            filename = '{}/{}latest_epoch.ckpt'.format(
+                self.saving_path, self.checkpoint_prefix + '_')
+            
+        torch.save(checkpoint_dict, filename)
 
     def fit_iter(
         self,
@@ -318,6 +338,7 @@ class OracleTrainer(object):
             self.hooks_manager.trigger_hooks(OracleHookEvent.ON_VAL_BATCH_END)
 
         val_metrics = mean_losses(val_metrics)
+        self._last_valid_metrics = val_metrics
         self.oracle_monitor.log_metrics(val_metrics,
                                         step=self._global_plotting_step,
                                         epoch=self._global_epoch)
@@ -328,23 +349,13 @@ class OracleTrainer(object):
                                         epoch=self._global_epoch)
 
         # Checkpointing
-        if self.checkpointing_enabled:
-            checkpoint_dict = self.oracle_model.pack_for_checkpoint(
-                epoch, val_metrics, self.optimizer, self.scheduler, self.scaler)
+        if self.auto_checkpointing_enabled:
+            self.save_model_checkpoint()
 
-            # Always have a copy of the latest model
-            latest_name = '{}/{}latest_epoch.ckpt'.format(
-                self.saving_path, self.checkpoint_prefix + '_')
-            torch.save(checkpoint_dict, latest_name)
-
-            # If the VC is the best so far, save the model with the name best_acc_epoch_{epoch}.ckpt
-            # Also save the optimizer state and the scheduler state, the epoch and the metrics
-            val_loss = val_metrics['val_loss']
-            if val_loss < best_loss:
-                best_name = '{}/{}best_vc_epoch.ckpt'.format(
-                    self.saving_path, self.checkpoint_prefix + '_')
-                torch.save(checkpoint_dict, best_name)
-                best_loss = val_loss
+            is_best_epoch = val_metrics['val_loss'] < best_loss
+            if is_best_epoch:
+                self.save_model_checkpoint(is_best=True)
+                best_loss = val_metrics['val_loss']
 
         self.oracle_model.train()
 

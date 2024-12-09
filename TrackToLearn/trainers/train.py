@@ -24,6 +24,7 @@ from TrackToLearn.experiment.experiment import Experiment
 from TrackToLearn.tracking.tracker import Tracker
 from TrackToLearn.utils.torch_utils import get_device, assert_accelerator
 from TrackToLearn.utils.hooks import HooksManager, RlHookEvent
+from TrackToLearn.utils.backuper import Backuper
 
 
 class TrackToLearnTraining(Experiment):
@@ -43,6 +44,30 @@ class TrackToLearnTraining(Experiment):
             Dictionnary containing the training parameters.
             Put into a dictionnary to prevent parameter errors if modified.
         """
+        self.init_hyperparameters(train_dto)
+
+        self.comet_experiment = comet_experiment
+        if self.comet_experiment is not None:
+            self.comet_experiment.set_name(train_dto['id'])
+
+        self.best_epoch_vc = -np.inf
+        self._hooks_manager = HooksManager(RlHookEvent)
+
+
+        # Setup validators, which will handle validation and scoring
+        # of the generated streamlines
+        self.validators = []
+        if self.tractometer_validator:
+            tractometer_validator = TractometerValidator(
+                self.scoring_data, self.tractometer_reference,
+                dilate_endpoints=self.tractometer_dilate,
+                min_length=self.min_length, max_length=self.max_length)
+            self.validators.append(tractometer_validator)
+        if self.oracle_validator:  # TODO: This is problematic if we call rl_train multiple times
+            self.validators.append(OracleValidator(
+                self.oracle_crit_checkpoint, self.device))
+
+    def init_hyperparameters(self, train_dto: dict):
         # TODO: Find a better way to pass parameters around
         self.target_sh_order = train_dto['target_sh_order']
 
@@ -109,9 +134,6 @@ class TrackToLearnTraining(Experiment):
         self.fa_map = None
 
         # Various parameters
-        self.comet_experiment = comet_experiment
-        if self.comet_experiment is not None:
-            self.comet_experiment.set_name(train_dto['id'])
         self.last_episode = 0
 
         self.device = get_device()
@@ -128,18 +150,9 @@ class TrackToLearnTraining(Experiment):
         self.rng = np.random.RandomState(seed=self.rng_seed)
         random.seed(self.rng_seed)
 
-        # Setup validators, which will handle validation and scoring
-        # of the generated streamlines
-        self.validators = []
-        if self.tractometer_validator:  # TODO: This is problematic if we call rl_train multiple times
-            self.validators.append(TractometerValidator(
-                self.scoring_data, self.tractometer_reference,
-                dilate_endpoints=self.tractometer_dilate))
-        if self.oracle_validator:  # TODO: This is problematic if we call rl_train multiple times
-            self.validators.append(OracleValidator(
-                self.oracle_crit_checkpoint, self.device))
-
-        self._hooks_manager = HooksManager(RlHookEvent)
+        backup_dir = train_dto['backup_dir']
+        self.backuper = Backuper(self.experiment_path, self.experiment,
+                                    self.name, backup_dir)
 
         self.hyperparameters = {
             # RL parameters
@@ -197,15 +210,19 @@ class TrackToLearnTraining(Experiment):
                         indent=4,
                         separators=(',', ': ')))
 
-    def save_model(self, alg, save_model_dir=None):
+    def save_model(self, alg, save_model_dir=None, is_best_model=False,
+                   scores_info: dict = {}):
         """ Save the model state to disk
         """
 
         directory = self.model_dir if save_model_dir is None else save_model_dir
         if not os.path.exists(directory):
             os.makedirs(directory)
-        # alg.agent.save(directory, "last_model_state")
-        alg.save_checkpoint(os.path.join(directory, "last_model_state.ckpt"))
+
+        if is_best_model:
+            alg.save_checkpoint(os.path.join(directory, "best_model_state.ckpt"), **scores_info)
+        else:
+            alg.save_checkpoint(os.path.join(directory, "last_model_state.ckpt"), **scores_info)
 
     def rl_train(
         self,
@@ -368,6 +385,7 @@ class TrackToLearnTraining(Experiment):
                 start = time.time()
                 scores = self.score_tractogram(
                     filename, valid_env)
+
                 print(f" in {time.time() - start} seconds")
 
                 print(scores)
@@ -377,6 +395,19 @@ class TrackToLearnTraining(Experiment):
                     valid_tractogram, valid_reward, i_episode)
                 self.comet_monitor.log_losses(scores, i_episode)
                 self.save_model(alg, save_model_dir=save_model_dir)
+
+                # Save best_epoch separately
+                is_best_agent = scores["VC"] > self.best_epoch_vc
+                if is_best_agent:
+                    self.best_epoch_vc = scores["VC"]
+                    self._hooks_manager.trigger_hooks(
+                        RlHookEvent.ON_RL_BEST_VC)
+
+                    self.save_model(alg, save_model_dir=save_model_dir,
+                                    is_best_model=True)
+                
+                # Backup to that directory after each validation run.
+                self.backuper.backup(step=i_episode)
 
         # End of training, save the model and hyperparameters and track
         valid_env.load_subject()
@@ -401,9 +432,18 @@ class TrackToLearnTraining(Experiment):
         self.comet_monitor.log_losses(scores, i_episode)
 
         self.save_model(alg, save_model_dir=save_model_dir)
+        is_best_agent = scores["VC"] > self.best_epoch_vc
+        if is_best_agent:
+            self.best_epoch_vc = scores["VC"]
+            self._hooks_manager.trigger_hooks(
+                RlHookEvent.ON_RL_BEST_VC)
+
+            self.save_model(alg, save_model_dir=save_model_dir,
+                            is_best_model=True)
 
         # Trigger end hooks
         self._hooks_manager.trigger_hooks(RlHookEvent.ON_RL_TRAIN_END)
+        self.backuper.backup(step=i_episode)
 
     def setup_logging(self):
         # Save hyperparameters

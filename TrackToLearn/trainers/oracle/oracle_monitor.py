@@ -23,7 +23,7 @@ class OracleMonitor(object):
         delims = ['_', '-', '/']
         if metrics_prefix is None:
             self.metrics_prefix = None
-        elif metrics_prefix[0] in delims:
+        elif metrics_prefix[-1] in delims:
             self.metrics_prefix = metrics_prefix[1:]
         else:
             self.metrics_prefix = f"{metrics_prefix}/"
@@ -38,7 +38,7 @@ class OracleMonitor(object):
             return
         
         if self.metrics_prefix:
-            prefix = f"{self.metrics_prefix}/"
+            prefix = self.metrics_prefix
         else:
             prefix = None
         
@@ -53,6 +53,6 @@ class OracleMonitor(object):
                               np.float32, np.int32)), "Metrics must be numerical."
             
             if self.metrics_prefix:
-                k = f"{self.metrics_prefix}/{k}"
+                k = f"{self.metrics_prefix}{k}"
 
             self.experiment.log_metric(k, v, step=step)

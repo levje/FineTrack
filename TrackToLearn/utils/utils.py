@@ -2,6 +2,7 @@ from typing import Iterable
 import math
 import os
 import sys
+import hashlib
 
 from dipy.core.geometry import sphere2cart
 from os.path import join as pjoin
@@ -453,3 +454,11 @@ def get_index_where_nans(t: torch.Tensor):
         if torch.isnan(t.max()) or torch.isnan(t.min()):
             return torch.isnan(t).nonzero()
     return torch.tensor([], dtype=torch.int32)
+
+def get_unique_experiment_name(experiment_name, exp_id):
+    full_string = ''.join([experiment_name, exp_id, str(time())])
+    h = hashlib.sha1(full_string.encode('ascii'))
+    digestible_hash = h.hexdigest()
+    
+    unique_name = digestible_hash[:8] + experiment_name
+    return unique_name

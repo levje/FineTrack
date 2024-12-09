@@ -185,7 +185,7 @@ class SACAuto(SAC):
         self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
         self.alpha_optimizer.load_state_dict(checkpoint['alpha_optimizer'])
 
-    def save_checkpoint(self, checkpoint_file: str):
+    def save_checkpoint(self, checkpoint_file: str, **extra_info):
         """
         Save the current state of the algorithm into a checkpoint.
 
@@ -200,6 +200,7 @@ class SACAuto(SAC):
             'actor_optimizer': self.actor_optimizer.state_dict(),
             'critic_optimizer': self.critic_optimizer.state_dict(),
             'alpha_optimizer': self.alpha_optimizer.state_dict(),
+            **extra_info
         }
 
         torch.save(checkpoint, checkpoint_file)

@@ -1,29 +1,33 @@
 #!/bin/bash
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=12
+#SBATCH --cpus-per-task=6
 #SBATCH --mem=64000M
-#SBATCH --time=0-40:00:00
+#SBATCH --time=7-00:00:00
 #SBATCH --mail-user=jeremi.levesque@usherbrooke.ca
 #SBATCH --mail-type=ALL
 
 # The above comments are used by SLURM to set the job parameters.
 set -e
 
-# Set this to 0 if running on a cluster node.
-islocal=1
-
 # Expriment parameters
-EXPNAME="TrackToLearn"
-COMETPROJECT="TrackToLearn"
-NB_STREAMLINES_POINTS=128
+EXPNAME="TrackToLearn-ISMRM"
+COMETPROJECT="TrackToLearn-ISMRM"
+NB_STREAMLINES_POINTS=32
 EXPID="${NB_STREAMLINES_POINTS}pts-"_$(date +"%F-%H_%M_%S")
-MAXEP=1000
+MAXEP=5
 BATCHSIZE=4096
-SEEDS=(1111)
+SEEDS=(1111 2222 3333)
 NPV=20
 GAMMA=0.95
 LR=0.0005
 THETA=30
+
+# Check if the script is ran locally or on a cluster node.
+if [ -z $SLURM_JOB_ID ]; then
+    islocal=1
+else
+    islocal=0
+fi
 
 if [ $islocal -eq 1 ]; then
     # This script should be ran from the root of the project is ran locally.
@@ -32,6 +36,7 @@ if [ $islocal -eq 1 ]; then
     DATADIR=data/datasets/ismrm2015_2mm
     EXPDIR=data/experiments
     LOGSDIR=data/logs
+    BACKUPDIR=data/backups
 
     # If CONDAENV is not set, PYTHON EXEC should be python, else it should be the python executable of the conda environment.
     if [ -z $1 ]; then
@@ -41,22 +46,16 @@ if [ $islocal -eq 1 ]; then
         PYTHONEXEC=~/miniconda3/envs/$1/bin/python
     fi
     DATASETDIR=$DATADIR
-    # ORACLECHECKPOINT=custom_models/ismrm_ppo_pretrain/model/ismrm_paper_oracle.ckpt
-    # AGENTCHECKPOINT=custom_models/ismrm_ppo_pretrain/model
-    # ORACLE_CRIT_CHECKPOINT=custom_models/ismrm_paper_oracle/ismrm_paper_oracle.ckpt
-    # ORACLE_REWARD_CHECKPOINT=custom_models/ismrm_classif_oracle/ismrm_classif_oracle.ckpt
 
-    # Streamlines resampled to 32 points
-    # ORACLE_CRIT_CHECKPOINT=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/TractOracleNet/OracleNet-Transformer-Crit-32/OracleNet-Transformer-Crit-32/OracleNet-Transformer-Crit-32/_best_vc_epoch.ckpt
-    # ORACLE_REWARD_CHECKPOINT=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/TractOracleNet/OracleNet-Transformer-Crit-32/OracleNet-Transformer-Crit-32/OracleNet-Transformer-Crit-32/_best_vc_epoch.ckpt
+    # Oracle Antoine with partial streamlines (dense).
+    ORACLE_CRIT_CHECKPOINT=custom_models/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Dense/_best_vc_epoch.ckpt
 
-    # Streamlines resampled to 64 points
-    # ORACLE_CRIT_CHECKPOINT=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/TractOracleNet/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/_best_vc_epoch.ckpt
-    # ORACLE_REWARD_CHECKPOINT=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/TractOracleNet/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/_best_vc_epoch.ckpt
+    # Oracle trained on full streamlines (not dense).
+    ORACLE_REWARD_CHECKPOINT=custom_models/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Classif/_best_vc_epoch.ckpt
 
-    ORACLES_DIR=custom_models
-    ORACLE_CRIT_CHECKPOINT=${ORACLES_DIR}/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-${NB_STREAMLINES_POINTS}-Dense/_best_vc_epoch.ckpt
-    ORACLE_REWARD_CHECKPOINT=${ORACLES_DIR}/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-${NB_STREAMLINES_POINTS}-Classif/_best_vc_epoch.ckpt
+    # THIS IS THE CHECKPOINT WE ARE CURRENTLY USING.
+    AGENTCHECKPOINT=custom_models/sac_checkpoint/model/last_model_state.ckpt
+
 else
     echo "Running training on a cluster node..."
     module load python/3.10 cuda cudnn httpproxy
@@ -81,24 +80,25 @@ else
     DATASETDIR=$DATADIR/ismrm2015_2mm
 
     echo "Copying oracle checkpoint..."
-    # cp ~/projects/def-pmjodoin/levje/oracles/ismrm_paper_oracle.ckpt $DATADIR
-    # cp ~/projects/def-pmjodoin/levje/oracles/ismrm_classif_oracle.ckpt $DATADIR
-    
-    # ORACLE_CRIT_CHECKPOINT=$DATADIR/ismrm_paper_oracle.ckpt
-    # ORACLE_REWARD_CHECKPOINT=$DATADIR/ismrm_classif_oracle.ckpt
-    
-    ORACLES_DIR=~/projects/def-pmjodoin/levje/oracles
-    cp ${ORACLES_DIR}/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-${NB_STREAMLINES_POINTS}-Classif/_best_vc_epoch.ckpt $DATADIR/oracle_classif.ckpt
-    cp ${ORACLES_DIR}/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-${NB_STREAMLINES_POINTS}-Dense/_best_vc_epoch.ckpt $DATADIR/oracle_dense.ckpt
-    ORACLE_CRIT_CHECKPOINT=$DATADIR/oracle_dense.ckpt
-    ORACLE_REWARD_CHECKPOINT=$DATADIR/oracle_classif.ckpt
+    cp ${PROJECTS_DIR}/oracles/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Classif/_best_vc_epoch.ckpt $DATADIR/oracle_reward.ckpt
+    cp ${PROJECTS_DIR}/oracles/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Dense/_best_vc_epoch.ckpt $DATADIR/oracle_crit.ckpt
+
+    ORACLE_REWARD_CHECKPOINT=$DATADIR/oracle_reward.ckpt
+    ORACLE_CRIT_CHECKPOINT=$DATADIR/oracle_crit.ckpt
 fi
 
 for RNGSEED in "${SEEDS[@]}"
 do
     DEST_FOLDER="${EXPDIR}/${EXPNAME}/${EXPID}/${RNGSEED}"
 
+    # Append the current seed to the EXPID
+    EXPID="${RNGSEED}-${EXPID}"
+
     additionnal_args=()
+
+    if [[ -n "${BACKUPDIR}" ]]; then
+        additionnal_args+=('--backup_dir' "${BACKUPDIR}")
+    fi
 
     # Start training
     python -O $SOURCEDIR/TrackToLearn/trainers/sac_auto_train.py \

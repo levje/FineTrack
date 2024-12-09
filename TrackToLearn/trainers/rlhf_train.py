@@ -26,6 +26,8 @@ from TrackToLearn.utils.torch_utils import assert_accelerator
 from TrackToLearn.utils.utils import prettier_metrics, prettier_dict
 from TrackToLearn.filterers.streamlines_sampler import StreamlinesSampler
 from TrackToLearn.utils.tqdm_utils import tqdm, tqdm_redirect_context, tqdm_redirect_class
+from TrackToLearn.utils.backuper import Backuper
+from TrackToLearn.utils.hooks import RlHookEvent
 
 assert_accelerator()
 
@@ -40,9 +42,10 @@ class RlhfTraining(TrackToLearnTraining):
         agent_experiment: CometExperiment = None,
         oracle_experiment: CometExperiment = None
     ):
-        super().__init__(
-            rlhf_train_dto
-        )
+        # Only load the parameters from the parent instead of calling
+        # the full constructor twice. (As we call it for the agent_trainer
+        # below).
+        self.init_hyperparameters(rlhf_train_dto)
 
         # General RLHF parameters.
         self.pretrain_max_ep = rlhf_train_dto.get('pretrain_max_ep', None)
@@ -82,6 +85,10 @@ class RlhfTraining(TrackToLearnTraining):
             'max_dataset_size', 5000000)
         self.warmup_agent_steps = rlhf_train_dto.get('warmup_agent_steps', None)
 
+        # As TrackToLearnTraining implements the Backuper too, disable it so
+        # it doesn't archive twice the same files.
+        rlhf_train_dto['backup_dir'] = None 
+
         ################################################
         # Start by initializing the agent trainer.     #
         if agent_experiment is None:
@@ -92,9 +99,14 @@ class RlhfTraining(TrackToLearnTraining):
 
             agent_experiment.set_name(self.name)
 
-        self.agent_trainer = trainer_cls(rlhf_train_dto, agent_experiment)
+        self.agent_trainer: TrackToLearnTraining = trainer_cls(rlhf_train_dto, agent_experiment)
         _ = self.agent_trainer.setup_environment_and_info()
         self.get_alg = self.agent_trainer.get_alg
+
+        # Since backuping is implemented in TrackToLearnTraining, we disable
+        # it to avoid backuping the same files twice to control the backuping
+        # process from this class.
+        self.agent_trainer.backuper.disable()
 
         ################################################
         # Continue by initializing the oracle trainer. #
@@ -114,17 +126,20 @@ class RlhfTraining(TrackToLearnTraining):
                                                         dataset_to_augment_path=dataset_to_augment,
                                                         max_dataset_size=self.max_dataset_size)
 
+        # Note: for the two oracle trainers, we disable the automatic checkpointing
+        # because we will want to save the checkpoints only when we improve the 
+        # total agent. We manually checkpoint those oracles instead.
         self.oracle_reward_trainer = OracleTrainer(
             oracle_experiment,
             oracle_experiment_id,
             self.oracle_training_dir,
             self.oracle_train_steps,
-            enable_checkpointing=True,
+            enable_auto_checkpointing=False,
             checkpoint_prefix='reward',
             val_interval=1,
             device=self.device,
             grad_accumulation_steps=grad_accumulation_steps,
-            metrics_prefix='reward_'
+            metrics_prefix='reward'
         )
 
         self.oracle_crit_trainer = OracleTrainer(
@@ -132,12 +147,22 @@ class RlhfTraining(TrackToLearnTraining):
             oracle_experiment_id,
             self.oracle_training_dir,
             self.oracle_train_steps,
-            enable_checkpointing=True,
+            enable_auto_checkpointing=False,
             checkpoint_prefix='crit',
             val_interval=1,
             device=self.device,
             grad_accumulation_steps=grad_accumulation_steps,
-            metrics_prefix='crit_'
+            metrics_prefix='crit'
+        )
+
+        # Register hooks on best VC reached to save the oracles that
+        # contributed to reach that level of VC.
+        def _save_oracles_on_best_vc():
+            self.oracle_crit_trainer.save_model_checkpoint(is_best=True)
+            self.oracle_reward_trainer.save_model_checkpoint(is_best=True)
+        self.agent_trainer._hooks_manager.register_hook(
+            RlHookEvent.ON_RL_BEST_VC,
+            _save_oracles_on_best_vc
         )
 
         # Update the hyperparameters
@@ -351,6 +376,7 @@ class RlhfTraining(TrackToLearnTraining):
             self.end_finetuning_epoch(i, do_warmup)
 
             if not do_warmup:
+                self.backuper.backup(step=i)
                 i += 1
             do_warmup = False
 
@@ -374,6 +400,9 @@ class RlhfTraining(TrackToLearnTraining):
         dm.setup('fit', dense=False, partial=False)
         self.oracle_reward_trainer.fit_iter(train_dataloader=dm.train_dataloader(),
                                      val_dataloader=dm.val_dataloader())
+        
+        # Auto-checkpointing is disabled, we need to save them manually
+        self.oracle_reward_trainer.save_model_checkpoint()
 
         metrics_after = self.oracle_reward_trainer.test(test_dataloader=dm.test_dataloader())
         print(prettier_metrics(metrics_after, title="Test metrics after fine-tuning"))
@@ -392,13 +421,20 @@ class RlhfTraining(TrackToLearnTraining):
                                   nb_points=self.oracle_crit.nb_points)
         
         # Test the performance of the actual model BEFORE fine-tuning.
-        dm.setup('test', dense=True, partial=False)
+        # TO REVISE:
+        # To get an accuracy plot, we test the stopping criterion on fully
+        # tracked streamlines even though it's supposed to predict on partial
+        # streamlines.
+        dm.setup('test', dense=False, partial=False)
         metrics_before = self.oracle_crit_trainer.test(test_dataloader=dm.test_dataloader())
         print(prettier_metrics(metrics_before, title="Test metrics before fine-tuning"))
 
         dm.setup('fit', dense=True, partial=True)
         self.oracle_crit_trainer.fit_iter(train_dataloader=dm.train_dataloader(),
                                      val_dataloader=dm.val_dataloader())
+        
+        # Auto-checkpointing is disabled, we need to save manually
+        self.oracle_crit_trainer.save_model_checkpoint()
         
         # Test the performance of the actual model AFTER fine-tuning.
         metrics_after = self.oracle_crit_trainer.test(test_dataloader=dm.test_dataloader())

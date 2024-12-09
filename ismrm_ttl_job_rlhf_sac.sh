@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=22000M
+#SBATCH --cpus-per-task=6
+#SBATCH --mem=30000M
 #SBATCH --time=0-25:00:00
 #SBATCH --mail-user=jeremi.levesque@usherbrooke.ca
 #SBATCH --mail-type=ALL
@@ -12,23 +12,23 @@ set -e
 # Expriment parameters
 EXPNAME="TrackToLearnRLHF"
 COMETPROJECT="TrackToLearnRLHF"
-EXPID="Huge-SAC-SFT+RLHF-"_$(date +"%F-%H_%M_%S")
+EXPID="SAC-RLHF-Lab-"_$(date +"%F-%H_%M_%S")
 ALG="SACAuto"
 RLHFINTERNPV=30         # Number of seeds per tractogram generated during the RLHF pipeline
 MAXEP=100                # Number of RLHF iterations
-ORACLENBSTEPS=3         # Number of steps for the oracle
-AGENTNBSTEPS=50         # Number of steps for the agent
+ORACLENBSTEPS=2         # Number of steps for the oracle
+AGENTNBSTEPS=25         # Number of steps for the agent
 PRETRAINSTEPS=1000      # Number of steps for pretraining if no agent checkpoint is provided.
 
 NPV=20 # Number of points per tractogram for training
 SEEDS=(1111)
 BATCHSIZE=4096
-GAMMA=0.95 # Reward discounting (could also be 0.95)
-LR=0.0005 # 1e-5
+GAMMA=0.99 # Reward discounting (could also be 0.95)
+LR=0.0001 # 1e-5
 THETA=30
 
 # Oracle training params
-ORACLE_LR=0.00005 # This will override the LR within the checkpoint.
+ORACLE_LR=0.00001 # This will override the LR within the checkpoint.
 TOTAL_BATCH_SIZE=2048
 ORACLE_MICRO_BATCH_SIZE=1024
 GRAD_ACCUM_STEPS=$((TOTAL_BATCH_SIZE / ORACLE_MICRO_BATCH_SIZE))
@@ -60,6 +60,7 @@ if [ $islocal -eq 1 ]; then
     SOURCEDIR=.
     DATADIR=data/datasets/ismrm2015_2mm
     EXPDIR=data/experiments
+    BACKUPDIR=data/backups
 
     # If CONDAENV is not set, PYTHON EXEC should be python, else it should be the python executable of the conda environment.
     if [ -z $1 ]; then
@@ -77,7 +78,7 @@ if [ $islocal -eq 1 ]; then
     ORACLE_REWARD_CHECKPOINT=custom_models/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Classif/_best_vc_epoch.ckpt
 
     # THIS IS THE CHECKPOINT WE ARE CURRENTLY USING.
-    # AGENTCHECKPOINT=custom_models/sac_checkpoint/model/last_model_state.ckpt
+    AGENTCHECKPOINT=custom_models/sac_checkpoint/model/last_model_state.ckpt
 
     # Setup dataset to augment
     #DATASET_TO_AUGMENT=data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine.hdf5
@@ -89,6 +90,7 @@ else
     EXPDIR=$SLURM_TMPDIR/experiments
     PYTHONEXEC=python
     PROJECTS_DIR=~/projects/def-pmjodoin/levje
+    BACKUPDIR=~/scratch/
     export COMET_API_KEY=$(cat ~/.comet_api_key)
 
     # Prepare virtualenv
@@ -104,22 +106,19 @@ else
     DATASETDIR=$DATADIR/ismrm2015_2mm
 
     echo "Copying oracle checkpoint..."
-    cp ${PROJECTS_DIR}/oracles/ismrm_paper_oracle.ckpt $DATADIR
-    cp ${PROJECTS_DIR}/oracles/ismrm_classif_oracle.ckpt $DATADIR
+    cp ${PROJECTS_DIR}/oracles/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Classif/_best_vc_epoch.ckpt $DATADIR/oracle_reward.ckpt
+    cp ${PROJECTS_DIR}/oracles/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Dense/_best_vc_epoch.ckpt $DATADIR/oracle_crit.ckpt
+
+    ORACLE_REWARD_CHECKPOINT=$DATADIR/oracle_reward.ckpt
+    ORACLE_CRIT_CHECKPOINT=$DATADIR/oracle_crit.ckpt
 
     echo "Copying agent checkpoint..."
     cp ${PROJECTS_DIR}/agents/sac_checkpoint/* $DATADIR/sac_checkpoint
     AGENTCHECKPOINT=$DATADIR/sac_checkpoint/last_model_state.ckpt
 
-    # Oracle Antoine with partial streamlines (dense).
-    ORACLE_CRIT_CHECKPOINT=$DATADIR/ismrm_paper_oracle.ckpt
-    
-    # Oracle trained on full streamlines (not dense).
-    ORACLE_REWARD_CHECKPOINT=$DATADIR/ismrm_classif_oracle.ckpt
-
     # Setup dataset to augment
-    # cp ${PROJECTS_DIR}/datasets/train_test_classical_tracts_dataset.hdf5 $DATADIR
-    $DATASET_TO_AUGMENT= #$DATADIR/train_test_classical_tracts_dataset.hdf5
+    cp ${PROJECTS_DIR}/datasets/train_test_classical_tracts_antoine_valid.hdf5 $DATADIR/tracts_dataset.hdf5
+    DATASET_TO_AUGMENT=$DATADIR/tracts_dataset.hdf5
 fi
 
 for RNGSEED in "${SEEDS[@]}"
@@ -140,6 +139,10 @@ do
 
     if [[ -n "${DATASET_TO_AUGMENT}" ]]; then
         additionnal_args+=('--dataset_to_augment' "${DATASET_TO_AUGMENT}")
+    fi
+
+    if [[ -n "${BACKUPDIR}" ]]; then
+        additionnal_args+=('--backup_dir' "${BACKUPDIR}")
     fi
 
     if [ $DISABLE_ORACLE_TRAINING -eq 1 ]; then

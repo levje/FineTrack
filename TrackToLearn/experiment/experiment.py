@@ -170,7 +170,7 @@ class Experiment(object):
             "Forward" environment only initialized with seeds
         """
 
-        class_dict, env_dto = self._get_env_dict_and_dto(True, npv)
+        class_dict, env_dto = self._get_env_dict_and_dto(True)
 
         # Someone with better knowledge of design patterns could probably
         # clean this
@@ -199,8 +199,10 @@ class Experiment(object):
             'oracle_stopping_criterion': False,
         })
 
-        self.valid_env = class_dict['tracking_env'].from_dataset(
+        rlhf_env = class_dict['tracking_env'].from_dataset(
             env_dto, 'training')
+        
+        return rlhf_env
 
     def get_tracking_env(self):
         """ Generate environments according to tracking parameters.
@@ -428,6 +430,11 @@ def add_experiment_args(parser: ArgumentParser):
                         help='Use comet to display training or not')
     parser.add_argument('--comet_offline_dir', type=str,
                         help='Comet offline directory. If enabled, logs will be saved to this directory and the experiment will be ran offline.')
+    parser.add_argument("--backup_dir", type=str,
+                        help="Directory where to save a backup of the experiment's path.\n"
+                        "This will compress and archive the experiment's files and\n"
+                        "save the archive at this specified location. To avoid \n"
+                        "doing backups, omit this argument. The directory should exist.")
 
 
 def add_data_args(parser: ArgumentParser):
