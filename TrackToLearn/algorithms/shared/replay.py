@@ -10,6 +10,7 @@ from TrackToLearn.utils.utils import break_if_found_nans, break_if_found_nans_ar
 from TrackToLearn.utils.torch_utils import get_device, get_device_str
 
 device = get_device()
+rb_type = torch.float32
 
 class OffPolicyReplayBuffer(object):
     """ Replay buffer to store transitions. Implemented in a "ring-buffer"
@@ -40,16 +41,17 @@ class OffPolicyReplayBuffer(object):
         
         
         self.state = torch.zeros(
-            (self.max_size, state_dim), dtype=torch.float32)
+            (self.max_size, state_dim), dtype=rb_type)
         self.action = torch.zeros(
-            (self.max_size, action_dim), dtype=torch.float32)
+            (self.max_size, action_dim), dtype=rb_type)
         self.next_state = torch.zeros(
-            (self.max_size, state_dim), dtype=torch.float32)
+            (self.max_size, state_dim), dtype=rb_type)
         self.reward = torch.zeros(
-            (self.max_size, 1), dtype=torch.float32)
+            (self.max_size, 1), dtype=rb_type)
         self.not_done = torch.zeros(
-            (self.max_size, 1), dtype=torch.float32)
-
+            (self.max_size, 1), dtype=rb_type)
+    
+    def _pin_to_memory(self):
         if get_device_str() == "cuda":
             self.state = self.state.pin_memory()
             self.action = self.action.pin_memory()
@@ -161,6 +163,28 @@ class OffPolicyReplayBuffer(object):
         """ TODO for imitation learning
         """
         pass
+
+    def state_dict(self):
+        size = self.size
+        return {
+            "state": self.state[:size],
+            "action": self.action[:size],
+            "next_state": self.next_state[:size],
+            "reward": self.reward[:size],
+            "not_done": self.not_done[:size],
+            "ptr": self.ptr,
+            "size": self.size
+        }
+    
+    def load_state_dict(self, state_dict):
+        self.size = state_dict["size"]
+        self.ptr = state_dict["ptr"]
+
+        self.state[:self.size] = state_dict["state"]
+        self.action[:self.size] = state_dict["action"]
+        self.next_state[:self.size] = state_dict["next_state"]
+        self.reward[:self.size] = state_dict["reward"]
+        self.not_done[:self.size] = state_dict["not_done"]
 
 class OnPolicyReplayBuffer(object):
     """ Replay buffer to store transitions. Efficiency could probably be

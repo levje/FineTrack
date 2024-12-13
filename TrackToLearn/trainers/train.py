@@ -47,9 +47,6 @@ class TrackToLearnTraining(Experiment):
         self.init_hyperparameters(train_dto)
 
         self.comet_experiment = comet_experiment
-        if self.comet_experiment is not None:
-            self.comet_experiment.set_name(train_dto['id'])
-
         self.best_epoch_vc = -np.inf
         self._hooks_manager = HooksManager(RlHookEvent)
 
@@ -454,7 +451,7 @@ class TrackToLearnTraining(Experiment):
 
         # Setup comet monitors to monitor experiment as it goes along
         if not self.comet_monitor_was_setup:
-            self.setup_comet()
+            self.setup_comet("agent")
             self.comet_monitor_was_setup = True
 
     def setup_environment_and_info(self):

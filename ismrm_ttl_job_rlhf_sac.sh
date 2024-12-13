@@ -15,16 +15,16 @@ COMETPROJECT="TrackToLearnRLHF"
 EXPID="SAC-RLHF-Lab-"_$(date +"%F-%H_%M_%S")
 ALG="SACAuto"
 RLHFINTERNPV=30         # Number of seeds per tractogram generated during the RLHF pipeline
-MAXEP=100                # Number of RLHF iterations
+MAXEP=100               # Number of RLHF iterations
 ORACLENBSTEPS=2         # Number of steps for the oracle
-AGENTNBSTEPS=25         # Number of steps for the agent
+AGENTNBSTEPS=40         # Number of steps for the agent
 PRETRAINSTEPS=1000      # Number of steps for pretraining if no agent checkpoint is provided.
 
 NPV=20 # Number of points per tractogram for training
 SEEDS=(1111)
 BATCHSIZE=4096
-GAMMA=0.99 # Reward discounting (could also be 0.95)
-LR=0.0001 # 1e-5
+GAMMA=0.95 # Reward discounting (could also be 0.95)
+LR=0.0005 # 1e-5
 THETA=30
 
 # Oracle training params
@@ -78,7 +78,8 @@ if [ $islocal -eq 1 ]; then
     ORACLE_REWARD_CHECKPOINT=custom_models/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Classif/_best_vc_epoch.ckpt
 
     # THIS IS THE CHECKPOINT WE ARE CURRENTLY USING.
-    AGENTCHECKPOINT=custom_models/sac_checkpoint/model/last_model_state.ckpt
+    # AGENTCHECKPOINT=custom_models/sac_checkpoint/model/last_model_state.ckpt
+    AGENTCHECKPOINT=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/TrackToLearn-ISMRM/fullckpt-32pts-_2024-12-10-13_29_48/1111/model/best_model_state.ckpt
 
     # Setup dataset to augment
     #DATASET_TO_AUGMENT=data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine.hdf5
@@ -190,7 +191,6 @@ do
         --oracle_validator \
         --oracle_stopping_criterion \
         --oracle_bonus 10.0 \
-        --alignment_weighting 1.0 \
         --scoring_data "${DATASETDIR}/scoring_data" \
         --tractometer_reference "${DATASETDIR}/scoring_data/t1.nii.gz" \
         --tractometer_validator \

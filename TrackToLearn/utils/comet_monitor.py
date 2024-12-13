@@ -1,8 +1,23 @@
 import numpy as np
 
 from os.path import join as pjoin
-
 from comet_ml import Experiment
+
+from TrackToLearn.utils.logging import get_logger
+
+LOGGER = get_logger(__name__)
+
+def _get_prefix_with_delim(prefix):
+    delims = ['_', '-', '/']
+
+    if prefix[-1] not in delims:
+        out_prefix = f"{prefix}/"
+    elif out_prefix is None:
+        out_prefix = ""
+    else:
+        out_prefix = prefix
+
+    return out_prefix
 
 
 class CometMonitor():
@@ -12,7 +27,6 @@ class CometMonitor():
     def __init__(
         self,
         experiment: Experiment,
-        experiment_id: str,
         experiment_path: str,
         prefix: str,
         render: bool = False,
@@ -24,9 +38,6 @@ class CometMonitor():
             experiment: str
                 Name of experiment. Will contain many interations
                 of experiment based on different parameters
-            experiment_id: str
-                Actual experiment_id of iteration of experiment. Most likey
-                datetime it was started at
             experiment_path: str
                 Experiment path used to fetch images or other stuff
             prefix: str
@@ -35,15 +46,12 @@ class CometMonitor():
                 Whether to actually use comet or not. Useful when
                 Comet access is limited
         """
-        self.experiment_path = experiment_path
-        self.experiment_id = experiment_id
         # IMPORTANT
         # This presumes that your API key is in your home folder or at
         # the project root.
+        self.experiment_path = experiment_path
         self.e = experiment
-        if self.e is not None:
-            self.e.add_tag(experiment_id)
-        self.prefix = prefix
+        self.prefix = _get_prefix_with_delim(prefix)
         self.render = render
         self.use_comet = use_comet
 
@@ -111,9 +119,9 @@ class CometMonitor():
 
         for k, v in loss_dict.items():
             if type(v) is np.ndarray:
-                self.e.log_histogram_3d(v, name=k, step=i)
+                self.e.log_histogram_3d(v, name=self.prefix + k, step=i)
             else:
-                self.e.log_metric(k, v, step=i)
+                self.e.log_metric(self.prefix + k, v, step=i)
 
     def update_train(
         self,
@@ -132,3 +140,47 @@ class CometMonitor():
             },
             step=i_episode
         )
+
+
+class OracleMonitor(object):
+
+    def __init__(
+        self,
+        experiment: Experiment,
+        use_comet: bool = False,
+        metrics_prefix: str = None
+    ):
+        self.experiment = experiment
+
+        self.metrics_prefix = _get_prefix_with_delim(metrics_prefix)
+
+        self.use_comet = use_comet
+        if not self.use_comet:
+            LOGGER.warning(
+                "Comet is not being used. No metrics will be logged for the "
+                "Oracle training.")
+
+    def log_parameters(self, hyperparameters: dict):
+        if not self.use_comet:
+            return
+        
+        if self.metrics_prefix:
+            prefix = self.metrics_prefix
+        else:
+            prefix = None
+        
+        self.experiment.log_parameters(hyperparameters, prefix=prefix)
+
+    def log_metrics(self, metrics_dict, step: int, epoch: int):
+        if not self.use_comet:
+            return
+
+        for k, v in metrics_dict.items():
+            assert isinstance(v, (int, float, np.int64, np.float64,
+                              np.float32, np.int32)), "Metrics must be numerical."
+            
+            if self.metrics_prefix:
+                k = f"{self.metrics_prefix}{k}"
+
+            self.experiment.log_metric(k, v, step=step, epoch=epoch)
+

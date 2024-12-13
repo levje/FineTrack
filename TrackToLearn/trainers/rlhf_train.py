@@ -39,8 +39,7 @@ class RlhfTraining(TrackToLearnTraining):
         self,
         rlhf_train_dto: dict,
         trainer_cls: TrackToLearnTraining,
-        agent_experiment: CometExperiment = None,
-        oracle_experiment: CometExperiment = None
+        comet_experiment: CometExperiment = None
     ):
         # Only load the parameters from the parent instead of calling
         # the full constructor twice. (As we call it for the agent_trainer
@@ -73,8 +72,14 @@ class RlhfTraining(TrackToLearnTraining):
         self.agent_train_steps = rlhf_train_dto['agent_train_steps']
         self.num_workers = rlhf_train_dto['num_workers']
         self.rlhf_inter_npv = rlhf_train_dto['rlhf_inter_npv']
+        
         self.disable_oracle_training = rlhf_train_dto.get(
             'disable_oracle_training', False)
+        if self.disable_oracle_training:
+            LOGGER.warning("Oracle training is disabled. The dataset will "
+                           "be augmented to evaluate the oracles during the "
+                           "agent's training.")
+
         self.batch_size = rlhf_train_dto['batch_size']
         self.oracle_batch_size = rlhf_train_dto['oracle_batch_size']
         grad_accumulation_steps = rlhf_train_dto.get(
@@ -91,15 +96,15 @@ class RlhfTraining(TrackToLearnTraining):
 
         ################################################
         # Start by initializing the agent trainer.     #
-        if agent_experiment is None:
-            agent_experiment = CometExperiment(project_name=self.experiment,
+        if comet_experiment is None:
+            comet_experiment = CometExperiment(project_name=self.experiment,
                                                workspace=rlhf_train_dto['workspace'], parse_args=False,
                                                auto_metric_logging=False,
                                                disabled=not self.use_comet)
 
-            agent_experiment.set_name(self.name)
+        comet_experiment.set_name(self.name)
 
-        self.agent_trainer: TrackToLearnTraining = trainer_cls(rlhf_train_dto, agent_experiment)
+        self.agent_trainer: TrackToLearnTraining = trainer_cls(rlhf_train_dto, comet_experiment)
         _ = self.agent_trainer.setup_environment_and_info()
         self.get_alg = self.agent_trainer.get_alg
 
@@ -110,17 +115,6 @@ class RlhfTraining(TrackToLearnTraining):
 
         ################################################
         # Continue by initializing the oracle trainer. #
-        # Need this to avoid erasing the RL agent's experiment
-        # when creating a new one.
-        if oracle_experiment is None:
-            comet_ml.config.set_global_experiment(None)
-            oracle_experiment = CometExperiment(project_name="TractOracleRLHF",
-                                                       workspace=rlhf_train_dto['workspace'], parse_args=False,
-                                                       auto_metric_logging=False,
-                                                       disabled=not self.use_comet)
-
-            oracle_experiment_id = '-'.join([self.experiment, self.name])
-
         dataset_to_augment = rlhf_train_dto.get('dataset_to_augment', None)
         self.dataset_manager = StreamlineDatasetManager(saving_path=self.oracle_training_dir,
                                                         dataset_to_augment_path=dataset_to_augment,
@@ -130,8 +124,7 @@ class RlhfTraining(TrackToLearnTraining):
         # because we will want to save the checkpoints only when we improve the 
         # total agent. We manually checkpoint those oracles instead.
         self.oracle_reward_trainer = OracleTrainer(
-            oracle_experiment,
-            oracle_experiment_id,
+            comet_experiment,
             self.oracle_training_dir,
             self.oracle_train_steps,
             enable_auto_checkpointing=False,
@@ -143,8 +136,7 @@ class RlhfTraining(TrackToLearnTraining):
         )
 
         self.oracle_crit_trainer = OracleTrainer(
-            oracle_experiment,
-            oracle_experiment_id,
+            comet_experiment,
             self.oracle_training_dir,
             self.oracle_train_steps,
             enable_auto_checkpointing=False,
@@ -293,10 +285,7 @@ class RlhfTraining(TrackToLearnTraining):
         while i < max_ep: 
             self.start_finetuning_epoch(i, do_warmup)
 
-            if self.disable_oracle_training:
-                LOGGER.info("Oracle training is disabled. Only the agent will be trained and the dataset will not be augmented.\n",
-                                 "This is equivalent to just training the agent for an additional {} ({} x {}) epochs.".format(self.agent_train_steps*max_ep, max_ep, self.agent_train_steps))
-            elif not do_warmup:
+            if not do_warmup:
                 total_added = 0
                 
                 with tqdm(total=self.nb_new_streamlines_per_iter,
@@ -353,9 +342,9 @@ class RlhfTraining(TrackToLearnTraining):
                     prettier_dict(data_stats, title="Dataset stats (iter {})".format(i)))
 
                 # Train reward model
-                LOGGER.info("Training reward model...")
-                self.train_reward()
-                self.train_stopping_criterion()
+                if not self.disable_oracle_training:
+                    self.train_reward()
+                    self.train_stopping_criterion()
 
             # Train the RL agent
             agent_nb_steps = self.agent_train_steps if not do_warmup else self.warmup_agent_steps
@@ -369,14 +358,16 @@ class RlhfTraining(TrackToLearnTraining):
                                         max_ep=agent_nb_steps,
                                         starting_ep=current_ep,
                                         save_model_dir=self.model_dir,
-                                        test_before_training=False
+                                        test_before_training=do_warmup or i == 0
                                         )
-            current_ep += self.agent_train_steps
 
             self.end_finetuning_epoch(i, do_warmup)
 
-            if not do_warmup:
+            if do_warmup:
+                current_ep += self.warmup_agent_steps
+            else:
                 self.backuper.backup(step=i)
+                current_ep += self.agent_train_steps
                 i += 1
             do_warmup = False
 

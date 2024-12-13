@@ -95,12 +95,12 @@ class TractOracleNetTraining(object):
             parse_args=False,
             auto_metric_logging=False,
             disabled=not self.use_comet)
+        oracle_experiment.set_name(self.id)
 
         print("Done.")
 
         oracle_trainer = OracleTrainer(
             oracle_experiment,
-            self.id,
             root_dir,
             self.oracle_train_steps,
             enable_checkpointing=True,

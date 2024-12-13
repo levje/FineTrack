@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from TrackToLearn.oracles.transformer_oracle import LightningLikeModule
-from TrackToLearn.trainers.oracle.oracle_monitor import OracleMonitor
+from TrackToLearn.utils.comet_monitor import OracleMonitor
 from TrackToLearn.utils.torch_utils import get_device
 from TrackToLearn.algorithms.shared.utils import \
     (add_item_to_means, mean_losses, add_losses, get_mean_item)
@@ -68,7 +68,6 @@ class MicroBatchInfo(object):
 class OracleTrainer(object):
     def __init__(self,
                  experiment,
-                 experiment_id,
                  saving_path,
                  max_epochs,
                  use_comet=True,
@@ -81,7 +80,6 @@ class OracleTrainer(object):
                  metrics_prefix=None,
                  ):
         self.experiment = experiment
-        self.experiment_id = experiment_id
         self.saving_path = saving_path
 
         self.auto_checkpointing_enabled = enable_auto_checkpointing
@@ -95,7 +93,6 @@ class OracleTrainer(object):
         self.hooks_manager = HooksManager(OracleHookEvent)
         self.oracle_monitor = OracleMonitor(
             experiment=self.experiment,
-            experiment_id=self.experiment_id,
             use_comet=use_comet,
             metrics_prefix=metrics_prefix
         )
@@ -109,7 +106,6 @@ class OracleTrainer(object):
 
         hyperparameters = self.oracle_model.hyperparameters
         hyperparameters.update({
-            'experiment_id': self.experiment_id,
             'saving_path': self.saving_path,
             'max_epochs': self.max_epochs,
             'val_interval': self.val_interval,

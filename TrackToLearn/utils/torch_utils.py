@@ -13,3 +13,11 @@ def assert_accelerator():
 
 def get_device_str():
     return str(get_device())
+
+def gradients_norm(module: torch.nn.Module):
+    total_norm = 0
+    for p in module.parameters():
+        param_norm = p.grad.data.norm(2)
+        total_norm += param_norm.item() ** 2
+    total_norm = total_norm ** 0.5
+    return total_norm
