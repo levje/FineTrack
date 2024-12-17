@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import scipy.signal
 from typing import Tuple
-#TrackToLearn.algorithms.shared.disc_cumsum
+#FineTrack.algorithms.shared.disc_cumsum
 from FineTrack.algorithms.shared.disc_cumsum import disc_cumsum
 from FineTrack.utils.utils import break_if_found_nans, break_if_found_nans_args
 

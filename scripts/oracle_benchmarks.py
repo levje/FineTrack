@@ -4,17 +4,17 @@ import numpy as np
 from typing import List
 from dipy.tracking.streamline import set_number_of_points
 
-from TrackToLearn.oracles.oracle import OracleSingleton
-from TrackToLearn.utils.utils import SimpleTimer
+from FineTrack.oracles.oracle import OracleSingleton
+from FineTrack.utils.utils import SimpleTimer
 from oracle_histogram_length import load_model
-from TrackToLearn.utils.torch_utils import get_device
+from FineTrack.utils.torch_utils import get_device
 from nibabel.streamlines.array_sequence import ArraySequence
 
 
-DEFAULT_REFERENCE = '/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/datasets/ismrm2015_1mm/scoring_data/t1.nii.gz'
+DEFAULT_REFERENCE = '/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_1mm/scoring_data/t1.nii.gz'
 DEFAULT_DATASETS = [
-    ('/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine.hdf5', DEFAULT_REFERENCE),
-    ('/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/datasets/ismrm2015_1mm/streamlines/stable/train_test_sac_even_bigger_dataset_eq.hdf5', DEFAULT_REFERENCE)
+    ('/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine.hdf5', DEFAULT_REFERENCE),
+    ('/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_1mm/streamlines/stable/train_test_sac_even_bigger_dataset_eq.hdf5', DEFAULT_REFERENCE)
 ]
 
 def _load_test_data(path, nb_points, reference_path=None):

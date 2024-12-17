@@ -2,8 +2,8 @@ import pytest
 import numpy as np
 import h5py
 
-from TrackToLearn.utils.utils import SimpleTimer
-from TrackToLearn.utils.hdf5_utils import (
+from FineTrack.utils.utils import SimpleTimer
+from FineTrack.utils.hdf5_utils import (
     copy_by_batch,
     copy_by_batch_multiproc,
     read_hdf5_data_multiproc,

@@ -121,7 +121,7 @@ def main():
                                  disabled=not args.use_comet)
 
     # Finally, get experiments, and train your models:
-    ppo_experiment = PPOTrackToLearnTraining(
+    ppo_experiment = PPOFineTrackTraining(
         # Dataset params
         vars(args),
         experiment

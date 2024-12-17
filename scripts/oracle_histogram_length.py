@@ -19,7 +19,7 @@ from tqdm import tqdm
 from collections import defaultdict
 from nibabel.streamlines.array_sequence import ArraySequence
 from dipy.tracking.streamline import set_number_of_points
-from TrackToLearn.environments.utils import resample_streamlines_if_needed
+from FineTrack.environments.utils import resample_streamlines_if_needed
 
 sns.set_style("darkgrid")
 

@@ -6,7 +6,6 @@ import json
 
 from comet_ml import Experiment as CometExperiment
 
-<<<<<<<< HEAD:FineTrack/trainers/rlhf_refactored_train.py
 from FineTrack.utils.logging import get_logger
 from FineTrack.trainers.sac_auto_train import FineTrackTraining, add_sac_auto_args, SACAutoFineTrackTraining
 from FineTrack.trainers.ppo_train import PPOFineTrackTraining, add_ppo_args
@@ -27,52 +26,20 @@ from FineTrack.utils.torch_utils import assert_accelerator
 from FineTrack.utils.utils import prettier_metrics, prettier_dict
 from FineTrack.filterers.streamlines_sampler import StreamlinesSampler
 from FineTrack.utils.tqdm_utils import tqdm, tqdm_redirect_context, tqdm_redirect_class
-========
-from TrackToLearn.utils.logging import get_logger
-from TrackToLearn.trainers.sac_auto_train import TrackToLearnTraining, add_sac_auto_args, SACAutoTrackToLearnTraining
-from TrackToLearn.trainers.ppo_train import PPOTrackToLearnTraining, add_ppo_args
-from TrackToLearn.trainers.tractoraclenet_train import add_oracle_train_args
-from TrackToLearn.trainers.train import add_training_args
-from TrackToLearn.utils.logging import setup_logging, add_logging_args
-from TrackToLearn.algorithms.rl import RLAlgorithm
-from TrackToLearn.algorithms.sac_auto import SACAuto
-from TrackToLearn.algorithms.ppo import PPO
-from TrackToLearn.environments.env import BaseEnv
-from TrackToLearn.tracking.tracker import Tracker
-from TrackToLearn.filterers.tractometer_filterer import TractometerFilterer
-from TrackToLearn.oracles.oracle import OracleSingleton
-from TrackToLearn.trainers.oracle.oracle_trainer import OracleTrainer
-from TrackToLearn.trainers.oracle.data_module import StreamlineDataModule
-from TrackToLearn.trainers.oracle.streamline_dataset_manager import StreamlineDatasetManager
-from TrackToLearn.utils.torch_utils import assert_accelerator
-from TrackToLearn.utils.utils import prettier_metrics, prettier_dict
-from TrackToLearn.filterers.streamlines_sampler import StreamlinesSampler
-from TrackToLearn.utils.tqdm_utils import tqdm, tqdm_redirect_context, tqdm_redirect_class
-from TrackToLearn.utils.backuper import Backuper
-from TrackToLearn.utils.hooks import RlHookEvent
->>>>>>>> 0eb9ccb29a0da523df1c170e10e57f07030f04fd:FineTrack/trainers/rlhf_train.py
+from FineTrack.utils.backuper import Backuper
+from FineTrack.utils.hooks import RlHookEvent
 
 assert_accelerator()
 
 LOGGER = get_logger(__name__)
 
-<<<<<<<< HEAD:FineTrack/trainers/rlhf_refactored_train.py
-class RlhfRefactored(FineTrackTraining):
-========
-class RlhfTraining(TrackToLearnTraining):
->>>>>>>> 0eb9ccb29a0da523df1c170e10e57f07030f04fd:FineTrack/trainers/rlhf_train.py
+class RlhfTraining(FineTrackTraining):
 
     def __init__(
         self,
         rlhf_train_dto: dict,
-<<<<<<<< HEAD:FineTrack/trainers/rlhf_refactored_train.py
         trainer_cls: FineTrackTraining,
-        agent_experiment: CometExperiment = None,
-        oracle_experiment: CometExperiment = None
-========
-        trainer_cls: TrackToLearnTraining,
         comet_experiment: CometExperiment = None
->>>>>>>> 0eb9ccb29a0da523df1c170e10e57f07030f04fd:FineTrack/trainers/rlhf_train.py
     ):
         # Only load the parameters from the parent instead of calling
         # the full constructor twice. (As we call it for the agent_trainer
@@ -123,7 +90,7 @@ class RlhfTraining(TrackToLearnTraining):
             'max_dataset_size', 5000000)
         self.warmup_agent_steps = rlhf_train_dto.get('warmup_agent_steps', None)
 
-        # As TrackToLearnTraining implements the Backuper too, disable it so
+        # As FineTrackTraining implements the Backuper too, disable it so
         # it doesn't archive twice the same files.
         rlhf_train_dto['backup_dir'] = None 
 
@@ -137,11 +104,11 @@ class RlhfTraining(TrackToLearnTraining):
 
         comet_experiment.set_name(self.name)
 
-        self.agent_trainer: TrackToLearnTraining = trainer_cls(rlhf_train_dto, comet_experiment)
+        self.agent_trainer: FineTrackTraining = trainer_cls(rlhf_train_dto, comet_experiment)
         _ = self.agent_trainer.setup_environment_and_info()
         self.get_alg = self.agent_trainer.get_alg
 
-        # Since backuping is implemented in TrackToLearnTraining, we disable
+        # Since backuping is implemented in FineTrackTraining, we disable
         # it to avoid backuping the same files twice to control the backuping
         # process from this class.
         self.agent_trainer.backuper.disable()

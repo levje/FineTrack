@@ -5,7 +5,7 @@ from tqdm import tqdm
 from typing import Union
 import multiprocessing as mp
 
-from TrackToLearn.utils.logging import get_logger
+from FineTrack.utils.logging import get_logger
 
 LOGGER = get_logger(__name__)
 

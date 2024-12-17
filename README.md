@@ -67,7 +67,7 @@ sudo docker run --gpus all scilus/tractoracle-rl:v2024b ttl_track.py ...
 
 ### Training
 
-First, make a dataset `.hdf5` file with `TrackToLearn/dataset/create_dataset.py`.
+First, make a dataset `.hdf5` file with `FineTrack/dataset/create_dataset.py`.
 ```
 usage: create_dataset.py [-h] [--sh_basis {descoteaux07,tournier07}]
                          config_file output
@@ -85,7 +85,7 @@ Basis options:
 
 Example dataset config files are available in `examples`.
 
-Then, you may train an agent by running `python TrackToLearn/trainers/sac_auto_train.py`.
+Then, you may train an agent by running `python FineTrack/trainers/sac_auto_train.py`.
 
 ```
 usage: sac_auto_train.py [-h] [--workspace WORKSPACE] [--rng_seed RNG_SEED]

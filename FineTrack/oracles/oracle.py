@@ -5,7 +5,7 @@ from dipy.tracking.streamline import set_number_of_points
 from FineTrack.oracles.transformer_oracle import TransformerOracle
 from FineTrack.utils.torch_utils import get_device_str, get_device
 from nibabel.streamlines.array_sequence import ArraySequence
-from TrackToLearn.environments.utils import resample_streamlines_if_needed
+from FineTrack.environments.utils import resample_streamlines_if_needed
 import contextlib
 from tqdm import tqdm
 

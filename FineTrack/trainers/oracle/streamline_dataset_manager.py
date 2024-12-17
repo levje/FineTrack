@@ -946,7 +946,7 @@ class StreamlineDatasetManager(object):
 #     dataset sequentially. We need to copy data with batches to track progress
 #     and avoid freezes.
 #     """
-#     from TrackToLearn.utils.utils import SimpleTimer
+#     from FineTrack.utils.utils import SimpleTimer
 #     if indices is None:
 #         indices = np.arange(original[DATA].shape[0])
     

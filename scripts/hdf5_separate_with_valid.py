@@ -1,9 +1,9 @@
 import argparse
 import h5py
 import numpy as np
-from TrackToLearn.trainers.oracle.streamline_dataset_manager import _copy_and_update_dataset, _copy_to_hdf5_target, _create_datasets_hdf5, _copy_to_hdf5_by_chunks
-from TrackToLearn.utils.utils import prettier_dict
-from TrackToLearn.utils.logging import get_logger, add_logging_args, setup_logging
+from FineTrack.trainers.oracle.streamline_dataset_manager import _copy_and_update_dataset, _copy_to_hdf5_target, _create_datasets_hdf5, _copy_to_hdf5_by_chunks
+from FineTrack.utils.utils import prettier_dict
+from FineTrack.utils.logging import get_logger, add_logging_args, setup_logging
 
 LOGGER = get_logger(__name__)
 

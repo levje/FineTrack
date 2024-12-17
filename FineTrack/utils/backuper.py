@@ -3,8 +3,8 @@ import time
 import tarfile
 from pathlib import Path
 
-from TrackToLearn.utils.utils import get_unique_experiment_name
-from TrackToLearn.utils.logging import get_logger
+from FineTrack.utils.utils import get_unique_experiment_name
+from FineTrack.utils.logging import get_logger
 
 LOGGER = get_logger(__name__)
 
