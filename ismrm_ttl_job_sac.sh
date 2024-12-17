@@ -10,16 +10,16 @@
 set -e
 
 # Expriment parameters
-EXPNAME="TrackToLearn-ISMRM"
-COMETPROJECT="TrackToLearn-ISMRM"
+EXPNAME="TrackToLearn"
+COMETPROJECT="TrackToLearn"
 NB_STREAMLINES_POINTS=32
-EXPID="${NB_STREAMLINES_POINTS}pts-"_$(date +"%F-%H_%M_%S")
-MAXEP=4000
+EXPID="ConvPolicy-radius2-"_$(date +"%F-%H_%M_%S")
+MAXEP=1000
 BATCHSIZE=4096
 SEEDS=(1111)
 NPV=20
 GAMMA=0.95
-LR=0.0005
+LR=0.0002
 THETA=30
 
 # Check if the script is ran locally or on a cluster node.

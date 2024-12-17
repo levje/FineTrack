@@ -86,7 +86,7 @@ class RLAlgorithm(object):
 
         running_reward = 0
         state = initial_state
-        n_streamlines = state.shape[0]
+        n_streamlines = state.shape.nb_streamlines
         done = False
         current_nb_dones = 0
         pbar = tqdm(total=n_streamlines, desc='Val episode',

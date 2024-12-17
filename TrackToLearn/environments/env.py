@@ -11,7 +11,7 @@ from dipy.tracking import utils as track_utils
 from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
 from dwi_ml.data.processing.space.neighborhood import \
-    get_neighborhood_vectors_axes
+    unflatten_neighborhood, prepare_neighborhood_vectors
 from scilpy.reconst.utils import (find_order_from_nb_coeff,
                                   get_maximas)
 from dipy.reconst.shm import sh_to_sf_matrix
@@ -34,6 +34,7 @@ from TrackToLearn.environments.utils import (  # is_looping,
     is_too_curvy, is_too_long, has_reached_gm)
 from TrackToLearn.utils.utils import normalize_vectors
 from TrackToLearn.environments.rollout_env import RolloutEnvironment
+from TrackToLearn.environments.conv_state import ConvState
 
 LOGGER = get_logger(__name__)
 
@@ -217,10 +218,11 @@ class BaseEnv(object):
         self.add_neighborhood_vox = convert_length_mm2vox(
             self.step_size_mm,
             self.affine_vox2rasmm)
-        self.neighborhood_directions = torch.cat(
-            (torch.zeros((1, 3)),
-             get_neighborhood_vectors_axes(1, self.add_neighborhood_vox))
-        ).to(self.device)
+        self.neighborhood_radius = 2
+        
+        self.neighborhood_directions = prepare_neighborhood_vectors('grid',
+            self.neighborhood_radius, self.add_neighborhood_vox).to(
+                self.device)
 
         # Tracking seeds
         self.seeds = track_utils.random_seeds_from_mask(
@@ -506,7 +508,7 @@ class BaseEnv(object):
         """
 
         example_state, _ = self.reset(0, 1)
-        self._state_size = example_state.shape[1]
+        self._state_size = example_state.shape
         return self._state_size
 
     def get_action_size(self):
@@ -589,14 +591,18 @@ class BaseEnv(object):
         signal, _ = interpolate_volume_in_neighborhood(
             self.data_volume,
             coords,
-            self.neighborhood_directions,
-            clear_cache=False)
+            self.neighborhood_directions)
         N, S = signal.shape
 
-        # Placeholder for the final imputs
-        inputs = torch.zeros((N, S + (self.n_dirs * P)), device=self.device)
-        # Fill the first part of the inputs with the SH coefficients
-        inputs[:, :S] = signal
+        # Unflatten the signal to use it for convolutions
+        # Unflatten the signal into (N, W, H, D, C) shape
+        unflattened = unflatten_neighborhood(
+            signal, self.neighborhood_directions, 'grid',
+            self.neighborhood_radius, self.add_neighborhood_vox)
+
+        # Permute axes to fit PyTorch's convention of (N, C, D, H, W)
+        # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
+        unflattened = unflattened.permute(0, 4, 1, 2, 3)
 
         # Placeholder for the previous directions
         previous_dirs = np.zeros((N, self.n_dirs, P), dtype=np.float32)
@@ -611,10 +617,11 @@ class BaseEnv(object):
         dir_inputs = torch.reshape(
             torch.from_numpy(previous_dirs).to(self.device),
             (N, self.n_dirs * P))
-        # Fill the second part of the inputs with the previous directions
-        inputs[:, S:] = dir_inputs
 
-        return inputs
+        # Return them separately so we can run convolutions on unflattened
+        # but not dir_inputs.
+        conv_state = ConvState(unflattened, dir_inputs, self.device)
+        return conv_state
 
     def _compute_stopping_flags(
         self,

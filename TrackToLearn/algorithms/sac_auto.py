@@ -1,6 +1,7 @@
 import copy
 import numpy as np
 import torch
+import torch.nn as nn
 
 import torch.nn.functional as F
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from TrackToLearn.algorithms.shared.offpolicy import SACActorCritic
 from TrackToLearn.algorithms.shared.replay import OffPolicyReplayBuffer
 from TrackToLearn.utils.torch_utils import get_device, gradients_norm
 from TrackToLearn.algorithms.shared.kl import AdaptiveKLController, FixedKLController
+from TrackToLearn.environments.conv_state import ConvStateShape
 
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
@@ -51,7 +53,7 @@ class SACAuto(SAC):
 
     def __init__(
         self,
-        input_size: int,
+        input_shape: ConvStateShape,
         action_size: int,
         hidden_dims: int,
         hparams: SACAutoHParams = SACAutoHParams(),
@@ -107,7 +109,7 @@ class SACAuto(SAC):
 
         # Initialize main agent
         self.agent = SACActorCritic(
-            input_size, action_size, hidden_dims, device,
+            input_shape, action_size, hidden_dims, device,
         )
         self.old_agent = copy.deepcopy(self.agent.actor)
         _assert_same_weights(self.agent.actor, self.old_agent)
@@ -158,7 +160,7 @@ class SACAuto(SAC):
 
         # Replay buffer
         self.replay_buffer = OffPolicyReplayBuffer(
-            input_size, action_size, max_size=self.hparams.replay_size)
+            input_shape, action_size, max_size=self.hparams.replay_size)
 
         self.rng = rng
 
@@ -282,16 +284,19 @@ class SACAuto(SAC):
         # Optimize the temperature
         self.alpha_optimizer.zero_grad()
         alpha_loss.backward()
+        nn.utils.clip_grad_norm_(self.log_alpha, 0.5)
         self.alpha_optimizer.step()
 
         # Optimize the actor
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
+        nn.utils.clip_grad_norm_(self.agent.actor.parameters(), 0.5)
         self.actor_optimizer.step()
 
         # Optimize the critic
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
+        nn.utils.clip_grad_norm_(self.agent.critic.parameters(), 0.5)
         self.critic_optimizer.step()
 
         # Update the frozen target models

@@ -5,6 +5,7 @@ from typing import Tuple
 #TrackToLearn.algorithms.shared.disc_cumsum
 from TrackToLearn.algorithms.shared.disc_cumsum import disc_cumsum
 from TrackToLearn.utils.utils import break_if_found_nans, break_if_found_nans_args
+from TrackToLearn.environments.conv_state import ConvState, ConvStateShape
 
 
 from TrackToLearn.utils.torch_utils import get_device, get_device_str
@@ -20,7 +21,7 @@ class OffPolicyReplayBuffer(object):
     """
 
     def __init__(
-        self, state_dim: int, action_dim: int, max_size=int(1e6)
+        self, state_dim: ConvStateShape, action_dim: int, max_size=int(1e6)
     ):
         """
         Parameters:
@@ -38,14 +39,12 @@ class OffPolicyReplayBuffer(object):
         self.size = 0
 
         # Buffers "filled with zeros"
-        
-        
-        self.state = torch.zeros(
-            (self.max_size, state_dim), dtype=rb_type)
+        self.state = ConvState.zeros(
+            (self.max_size, *state_dim.conv_state_common_shape), prev_dirs_size=state_dim.prev_dirs, dtype=rb_type)
         self.action = torch.zeros(
             (self.max_size, action_dim), dtype=rb_type)
-        self.next_state = torch.zeros(
-            (self.max_size, state_dim), dtype=rb_type)
+        self.next_state = ConvState.zeros(
+            (self.max_size, *state_dim.conv_state_common_shape), prev_dirs_size=state_dim.prev_dirs, dtype=rb_type)
         self.reward = torch.zeros(
             (self.max_size, 1), dtype=rb_type)
         self.not_done = torch.zeros(

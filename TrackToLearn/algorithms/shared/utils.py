@@ -83,3 +83,59 @@ def make_fc_network(
     # no activ. on last layer
     layers.extend([nn.Linear(widths[-1], output_size)])
     return nn.Sequential(*layers)
+
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels):
+        super(ResidualBlock, self).__init__()
+        self.conv1 = nn.Conv3d(in_channels, 2*in_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv3d(2*in_channels, in_channels, kernel_size=3, stride=1, padding=1)
+        self.activation = nn.GELU()
+
+    def forward(self, x):
+        residual = x
+        out = self.conv1(x)
+        out = self.activation(out)
+        out = self.conv2(out)
+        out += residual
+        out = self.activation(out)
+        return out
+
+def make_conv_network(input_size, output_size):
+
+    # input_size = [in_channels, depth, height, width]
+    # input_size = [c, d, h, w]
+    (c, d, h, w) = input_size
+    size_after_conv = 64 * (d) * (h) * (w)
+    layers = nn.Sequential(
+        # [c, d, h, w]
+        nn.Conv3d(c, 16, kernel_size=3, stride=1, padding=1),
+        # [16, d, h, w]
+        nn.GELU(),
+        # nn.MaxPool3d(kernel_size=2, stride=2),
+        # [16, d/2, h/2, w/2]
+
+        ResidualBlock(16),
+
+        nn.Conv3d(16, 32, kernel_size=3, stride=1, padding=1),
+        # [32, d/2, h/2, w/2]
+        nn.GELU(),
+        # nn.MaxPool3d(kernel_size=2, stride=2),
+        # [32, d/4, h/4, w/4]
+
+        ResidualBlock(32),
+
+        nn.Conv3d(32, 64, kernel_size=3, stride=1, padding=1),
+        # [64, d/4, h/4, w/4]
+        nn.GELU(),
+        # nn.MaxPool3d(kernel_size=2, stride=2),
+        # [64, d/8, h/8, w/8]
+
+        ResidualBlock(64),
+
+        nn.Flatten(), # -> 64 * d/8 * h/8 * w/8
+        nn.Linear(size_after_conv, 1024),
+        nn.GELU(),
+        nn.Linear(1024, output_size)
+    )
+
+    return layers

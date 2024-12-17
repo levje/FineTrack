@@ -191,7 +191,7 @@ class TrackToLearnTraining(Experiment):
         """
         # Add input and action size to hyperparameters
         # These are added here because they are not known before
-        self.hyperparameters.update({'input_size': self.input_size,
+        self.hyperparameters.update({'input_size': self.input_size.to_dict(),
                                      'action_size': self.action_size,
                                      'voxel_size': str(self.voxel_size),
                                      'target_sh_order': self.target_sh_order})
