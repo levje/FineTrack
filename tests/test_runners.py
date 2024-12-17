@@ -17,6 +17,6 @@
 #     # Call 'sac_auto_train.py' from the command line and assert that it
 #     # runs without errors
 
-#     ret = script_runner.run('TrackToLearn/trainers/sac_auto_train.py',
+#     ret = script_runner.run('FineTrack/trainers/sac_auto_train.py',
 #                             '--help')
 #     assert ret.success

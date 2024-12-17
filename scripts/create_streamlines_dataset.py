@@ -5,7 +5,7 @@ import os
 from glob import glob
 from os.path import expanduser
 from dipy.io.streamline import load_tractogram
-from TrackToLearn.trainers.oracle.streamline_dataset_manager import StreamlineDatasetManager
+from FineTrack.trainers.oracle.streamline_dataset_manager import StreamlineDatasetManager
 import numpy as np
 
 

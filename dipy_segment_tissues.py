@@ -9,8 +9,8 @@ import os
 import nibabel as nib
 
 
-T1_path = "/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/datasets/ismrm2015_2mm/anat/ismrm2015_T1.nii.gz"
-out_dir = "/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/dipy_segment_tissues_b03"
+T1_path = "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_2mm/anat/ismrm2015_T1.nii.gz"
+out_dir = "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/dipy_segment_tissues_b03"
 
 os.makedirs(out_dir, exist_ok=True)
 print("Output directory: %s" % out_dir)

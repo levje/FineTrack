@@ -5,12 +5,12 @@ from dipy.io.streamline import load_tractogram
 from dipy.tracking.utils import length
 from dipy.io.stateful_tractogram import StatefulTractogram, Space, Origin
 import argparse
-from TrackToLearn.oracles.oracle import OracleSingleton
-from TrackToLearn.oracles.transformer_oracle import TransformerOracle
-from TrackToLearn.utils.torch_utils import get_device_str
-from TrackToLearn.algorithms.shared.utils import (
+from FineTrack.oracles.oracle import OracleSingleton
+from FineTrack.oracles.transformer_oracle import TransformerOracle
+from FineTrack.utils.torch_utils import get_device_str
+from FineTrack.algorithms.shared.utils import (
     add_item_to_means, mean_losses)
-from TrackToLearn.trainers.oracle.oracle_trainer import to_device
+from FineTrack.trainers.oracle.oracle_trainer import to_device
 import seaborn as sns
 import os
 import h5py
@@ -19,7 +19,7 @@ from tqdm import tqdm
 from collections import defaultdict
 from nibabel.streamlines.array_sequence import ArraySequence
 from dipy.tracking.streamline import set_number_of_points
-from TrackToLearn.environments.utils import resample_streamlines_if_needed
+from FineTrack.environments.utils import resample_streamlines_if_needed
 
 sns.set_style("darkgrid")
 

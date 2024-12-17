@@ -14,8 +14,8 @@ islocal=1
 RUN_OFFLINE=0
 
 # Expriment parameters
-EXPNAME="TrackToLearnPPO"
-COMETPROJECT="TrackToLearnPPO"
+EXPNAME="FineTrack-PPO"
+COMETPROJECT="FineTrack-PPO"
 EXPID="testing_Base_"_$(date +"%F-%H_%M_%S")
 # RLHFINTERNPV=20         # Number of seeds per tractogram generated during the RLHF pipeline
 MAXEP=100                # Number of PPO iterations
@@ -51,7 +51,7 @@ if [ $islocal -eq 1 ]; then
 else
     echo "Running training on a cluster node..."
     module load python/3.10 cuda cudnn httpproxy
-    SOURCEDIR=~/TrackToLearn
+    SOURCEDIR=~/FineTrack
     DATADIR=$SLURM_TMPDIR/data
     EXPDIR=$SLURM_TMPDIR/experiments
     LOGSDIR=$SLURM_TMPDIR/logs
@@ -91,7 +91,7 @@ do
 
     # Start training
     ${PYTHONEXEC} \
-        $SOURCEDIR/TrackToLearn/trainers/classic_ppo_train.py \
+        $SOURCEDIR/FineTrack/trainers/classic_ppo_train.py \
         ${DEST_FOLDER} \
         "${COMETPROJECT}" \
         "${EXPID}" \

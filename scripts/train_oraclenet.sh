@@ -33,7 +33,7 @@ fi
 if [ $islocal -eq 1 ]; then
     echo "Running locally"
     EXPPATH=data/experiments/TractOracleNet/${EXPNAME}
-    DATASET_FILE=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine_valid.hdf5
+    DATASET_FILE=/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine_valid.hdf5
     # DATASET_FILE=/home/local/USHERBROOKE/levj1404/Documents/TractOracleNet/TractOracleNet/datasets/ismrm2015_1mm/train_test_classical_tracts_dataset.hdf5
     # DATASET_FILE=antoine-pft.hdf5
     # DATASET_FILE=full-antoine.hdf5
@@ -73,7 +73,7 @@ echo "Total batch size: ${TOTAL_BATCH_SIZE}"
 echo "Micro batch size: ${MICRO_BATCH_SIZE}"
 echo "Gradient accumulation steps: ${GRAD_ACCUM_STEPS}"
 
-python TrackToLearn/trainers/tractoraclenet_train.py \
+python FineTrack/trainers/tractoraclenet_train.py \
     ${EXPPATH} \
     ${EXPNAME} \
     ${EXPID} \

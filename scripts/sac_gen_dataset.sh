@@ -14,8 +14,8 @@ islocal=1
 RUN_OFFLINE=0
 
 # Expriment parameters
-EXPNAME="TrackToLearnRLHF"
-COMETPROJECT="TrackToLearnRLHF"
+EXPNAME="FineTrack"
+COMETPROJECT="FineTrack"
 EXPID="test_generate_async_"_$(date +"%F-%H_%M_%S")
 ALG="SACAuto"
 RLHFINTERNPV=300         # Number of seeds per tractogram generated during the RLHF pipeline
@@ -73,7 +73,7 @@ if [ $islocal -eq 1 ]; then
 else
     echo "Running training on a cluster node..."
     module load python/3.10 cuda cudnn httpproxy
-    SOURCEDIR=~/TrackToLearn
+    SOURCEDIR=~/FineTrack
     DATADIR=$SLURM_TMPDIR/data
     EXPDIR=$SLURM_TMPDIR/experiments
     LOGSDIR=$SLURM_TMPDIR/logs
@@ -137,7 +137,7 @@ do
     fi
 
     # Start training
-    ${PYTHONEXEC} -O $SOURCEDIR/TrackToLearn/trainers/rlhf_train.py \
+    ${PYTHONEXEC} -O $SOURCEDIR/FineTrack/trainers/rlhf_train.py \
         ${DEST_FOLDER} \
         "${COMETPROJECT}" \
         "${EXPID}" \

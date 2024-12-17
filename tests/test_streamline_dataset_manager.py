@@ -6,7 +6,7 @@ import nibabel as nib
 from tempfile import TemporaryDirectory
 
 from dipy.io.stateful_tractogram import StatefulTractogram, Space
-from TrackToLearn.trainers.oracle.streamline_dataset_manager \
+from FineTrack.trainers.oracle.streamline_dataset_manager \
     import StreamlineDatasetManager
 
 NB_POINTS = 128

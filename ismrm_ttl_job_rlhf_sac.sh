@@ -79,14 +79,14 @@ if [ $islocal -eq 1 ]; then
 
     # THIS IS THE CHECKPOINT WE ARE CURRENTLY USING.
     # AGENTCHECKPOINT=custom_models/sac_checkpoint/model/last_model_state.ckpt
-    AGENTCHECKPOINT=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/TrackToLearn-ISMRM/fullckpt-32pts-_2024-12-10-13_29_48/1111/model/best_model_state.ckpt
+    AGENTCHECKPOINT=/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/experiments/TrackToLearn-ISMRM/fullckpt-32pts-_2024-12-10-13_29_48/1111/model/best_model_state.ckpt
 
     # Setup dataset to augment
     #DATASET_TO_AUGMENT=data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine.hdf5
 else
     echo "Running training on a cluster node..."
     module load python/3.10 cuda cudnn httpproxy
-    SOURCEDIR=~/TrackToLearn
+    SOURCEDIR=~/FineTrack
     DATADIR=$SLURM_TMPDIR/data
     EXPDIR=$SLURM_TMPDIR/experiments
     PYTHONEXEC=python
@@ -171,7 +171,7 @@ do
     fi
 
     # Start training
-    ${PYTHONEXEC} -O $SOURCEDIR/TrackToLearn/trainers/rlhf_train.py \
+    ${PYTHONEXEC} -O $SOURCEDIR/FineTrack/trainers/rlhf_train.py \
         ${DEST_FOLDER} \
         "${COMETPROJECT}" \
         "${EXPID}" \

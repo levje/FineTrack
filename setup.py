@@ -10,22 +10,22 @@ external_dependencies = [
 ]
 
 setup(
-    name='Track-to-Learn',
+    name='FineTrack',
 
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
     version='1.0',
 
-    description='Deep reinforcement learning for tractography',
+    description='RL-based tractography with policy-aligned reward model',
     long_description="",
 
     # The project's main homepage.
-    url='https://github.com/scil-vital/TrackToLearn',
+    url='https://github.com/levje/FineTrack',
 
     # Author details
-    author='Antoine Théberge',
-    author_email='antoine.theberge@usherbrooke.ca',
+    author='Jeremi Levesque',
+    author_email='jeremi.levesque@usherbrooke.ca',
 
     # Choose your license
     license='GNU General Public License v3.0',
@@ -46,11 +46,11 @@ setup(
     ],
 
     # What does your project relate to?
-    keywords='Deep Reinforcement Learning Tractography',
+    keywords='Deep Reinforcement Learning Tractography Reward Model',
 
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().
-    packages=['TrackToLearn'],
+    packages=['FineTrack'],
 
     # List run-time dependencies here.  These will be installed by pip when
     # your project is installed. For an analysis of "install_requires" vs pip's
@@ -86,16 +86,16 @@ setup(
     # pip to create the appropriate form of executable for the target platform.
     entry_points={
         'console_scripts': [
-            "ttl_track.py=TrackToLearn.runners.ttl_track:main",
-            "ttl_track_from_hdf5.py=TrackToLearn.runners.ttl_track_from_hdf5:main"] # noqa E501
+            "ttl_track.py=FineTrack.runners.ttl_track:main",
+            "ttl_track_from_hdf5.py=FineTrack.runners.ttl_track_from_hdf5:main"] # noqa E501
     },
     include_package_data=True,
 
     # List C++ extensions
     ext_modules=[
         cpp_extension.CppExtension(
-            'TrackToLearn.algorithms.shared.disc_cumsum',
-            ['TrackToLearn/algorithms/shared/disc_cumsum.cpp'],
+            'FineTrack.algorithms.shared.disc_cumsum',
+            ['FineTrack/algorithms/shared/disc_cumsum.cpp'],
         ),
     ],
 

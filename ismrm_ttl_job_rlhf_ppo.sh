@@ -14,8 +14,8 @@ islocal=1
 RUN_OFFLINE=0
 
 # Expriment parameters
-EXPNAME="TrackToLearnRLHF"
-COMETPROJECT="TrackToLearnRLHF"
+EXPNAME="FineTrack"
+COMETPROJECT="FineTrack"
 EXPID="RLHF-PPO_"_$(date +"%F-%H_%M_%S")
 ALG="PPO" #"SACAuto"
 RLHFINTERNPV=30         # Number of seeds per tractogram generated during the RLHF pipeline
@@ -64,11 +64,11 @@ if [ $islocal -eq 1 ]; then
     ORACLECHECKPOINT=custom_models/ismrm_ppo_pretrain/model/ismrm_paper_oracle.ckpt
     AGENTCHECKPOINT=custom_models/ismrm_ppo_pretrain/model
     # ORACLECHECKPOINT=custom_models/ismrm_paper_oracle/ismrm_paper_oracle.ckpt
-    # AGENTCHECKPOINT="/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/experiments/TrackToLearnRLHF/1-Pretrain-AntoineOracle-Finetune_2024-06-09-20_55_13/1111/model"
+    # AGENTCHECKPOINT="/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/experiments/TrackToLearnRLHF/1-Pretrain-AntoineOracle-Finetune_2024-06-09-20_55_13/1111/model"
 else
     echo "Running training on a cluster node..."
     module load python/3.10 cuda cudnn httpproxy
-    SOURCEDIR=~/TrackToLearn
+    SOURCEDIR=~/FineTrack
     DATADIR=$SLURM_TMPDIR/data
     EXPDIR=$SLURM_TMPDIR/experiments
     LOGSDIR=$SLURM_TMPDIR/logs
@@ -132,7 +132,7 @@ do
     fi
 
     # Start training
-    ${PYTHONEXEC} -O $SOURCEDIR/TrackToLearn/trainers/rlhf_train.py \
+    ${PYTHONEXEC} -O $SOURCEDIR/FineTrack/trainers/rlhf_train.py \
         ${DEST_FOLDER} \
         "${COMETPROJECT}" \
         "${EXPID}" \
