@@ -1,1 +1,4 @@
-dwi-ml @ git+https://github.com/scil-vital/dwi_ml@for_beluga_scilpy2
+dwi-ml @ git+https://github.com/levje/dwi_ml@update_scilpy
+torchmetrics
+pytest
+seaborn

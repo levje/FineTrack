@@ -21,6 +21,7 @@ class OracleHookEvent(HookEvent):
 
 class RlHookEvent(HookEvent):
     ON_RL_TRAIN_START = 'on_rl_train_start'
+    ON_RL_BEST_VC = 'on_rl_best_vc'
     ON_RL_TRAIN_END = 'on_rl_train_end'
 
 

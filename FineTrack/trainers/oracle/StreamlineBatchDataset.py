@@ -13,9 +13,9 @@ class StreamlineBatchDataset(Dataset):
     are loaded in batches and can be augmented with noise and flipping.
 
     Streamlines from the dataset are presumed to be already shuffled
-    and resampled to 128 points. This is done because HDF5 access is
-    slow and it takes the same time to access a single streamline or
-    a slice of streamlines.
+    and resampled to a fixed number of points (e.g. 128 by default)
+    This is done because HDF5 access is slow and it takes the same time
+    to access a single streamline or a slice of streamlines.
     """
 
     def __init__(
@@ -26,6 +26,7 @@ class StreamlineBatchDataset(Dataset):
         flip_p: float = 0.5,
         dense: bool = True,
         partial: bool = False,
+        nb_points: int = 128,
     ):
         """
         Parameters:
@@ -53,13 +54,14 @@ class StreamlineBatchDataset(Dataset):
         self.dense = dense
         self.partial = partial
         self.is_sorted = lambda a: np.all(a[:-1] <= a[1:])
+        self.nb_points = nb_points
 
         if self.dense:
             LOGGER.debug("Dense mode is enabled. Streamlines will be randomly cut.")
             if self.partial:
                 LOGGER.debug("Partial mode is enabled. Scores will be scaled.")
 
-        assert stage in ["train", "test"], \
+        assert stage in ["train", "valid", "test"], \
             "The stage should be either 'train' or 'test'."
 
         self.stage = stage
@@ -174,7 +176,9 @@ class StreamlineBatchDataset(Dataset):
             # to use set_number_of_points
             array_seq = ArraySequence([streamlines[i, :new_lengths[i]]
                                        for i in range(len(new_lengths))])
-            streamlines = set_number_of_points(array_seq, 128)
+
+            # print("resampling stage {} streamlines to {} points".format(self.stage, self.nb_points))
+            streamlines = set_number_of_points(array_seq, self.nb_points)
             streamlines = np.asarray(streamlines)
 
         # Add noise to streamline points for robustness
@@ -184,7 +188,18 @@ class StreamlineBatchDataset(Dataset):
                 loc=0.0, scale=self.noise, size=streamlines.shape
             ).astype(dtype)
 
+        if streamlines.shape[1] != self.nb_points:
+            # print("resampling stage {} streamlines to {} points".format(self.stage, self.nb_points))
+            array_seq = ArraySequence(streamlines)
+            streamlines = set_number_of_points(array_seq, self.nb_points)
+
         # Compute the directions
         dirs = np.diff(streamlines, axis=1)
+
+        # if self.stage == 'test':
+        #     print("streamlines shape: ", streamlines.shape)
+        #     print("dirs shape: ", dirs.shape)
+        #     print(f"debug streamlines 2:2:... ", streamlines[:2, :2, :])
+        #     print(f"debug dirs 2:2:... ", dirs[:2, :2, :])
 
         return dirs, score

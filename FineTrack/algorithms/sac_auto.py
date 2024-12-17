@@ -9,7 +9,7 @@ from typing import Tuple
 from FineTrack.algorithms.sac import SAC
 from FineTrack.algorithms.shared.offpolicy import SACActorCritic
 from FineTrack.algorithms.shared.replay import OffPolicyReplayBuffer
-from FineTrack.utils.torch_utils import get_device
+from FineTrack.utils.torch_utils import get_device, gradients_norm
 from FineTrack.algorithms.shared.kl import AdaptiveKLController, FixedKLController
 
 LOG_STD_MAX = 2
@@ -184,8 +184,12 @@ class SACAuto(SAC):
         self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
         self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
         self.alpha_optimizer.load_state_dict(checkpoint['alpha_optimizer'])
+        if checkpoint.get('replay_buffer', None) is not None:
+            self.replay_buffer.load_state_dict(checkpoint['replay_buffer'])
+        if checkpoint.get('log_alpha', None) is not None:
+            self.log_alpha = checkpoint['log_alpha']
 
-    def save_checkpoint(self, checkpoint_file: str):
+    def save_checkpoint(self, checkpoint_file: str, **extra_info):
         """
         Save the current state of the algorithm into a checkpoint.
 
@@ -200,6 +204,9 @@ class SACAuto(SAC):
             'actor_optimizer': self.actor_optimizer.state_dict(),
             'critic_optimizer': self.critic_optimizer.state_dict(),
             'alpha_optimizer': self.alpha_optimizer.state_dict(),
+            'replay_buffer': self.replay_buffer.state_dict(),
+            'log_alpha': self.log_alpha,
+            **extra_info
         }
 
         torch.save(checkpoint, checkpoint_file)
@@ -272,18 +279,6 @@ class SACAuto(SAC):
         # Total critic loss
         critic_loss = loss_q1 + loss_q2
 
-        losses = {
-            # 'actor_loss': actor_loss.detach(),
-            # 'alpha_loss': alpha_loss.detach(),
-            # 'critic_loss': critic_loss.detach(),
-            # 'loss_q1': loss_q1.detach(),
-            # 'loss_q2': loss_q2.detach(),
-            # 'entropy': alpha.detach(),
-            # 'Q1': current_Q1.mean().detach(),
-            # 'Q2': current_Q2.mean().detach(),
-            # 'backup': backup.mean().detach(),
-        }
-
         # Optimize the temperature
         self.alpha_optimizer.zero_grad()
         alpha_loss.backward()
@@ -312,7 +307,30 @@ class SACAuto(SAC):
             self.target.actor.parameters()
         ):
             target_param.data.copy_(
-                self.tau * param.data + (1 - self.tau) * target_param.data
-            )
+                self.tau * param.data + (1 - self.tau) * target_param.data)
+
+        # Compute the norm of the gradients to plot.
+        alpha_norm = self.log_alpha.grad.norm(2).cpu().detach().numpy()
+        critic_norm = gradients_norm(self.agent.critic)
+        actor_norm = gradients_norm(self.agent.actor)
+
+        # print("alpha_norm: ", type(alpha_norm))
+        # print("critic_norm: ", type(critic_norm))
+        # print("actor_norm: ", type(actor_norm))
+
+        losses = {
+            # 'actor_loss': actor_loss.detach(),
+            # 'alpha_loss': alpha_loss.detach(),
+            # 'critic_loss': critic_loss.detach(),
+            # 'loss_q1': loss_q1.detach(),
+            # 'loss_q2': loss_q2.detach(),
+            # 'entropy': alpha.detach(),
+            # 'Q1': current_Q1.mean().detach(),
+            # 'Q2': current_Q2.mean().detach(),
+            # 'backup': backup.mean().detach(),
+            "alpha_norm": alpha_norm,
+            "critic_norm": critic_norm,
+            "actor_norm": actor_norm,
+        }
 
         return losses

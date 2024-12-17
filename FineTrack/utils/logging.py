@@ -26,5 +26,8 @@ def setup_logging(args):
 
     root_logger.setLevel(args.log_level)
 
+def setLevel(level):
+    root_logger.setLevel(level)
+
 def get_logger(name):
     return root_logger.getChild(name)

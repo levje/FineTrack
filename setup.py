@@ -5,11 +5,9 @@ from torch.utils import cpp_extension
 
 here = os.path.abspath(os.path.dirname(__file__))
 
-with open('requirements.txt') as f:
-    required_dependencies = f.read().splitlines()
-    external_dependencies = []
-    for dependency in required_dependencies:
-        external_dependencies.append(dependency)
+external_dependencies = [
+    "dwi-ml"
+]
 
 setup(
     name='FineTrack',

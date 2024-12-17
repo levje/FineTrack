@@ -83,7 +83,7 @@ class Experiment(object):
         """
         # The comet object that will handle monitors
         self.comet_monitor = CometMonitor(
-            self.comet_experiment, self.name, self.experiment_path,
+            self.comet_experiment, self.experiment_path,
             prefix, use_comet=self.use_comet)
         print(self.hyperparameters)
         self.comet_monitor.log_parameters(self.hyperparameters)
@@ -161,7 +161,7 @@ class Experiment(object):
 
         return env
 
-    def get_valid_env(self, npv=None) -> Tuple[BaseEnv, BaseEnv]:
+    def get_valid_env(self) -> Tuple[BaseEnv, BaseEnv]:
         """ Build environments
 
         Returns:
@@ -170,7 +170,7 @@ class Experiment(object):
             "Forward" environment only initialized with seeds
         """
 
-        class_dict, env_dto = self._get_env_dict_and_dto(True, npv)
+        class_dict, env_dto = self._get_env_dict_and_dto(True)
 
         # Someone with better knowledge of design patterns could probably
         # clean this
@@ -178,6 +178,31 @@ class Experiment(object):
             env_dto, 'training')
 
         return self.valid_env
+    
+    def get_rlhf_env(self, npv=None) -> Tuple[BaseEnv, BaseEnv]:
+        """ Build environment to be able to track streamlines
+        without computing the reward and without using the 
+        oracle stopping criterion.
+
+        It should be exactly the same as the validation environment
+        but with no oracle stopping criterion and no reward computation.
+
+        Returns:
+        --------
+        env: BaseEnv
+            "Forward" environment only initialized with seeds
+        """
+        class_dict, env_dto = self._get_env_dict_and_dto(True, npv)
+
+        env_dto.update({
+            'compute_reward': False,
+            'oracle_stopping_criterion': False,
+        })
+
+        rlhf_env = class_dict['tracking_env'].from_dataset(
+            env_dto, 'training')
+        
+        return rlhf_env
 
     def get_tracking_env(self):
         """ Generate environments according to tracking parameters.
@@ -405,6 +430,11 @@ def add_experiment_args(parser: ArgumentParser):
                         help='Use comet to display training or not')
     parser.add_argument('--comet_offline_dir', type=str,
                         help='Comet offline directory. If enabled, logs will be saved to this directory and the experiment will be ran offline.')
+    parser.add_argument("--backup_dir", type=str,
+                        help="Directory where to save a backup of the experiment's path.\n"
+                        "This will compress and archive the experiment's files and\n"
+                        "save the archive at this specified location. To avoid \n"
+                        "doing backups, omit this argument. The directory should exist.")
 
 
 def add_data_args(parser: ArgumentParser):

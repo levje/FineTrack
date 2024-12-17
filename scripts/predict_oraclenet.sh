@@ -42,7 +42,11 @@ python FineTrack/runners/tractoracle_predict.py \
     ${MAXEPOCHS} \
     ${DATASET_FILE} \
     --oracle_batch_size ${MICRO_BATCH_SIZE} \
-    --oracle_checkpoint "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/experiments/TractOracleNet/OracleTrainTest/OracleTrainTest/Training-DenseFalse-/best_vc_epoch.ckpt"
+    --oracle_checkpoint "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/experiments/TractOracleNet/OracleNet-Transformer-Crit-32/OracleNet-Transformer-Crit-32/OracleNet-Transformer-Crit-32/_best_vc_epoch.ckpt"
+    # --oracle_checkpoint "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/experiments/TractOracleNet/OracleNet-Transformer-Crit-128/OracleNet-Transformer-Crit-128/OracleNet-Transformer-Crit-128/_best_vc_epoch.ckpt"
+    # --oracle_checkpoint "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/experiments/TractOracleNet/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/OracleNet-Transformer-Crit-64/_best_vc_epoch.ckpt"
+    
+    # --oracle_checkpoint "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/experiments/TractOracleNet/OracleTrainTest/OracleTrainTest/Training-DenseFalse-/best_vc_epoch.ckpt"
     # --oracle_checkpoint "custom_models/ismrm_paper_oracle/ismrm_paper_oracle.ckpt"
 
 

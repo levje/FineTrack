@@ -6,6 +6,7 @@ import json
 
 from comet_ml import Experiment as CometExperiment
 
+<<<<<<<< HEAD:FineTrack/trainers/rlhf_refactored_train.py
 from FineTrack.utils.logging import get_logger
 from FineTrack.trainers.sac_auto_train import FineTrackTraining, add_sac_auto_args, SACAutoFineTrackTraining
 from FineTrack.trainers.ppo_train import PPOFineTrackTraining, add_ppo_args
@@ -26,23 +27,57 @@ from FineTrack.utils.torch_utils import assert_accelerator
 from FineTrack.utils.utils import prettier_metrics, prettier_dict
 from FineTrack.filterers.streamlines_sampler import StreamlinesSampler
 from FineTrack.utils.tqdm_utils import tqdm, tqdm_redirect_context, tqdm_redirect_class
+========
+from TrackToLearn.utils.logging import get_logger
+from TrackToLearn.trainers.sac_auto_train import TrackToLearnTraining, add_sac_auto_args, SACAutoTrackToLearnTraining
+from TrackToLearn.trainers.ppo_train import PPOTrackToLearnTraining, add_ppo_args
+from TrackToLearn.trainers.tractoraclenet_train import add_oracle_train_args
+from TrackToLearn.trainers.train import add_training_args
+from TrackToLearn.utils.logging import setup_logging, add_logging_args
+from TrackToLearn.algorithms.rl import RLAlgorithm
+from TrackToLearn.algorithms.sac_auto import SACAuto
+from TrackToLearn.algorithms.ppo import PPO
+from TrackToLearn.environments.env import BaseEnv
+from TrackToLearn.tracking.tracker import Tracker
+from TrackToLearn.filterers.tractometer_filterer import TractometerFilterer
+from TrackToLearn.oracles.oracle import OracleSingleton
+from TrackToLearn.trainers.oracle.oracle_trainer import OracleTrainer
+from TrackToLearn.trainers.oracle.data_module import StreamlineDataModule
+from TrackToLearn.trainers.oracle.streamline_dataset_manager import StreamlineDatasetManager
+from TrackToLearn.utils.torch_utils import assert_accelerator
+from TrackToLearn.utils.utils import prettier_metrics, prettier_dict
+from TrackToLearn.filterers.streamlines_sampler import StreamlinesSampler
+from TrackToLearn.utils.tqdm_utils import tqdm, tqdm_redirect_context, tqdm_redirect_class
+from TrackToLearn.utils.backuper import Backuper
+from TrackToLearn.utils.hooks import RlHookEvent
+>>>>>>>> 0eb9ccb29a0da523df1c170e10e57f07030f04fd:FineTrack/trainers/rlhf_train.py
 
 assert_accelerator()
 
 LOGGER = get_logger(__name__)
 
+<<<<<<<< HEAD:FineTrack/trainers/rlhf_refactored_train.py
 class RlhfRefactored(FineTrackTraining):
+========
+class RlhfTraining(TrackToLearnTraining):
+>>>>>>>> 0eb9ccb29a0da523df1c170e10e57f07030f04fd:FineTrack/trainers/rlhf_train.py
 
     def __init__(
         self,
         rlhf_train_dto: dict,
+<<<<<<<< HEAD:FineTrack/trainers/rlhf_refactored_train.py
         trainer_cls: FineTrackTraining,
         agent_experiment: CometExperiment = None,
         oracle_experiment: CometExperiment = None
+========
+        trainer_cls: TrackToLearnTraining,
+        comet_experiment: CometExperiment = None
+>>>>>>>> 0eb9ccb29a0da523df1c170e10e57f07030f04fd:FineTrack/trainers/rlhf_train.py
     ):
-        super().__init__(
-            rlhf_train_dto
-        )
+        # Only load the parameters from the parent instead of calling
+        # the full constructor twice. (As we call it for the agent_trainer
+        # below).
+        self.init_hyperparameters(rlhf_train_dto)
 
         # General RLHF parameters.
         self.pretrain_max_ep = rlhf_train_dto.get('pretrain_max_ep', None)
@@ -70,70 +105,89 @@ class RlhfRefactored(FineTrackTraining):
         self.agent_train_steps = rlhf_train_dto['agent_train_steps']
         self.num_workers = rlhf_train_dto['num_workers']
         self.rlhf_inter_npv = rlhf_train_dto['rlhf_inter_npv']
+        
         self.disable_oracle_training = rlhf_train_dto.get(
             'disable_oracle_training', False)
+        if self.disable_oracle_training:
+            LOGGER.warning("Oracle training is disabled. The dataset will "
+                           "be augmented to evaluate the oracles during the "
+                           "agent's training.")
+
         self.batch_size = rlhf_train_dto['batch_size']
         self.oracle_batch_size = rlhf_train_dto['oracle_batch_size']
         grad_accumulation_steps = rlhf_train_dto.get(
             'grad_accumulation_steps', 1)
         self.nb_new_streamlines_per_iter = rlhf_train_dto.get(
             'nb_new_streamlines_per_iter', 500000)
+        self.max_dataset_size = rlhf_train_dto.get(
+            'max_dataset_size', 5000000)
+        self.warmup_agent_steps = rlhf_train_dto.get('warmup_agent_steps', None)
+
+        # As TrackToLearnTraining implements the Backuper too, disable it so
+        # it doesn't archive twice the same files.
+        rlhf_train_dto['backup_dir'] = None 
 
         ################################################
         # Start by initializing the agent trainer.     #
-        if agent_experiment is None:
-            agent_experiment = CometExperiment(project_name=self.experiment,
+        if comet_experiment is None:
+            comet_experiment = CometExperiment(project_name=self.experiment,
                                                workspace=rlhf_train_dto['workspace'], parse_args=False,
                                                auto_metric_logging=False,
                                                disabled=not self.use_comet)
 
-            agent_experiment.set_name(self.name)
+        comet_experiment.set_name(self.name)
 
-        self.agent_trainer = trainer_cls(rlhf_train_dto, agent_experiment)
+        self.agent_trainer: TrackToLearnTraining = trainer_cls(rlhf_train_dto, comet_experiment)
         _ = self.agent_trainer.setup_environment_and_info()
         self.get_alg = self.agent_trainer.get_alg
 
+        # Since backuping is implemented in TrackToLearnTraining, we disable
+        # it to avoid backuping the same files twice to control the backuping
+        # process from this class.
+        self.agent_trainer.backuper.disable()
+
         ################################################
         # Continue by initializing the oracle trainer. #
-        # Need this to avoid erasing the RL agent's experiment
-        # when creating a new one.
-        if oracle_experiment is None:
-            comet_ml.config.set_global_experiment(None)
-            oracle_experiment = CometExperiment(project_name="TractOracleRLHF",
-                                                       workspace=rlhf_train_dto['workspace'], parse_args=False,
-                                                       auto_metric_logging=False,
-                                                       disabled=not self.use_comet)
-
-            oracle_experiment_id = '-'.join([self.experiment, self.name])
-
         dataset_to_augment = rlhf_train_dto.get('dataset_to_augment', None)
         self.dataset_manager = StreamlineDatasetManager(saving_path=self.oracle_training_dir,
-                                                        dataset_to_augment_path=dataset_to_augment)
+                                                        dataset_to_augment_path=dataset_to_augment,
+                                                        max_dataset_size=self.max_dataset_size)
 
+        # Note: for the two oracle trainers, we disable the automatic checkpointing
+        # because we will want to save the checkpoints only when we improve the 
+        # total agent. We manually checkpoint those oracles instead.
         self.oracle_reward_trainer = OracleTrainer(
-            oracle_experiment,
-            oracle_experiment_id,
+            comet_experiment,
             self.oracle_training_dir,
             self.oracle_train_steps,
-            enable_checkpointing=True,
+            enable_auto_checkpointing=False,
             checkpoint_prefix='reward',
             val_interval=1,
             device=self.device,
             grad_accumulation_steps=grad_accumulation_steps,
-            metrics_prefix='reward_'
+            metrics_prefix='reward'
         )
 
         self.oracle_crit_trainer = OracleTrainer(
-            oracle_experiment,
-            oracle_experiment_id,
+            comet_experiment,
             self.oracle_training_dir,
             self.oracle_train_steps,
-            enable_checkpointing=True,
+            enable_auto_checkpointing=False,
             checkpoint_prefix='crit',
             val_interval=1,
             device=self.device,
             grad_accumulation_steps=grad_accumulation_steps,
-            metrics_prefix='crit_'
+            metrics_prefix='crit'
+        )
+
+        # Register hooks on best VC reached to save the oracles that
+        # contributed to reach that level of VC.
+        def _save_oracles_on_best_vc():
+            self.oracle_crit_trainer.save_model_checkpoint(is_best=True)
+            self.oracle_reward_trainer.save_model_checkpoint(is_best=True)
+        self.agent_trainer._hooks_manager.register_hook(
+            RlHookEvent.ON_RL_BEST_VC,
+            _save_oracles_on_best_vc
         )
 
         # Update the hyperparameters
@@ -244,7 +298,7 @@ class RlhfRefactored(FineTrackTraining):
         self.oracle_crit_trainer.setup_model_training(self.oracle_crit.model)
 
         # Setup environment
-        self.tracker_env = self.get_valid_env(npv=self.rlhf_inter_npv)
+        self.tracker_env = self.get_rlhf_env(npv=self.rlhf_inter_npv)
         self.tracker = Tracker(
             alg, self.n_actor, prob=1.0, compress=0.0)
 
@@ -257,22 +311,26 @@ class RlhfRefactored(FineTrackTraining):
                                 sampler=sampler)
         ]
 
+        do_warmup = self.warmup_agent_steps and current_ep < self.warmup_agent_steps - 1
+
         # RLHF loop to fine-tune the oracle to the RL agent and vice-versa.
-        for i in range(max_ep):
+        i = 0
+        while i < max_ep: 
+            self.start_finetuning_epoch(i, do_warmup)
 
-            self.start_finetuning_epoch(i)
-
-            if self.disable_oracle_training:
-                LOGGER.info("Oracle training is disabled. Only the agent will be trained and the dataset will not be augmented.\n",
-                                 "This is equivalent to just training the agent for an additional {} ({} x {}) epochs.".format(self.agent_train_steps*max_ep, max_ep, self.agent_train_steps))
-            else:
+            if not do_warmup:
                 total_added = 0
                 
-                with tqdm_redirect_class(total=self.nb_new_streamlines_per_iter,
+                with tqdm(total=self.nb_new_streamlines_per_iter,
                                 desc="Adding new streamlines to the dataset",
                                 mininterval=5.0) as sub_pbar:
-                    while total_added < self.nb_new_streamlines_per_iter:
-                        with tempfile.TemporaryDirectory() as tmpdir:
+                    with tempfile.TemporaryDirectory() as tmpdir:
+                        # Those will hold the streamlines we are collecting
+                        # to add to the dataset once we have enough.
+                        sft_valid = None
+                        sft_invalid = None
+
+                        while total_added < self.nb_new_streamlines_per_iter:
                             # Generate a tractogram
                             tractograms_path = os.path.join(tmpdir, "tractograms")
                             if not os.path.exists(tractograms_path):
@@ -287,40 +345,64 @@ class RlhfRefactored(FineTrackTraining):
                             if not os.path.exists(filtered_path):
                                 os.makedirs(filtered_path)
 
+                            LOGGER.info(
+                                "Filtering tractograms for RLHF training...")
                             # Need to filter for each filterer and keep the same order.
                             filtered_tractograms = self.filter_tractograms(
                                 tractograms, filtered_path)
-
-                            LOGGER.info(
-                                "Adding filtered tractograms to the dataset...")
-                            nb_new_streamlines = \
-                                self.dataset_manager.add_tractograms_to_dataset(
-                                filtered_tractograms)
                             
+                            # Merge the valid and invalid tractograms
+                            for valid, invalid in filtered_tractograms:
+                                if sft_valid is None:
+                                    sft_valid = valid
+                                    sft_invalid = invalid
+                                else:
+                                    sft_valid += valid
+                                    sft_invalid += invalid
+
+                                nb_new_streamlines = len(valid) + len(invalid)
+
                             total_added += nb_new_streamlines
                             sub_pbar.update(nb_new_streamlines)
+
+                        LOGGER.info(
+                            "Adding filtered tractograms to the dataset...")
+                        self.dataset_manager.add_tractograms_to_dataset(
+                            [(sft_valid, sft_invalid)])
 
                 data_stats = self.dataset_manager.fetch_dataset_stats()
                 LOGGER.info(
                     prettier_dict(data_stats, title="Dataset stats (iter {})".format(i)))
 
                 # Train reward model
-                LOGGER.info("Training reward model...")
-                self.train_reward()
-                self.train_stopping_criterion()
+                if not self.disable_oracle_training:
+                    self.train_reward()
+                    self.train_stopping_criterion()
 
             # Train the RL agent
+            agent_nb_steps = self.agent_train_steps if not do_warmup else self.warmup_agent_steps
+            if do_warmup:
+                LOGGER.info(
+                    "Warmup agent for {} steps.".format(agent_nb_steps))
+
             self.agent_trainer.rl_train(alg,
                                         env,
                                         valid_env,
-                                        max_ep=self.agent_train_steps,
+                                        max_ep=agent_nb_steps,
                                         starting_ep=current_ep,
                                         save_model_dir=self.model_dir,
-                                        test_before_training=False
+                                        test_before_training=do_warmup or i == 0
                                         )
-            current_ep += self.agent_train_steps
 
-            self.end_finetuning_epoch(i)
+            self.end_finetuning_epoch(i, do_warmup)
+
+            if do_warmup:
+                current_ep += self.warmup_agent_steps
+            else:
+                self.backuper.backup(step=i)
+                current_ep += self.agent_train_steps
+                i += 1
+            do_warmup = False
 
     def train_reward(self):
         """
@@ -331,7 +413,8 @@ class RlhfRefactored(FineTrackTraining):
         print(">>> Training reward model <<<")
         dm = StreamlineDataModule(self.dataset_manager.dataset_file_path,
                                   batch_size=self.oracle_batch_size,
-                                  num_workers=self.num_workers)
+                                  num_workers=self.num_workers,
+                                  nb_points=self.oracle_reward.nb_points)
         
 
         dm.setup('test', dense=False, partial=False)
@@ -341,6 +424,9 @@ class RlhfRefactored(FineTrackTraining):
         dm.setup('fit', dense=False, partial=False)
         self.oracle_reward_trainer.fit_iter(train_dataloader=dm.train_dataloader(),
                                      val_dataloader=dm.val_dataloader())
+        
+        # Auto-checkpointing is disabled, we need to save them manually
+        self.oracle_reward_trainer.save_model_checkpoint()
 
         metrics_after = self.oracle_reward_trainer.test(test_dataloader=dm.test_dataloader())
         print(prettier_metrics(metrics_after, title="Test metrics after fine-tuning"))
@@ -355,16 +441,24 @@ class RlhfRefactored(FineTrackTraining):
         print(">>> Training stopping criterion model <<<")
         dm = StreamlineDataModule(self.dataset_manager.dataset_file_path,
                                   batch_size=self.oracle_batch_size,
-                                  num_workers=self.num_workers)
+                                  num_workers=self.num_workers,
+                                  nb_points=self.oracle_crit.nb_points)
         
         # Test the performance of the actual model BEFORE fine-tuning.
-        dm.setup('test', dense=True, partial=False)
+        # TO REVISE:
+        # To get an accuracy plot, we test the stopping criterion on fully
+        # tracked streamlines even though it's supposed to predict on partial
+        # streamlines.
+        dm.setup('test', dense=False, partial=False)
         metrics_before = self.oracle_crit_trainer.test(test_dataloader=dm.test_dataloader())
         print(prettier_metrics(metrics_before, title="Test metrics before fine-tuning"))
 
-        dm.setup('fit', dense=True, partial=False)
+        dm.setup('fit', dense=True, partial=True)
         self.oracle_crit_trainer.fit_iter(train_dataloader=dm.train_dataloader(),
                                      val_dataloader=dm.val_dataloader())
+        
+        # Auto-checkpointing is disabled, we need to save manually
+        self.oracle_crit_trainer.save_model_checkpoint()
         
         # Test the performance of the actual model AFTER fine-tuning.
         metrics_after = self.oracle_crit_trainer.test(test_dataloader=dm.test_dataloader())
@@ -486,13 +580,21 @@ class RlhfRefactored(FineTrackTraining):
         # self.hyperparameters.update({})
         super().save_hyperparameters(filename='rlhf_hyperparameters.json')
 
-    def start_finetuning_epoch(self, epoch: int):
-        print("==================================================")
-        print("======= Starting RLHF finetuning epoch {}/{} =======".format(epoch+1, self.max_ep))
+    def start_finetuning_epoch(self, epoch: int, warmup: bool = False):
+        if warmup:
+            print("==================================================")    
+            print("=========== Starting WARMUP of {} steps =========".format(self.warmup_agent_steps))
+        else:
+            print("==================================================")
+            print("======= Starting RLHF finetuning epoch {}/{} =======".format(epoch+1, self.max_ep))
 
-    def end_finetuning_epoch(self, epoch: int):
-        print("======= Finished RLHF finetuning epoch {}/{} =======".format(epoch+1, self.max_ep))
-        print("==================================================")
+    def end_finetuning_epoch(self, epoch: int, warmup: bool = False):
+        if warmup:
+            print("=========== Finished WARMUP of {} steps =========".format(self.warmup_agent_steps))
+            print("==================================================")
+        else:
+            print("======= Finished RLHF finetuning epoch {}/{} =======".format(epoch+1, self.max_ep))
+            print("==================================================")
 
 
 def add_rlhf_training_args(parser: argparse.ArgumentParser):
@@ -507,6 +609,10 @@ def add_rlhf_training_args(parser: argparse.ArgumentParser):
                             "for the RLHF training pipeline. If None, the general npv will be used.")
     rlhf_group.add_argument("--nb_new_streamlines_per_iter", type=int, default=500000,
                             help="Number of new streamlines to add to the dataset at each iteration.")
+    rlhf_group.add_argument("--max_dataset_size", type=int, default=5000000,
+                            help="Maximum number of streamlines to keep in the dataset.")
+    rlhf_group.add_argument("--warmup_agent_steps", type=int,
+                            help="Minimum number of steps to warm up the agent before starting the training of the oracle")
 
     # The following arguments are usually used for PPO, but we are also testing it for other algorithms.
     parser.add_argument('--adaptive_kl', action='store_true',
@@ -601,7 +707,7 @@ def main():
     trainer_cls = get_trainer_cls_and_args(args.alg)
 
     # Create and run the experiment
-    rlhf_experiment = RlhfRefactored(
+    rlhf_experiment = RlhfTraining(
         vars(args),
         trainer_cls
     )

@@ -97,7 +97,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Analyze the content of an HDF5 file containing streamlines and scores.")
     parser.add_argument("file", type=str, help="Path to the HDF5 file.")
-    parser.add_argument("--datagroup", type=str, default="train", choices=['streamlines', 'train', 'test'], help="Name of the group containing the streamlines and scores. Default is 'streamlines'.")
+    parser.add_argument("--datagroup", type=str, default="train", choices=['streamlines', 'train', 'valid', 'test'], help="Name of the group containing the streamlines and scores. Default is 'streamlines'.")
     parser.add_argument("--operation", type=str, default="balance", help="Operation to perform on the HDF5 file. Default is balance.")
     args = parser.parse_args()
     main(args.file, args.operation, args.datagroup)

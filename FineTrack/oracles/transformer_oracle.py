@@ -307,7 +307,7 @@ class TransformerOracle(LightningLikeModule):
                     'train_recall': self.recall(y_hat, y_int),
                     'train_spec': self.spec(y_hat, y_int),
                     'train_precision': self.precision(y_hat, y_int),
-                    'train_f1': self.f1(y_hat, y)
+                    'train_f1': self.f1(y_hat, y_int)
                 })
 
         matrix = {
@@ -347,7 +347,7 @@ class TransformerOracle(LightningLikeModule):
                     'val_recall':    self.recall(y_hat, y_int),
                     'val_spec':      self.spec(y_hat, y_int),
                     'val_precision': self.precision(y_hat, y_int),
-                    'val_f1':        self.f1(y_hat, y),
+                    'val_f1':        self.f1(y_hat, y_int),
                 })
 
         # Since we have a range of [-1, 1] for the
@@ -396,7 +396,7 @@ class TransformerOracle(LightningLikeModule):
                     'test_recall':    self.recall(y_hat, y_int),
                     'test_spec':      self.spec(y_hat, y_int),
                     'test_precision': self.precision(y_hat, y_int),
-                    'test_f1':        self.f1(y_hat, y),
+                    'test_f1':        self.f1(y_hat, y_int),
                 })
         # self.roc.update(y_hat, y_int.int())
 

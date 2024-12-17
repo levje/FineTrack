@@ -66,15 +66,11 @@ class tqdm_redirect_class(tqdm):
         self.logging_redirector = logging_redirect_tqdm()
         self.print_redirector.__enter__()
         self.logging_redirector.__enter__()
-
-        print("tqdm_redirect_class called")
-
         return super().__enter__()
     
     def __exit__(self, exc_type, exc_value, traceback):
         self.print_redirector.__exit__(exc_type, exc_value, traceback)
         self.logging_redirector.__exit__(exc_type, exc_value, traceback)
-        print("tqdm_redirect_class exited")
         return super().__exit__(exc_type, exc_value, traceback)
     
     def __iter__(self):

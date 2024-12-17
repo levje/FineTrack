@@ -533,7 +533,7 @@ class PPO(RLAlgorithm):
         self.agent.load_checkpoint(checkpoint['agent'])
         self.optimizer.load_state_dict(checkpoint['optimizer'])
 
-    def save_checkpoint(self, checkpoint_file: str):
+    def save_checkpoint(self, checkpoint_file: str, **extra_info):
         """
         Save the current state of the algorithm into a checkpoint.
 
@@ -545,6 +545,7 @@ class PPO(RLAlgorithm):
         checkpoint = {
             'agent': self.agent.state_dict(as_dict=True),
             'optimizer': self.optimizer.state_dict(),
+            **extra_info
         }
 
         torch.save(checkpoint, checkpoint_file)

@@ -3,8 +3,8 @@ import comet_ml  # noqa: F401 ugh
 import torch
 import os
 
-from FineTrack.trainers.rlhf_refactored_train import (
-    RlhfRefactored,
+from FineTrack.trainers.rlhf_train import (
+    RlhfTraining,
     parse_args,
     get_trainer_cls_and_args)
 from FineTrack.utils.torch_utils import get_device, assert_accelerator
@@ -75,7 +75,7 @@ def main():
         })
 
         trainer_cls = get_trainer_cls_and_args(args.alg)
-        sac_experiment = RlhfRefactored(
+        sac_experiment = RlhfTraining(
             arguments,
             trainer_cls
             # experiment

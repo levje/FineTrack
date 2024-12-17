@@ -1,22 +1,62 @@
-islocal=1
+#!/bin/bash
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=22000M
+#SBATCH --time=0-40:00:00
+#SBATCH --mail-user=jeremi.levesque@usherbrooke.ca
+#SBATCH --mail-type=ALL
 
-# if is local
-if [ $islocal -eq 1 ]; then
-    echo "Running locally"
-else
-    echo "Running on HPC..."
+EXPNAME=OracleNet-Transformer-Crit-32-Classif
+EXPID=OracleNet-Transformer-Crit-32-Classif
+MAXEPOCHS=75
+NB_STREAMLINES_POINTS=32
+NUM_WORKERS=20
+DENSE=0
+PARTIAL=0
+
+additionnal_args=()
+if [ $DENSE -eq 1 ]; then
+    additionnal_args+=("--dense")
 fi
 
-EXPNAME=OracleTrainTestFibercup
-EXPPATH=data/experiments/TractOracleNet/${EXPNAME}
-EXPID=Transformer-Classif-Zero-Big-MSELoss-
-MAXEPOCHS=500
-#DATASET_FILE=/home/local/USHERBROOKE/levj1404/Documents/TractOracleNet/TractOracleNet/datasets/ismrm2015_1mm/train_test_classical_tracts_dataset.hdf5
-# DATASET_FILE=antoine-pft.hdf5
-# DATASET_FILE=full-antoine.hdf5
-# DATASET_FILE=data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine_modrange.hdf5
-# DATASET_FILE=data/datasets/fibercup/streamlines/stable/fibercup_tracts.hdf5
-DATASET_FILE=data/datasets/fibercup/streamlines/stable/fibercup_tracts_big.hdf5
+if [ $PARTIAL -eq 1 ]; then
+    additionnal_args+=("--partial")
+fi
+
+# Check if the script is ran locally or on a cluster node.
+if [ -z $SLURM_JOB_ID ]; then
+    islocal=1
+else
+    islocal=0
+fi
+
+if [ $islocal -eq 1 ]; then
+    echo "Running locally"
+    EXPPATH=data/experiments/TractOracleNet/${EXPNAME}
+    DATASET_FILE=/home/local/USHERBROOKE/levj1404/Documents/TrackToLearn/data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine_valid.hdf5
+    # DATASET_FILE=/home/local/USHERBROOKE/levj1404/Documents/TractOracleNet/TractOracleNet/datasets/ismrm2015_1mm/train_test_classical_tracts_dataset.hdf5
+    # DATASET_FILE=antoine-pft.hdf5
+    # DATASET_FILE=full-antoine.hdf5
+    # DATASET_FILE=data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine_modrange.hdf5
+    # DATASET_FILE=data/datasets/fibercup/streamlines/stable/fibercup_tracts.hdf5
+    # DATASET_FILE=data/datasets/fibercup/streamlines/stable/fibercup_tracts_big.hdf5
+else
+    echo "Running on HPC..."
+    module load python/3.10 cuda cudnn httpproxy
+    source ~/ENV-TTL-2/bin/activate
+    export COMET_API_KEY=$(cat ~/.comet_api_key)
+
+    EXPPATH=${SLURM_TMPDIR}/experiment/${EXPNAME}
+    mkdir -p ${EXPPATH}
+
+    # Prepare datasets
+    echo "Copying dataset..."
+    cp ~/projects/def-pmjodoin/levje/datasets/train_test_classical_tracts_antoine_valid.hdf5 $SLURM_TMPDIR
+    DATASET_FILE=$SLURM_TMPDIR/train_test_classical_tracts_antoine_valid.hdf5
+    
+    NUM_WORKERS=3
+fi
+
 
 mkdir -p ${EXPPATH}
 
@@ -26,7 +66,7 @@ mkdir -p ${EXPPATH}
 # compensate for the smaller batch size. The original batch size is 2048 and we want
 # to use a batch size of 512.
 TOTAL_BATCH_SIZE=2048
-MICRO_BATCH_SIZE=2048 #512 # Should reduce or increase this based on the GPU memory available.
+MICRO_BATCH_SIZE=1024 #512 # Should reduce or increase this based on the GPU memory available.
 GRAD_ACCUM_STEPS=$((TOTAL_BATCH_SIZE / MICRO_BATCH_SIZE)) # 88
 
 echo "Total batch size: ${TOTAL_BATCH_SIZE}"
@@ -45,8 +85,16 @@ python TrackToLearn/trainers/tractoraclenet_train.py \
     --use_comet \
     --n_head 4 \
     --n_layers 4 \
-    --out_activation sigmoid 
-    # --dense \
-    # --partial
+    --out_activation sigmoid \
+    --nb_streamlines_points ${NB_STREAMLINES_POINTS} \
+    --num_workers ${NUM_WORKERS} \
+    "${additionnal_args[@]}"
 
+# Archive into .tar.gz everything in $SCRATCH_TMPDIR and copy it to ~/scratch/ with the name TractOracleNet-aaaa-mm-dd-hh-mm-ss.tar.gz
+if [ $islocal -ne 1 ]; then
+    echo "Archiving experiment..."
+    ARCHIVE_NAME=TractOracleNet-$(date +"%Y-%m-%d-%H%M%S").tar.gz
+    tar -cvf ${SLURM_TMPDIR}/${ARCHIVE_NAME} $EXPPATH
+    cp ${SLURM_TMPDIR}/${ARCHIVE_NAME} ~/scratch/${ARCHIVE_NAME}
+fi
 

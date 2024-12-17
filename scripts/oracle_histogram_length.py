@@ -19,6 +19,7 @@ from tqdm import tqdm
 from collections import defaultdict
 from nibabel.streamlines.array_sequence import ArraySequence
 from dipy.tracking.streamline import set_number_of_points
+from TrackToLearn.environments.utils import resample_streamlines_if_needed
 
 sns.set_style("darkgrid")
 
@@ -73,28 +74,28 @@ def plot_length_freq_histogram(tractograms, bins, ax=None, reference=None, filte
 #     print("wtf hand_computed_acc: {} ({}/{})".format(hand_computed_acc, nb_corrects, nb_total))
 #     return hand_computed_acc, preds
 
-def streamlines_to_numpy(streamlines):
-    if isinstance(streamlines, np.ndarray):
-        return streamlines
-    elif isinstance(streamlines, list):
-        return np.array(streamlines)
-    elif isinstance(streamlines, ArraySequence):
-        return np.array(set_number_of_points(streamlines, 128))
-    else:
-        raise ValueError("Unsupported type for streamlines.")
+# def streamlines_to_numpy(streamlines, nb_points):
+#     if isinstance(streamlines, np.ndarray):
+#         return streamlines
+#     elif isinstance(streamlines, list):
+#         return np.array(streamlines)
+#     elif isinstance(streamlines, ArraySequence):
+#         return np.array(set_number_of_points(streamlines, nb_points))
+#     else:
+#         raise ValueError("Unsupported type for streamlines.")
         
 
 def predict(streamlines, scores, model: TransformerOracle):
     model.eval()  # Set model to evaluation mode
     model.to(get_device_str())
-    streamlines = streamlines_to_numpy(streamlines)
+    streamlines = resample_streamlines_if_needed(streamlines, (model.input_size // 3) + 1)
     dirs = np.diff(streamlines, axis=1)
 
     batch_size = 2048
     preds = np.zeros(len(streamlines))
     exp_np_loops = len(streamlines) // batch_size
     for i, batch in enumerate(tqdm(range(exp_np_loops), desc="testing oracle")):
-        start = (i+1) * batch_size
+        start = i * batch_size
         end = min(start + batch_size, len(dirs))
 
         batch = torch.from_numpy(dirs[start:end])
@@ -102,17 +103,20 @@ def predict(streamlines, scores, model: TransformerOracle):
         
         with torch.no_grad():
             with torch.autocast(device_type='cuda', dtype=torch.float16):
-                predictions = (model(batch) > 0.5).int().cpu().numpy()
+                logits = model(batch)
+                predictions = (logits > 0.5).int().cpu().numpy()
         
         preds[start:end] = predictions
 
-    print("Mean accuracy: ", np.mean(preds == scores))
+    # print("Mean accuracy: ", np.mean(preds == scores))
 
     return preds
 
-def load_model(checkpoint: str):
-    model = TransformerOracle.load_from_checkpoint(torch.load(checkpoint))
-    # model = OracleSingleton(checkpoint, device="cuda")
+def load_model(checkpoint: str, singleton=False):
+    if singleton:
+        model = OracleSingleton(checkpoint, device="cuda")
+    else:
+        model = TransformerOracle.load_from_checkpoint(torch.load(checkpoint))
     return model
 
 def load_sft(tractogram, reference, filter_for_score=1):
@@ -131,15 +135,15 @@ def load_sft(tractogram, reference, filter_for_score=1):
             "Reference should be provided for hdf5 files."
         with h5py.File(tractogram, 'r') as f:
             group = f["test"] if "test" in f else f["train"]
-            streamlines = np.array(group["data"])
-            scores = np.array(group["scores"])
+            streamlines = group["data"][:]
+            scores = group["scores"][:]
 
-            print("Nb streamlines before filtering: ", len(streamlines))
             if filter_for_score is not None:
+                print("Nb streamlines before filtering: ", len(streamlines))
                 is_score = scores == filter_for_score
-                streamlines = streamlines[scores == filter_for_score]
-                scores = scores[scores == filter_for_score]
-            print("Nb streamlines after filtering: ", len(streamlines))
+                streamlines = streamlines[is_score]
+                scores = scores[is_score]
+                print("Nb streamlines after filtering: ", len(streamlines))
 
             sft = StatefulTractogram(streamlines, reference, Space.VOX, origin=Origin.TRACKVIS, data_per_streamline={"score": scores})
     else:
@@ -179,9 +183,8 @@ def plot_length_acc_histogram(model: OracleSingleton, tractograms,
         sft.to_vox()
         sft.to_corner()
         
-        # predictions = model.predict(sft.streamlines)
-        # predictions = (predictions > 0.5).astype(np.uint8)
-        predictions = predict(sft.streamlines, scores, model)
+        predictions = model.predict(sft.streamlines, prefetch_streamlines=False)
+        predictions = (predictions > 0.5).astype(np.uint8)
 
         #################################
         # RASMM space: Compute the lengths
@@ -225,7 +228,7 @@ def plot_length_acc_histogram(model: OracleSingleton, tractograms,
 def main():
     args = parse_args()
     tractograms = args.tractograms
-    model = load_model(checkpoint=args.checkpoint)
+    model = load_model(checkpoint=args.checkpoint, singleton=True)
 
     # The bins should be 2mm long and the range should be from 0 to 200mm
     bins = np.arange(0, 200, args.bin_width)

@@ -57,6 +57,8 @@ class TractOracleNetTraining(object):
             self.model_cls = CnnOracle
         else:    
             raise ValueError("Invalid architecture.")
+        
+        self.nb_points = train_dto['nb_streamlines_points']
 
 
     def train(self):
@@ -69,7 +71,7 @@ class TractOracleNetTraining(object):
 
         # Get example input to define NN input size
         # 128 points directions -> 127 3D directions
-        self.input_size = (128-1) * 3  # Get this from datamodule ?
+        self.input_size = (self.nb_points-1) * 3  # Get this from datamodule ?
         self.output_size = 1
 
         if self.checkpoint:
@@ -93,12 +95,12 @@ class TractOracleNetTraining(object):
             parse_args=False,
             auto_metric_logging=False,
             disabled=not self.use_comet)
+        oracle_experiment.set_name(self.id)
 
         print("Done.")
 
         oracle_trainer = OracleTrainer(
             oracle_experiment,
-            self.id,
             root_dir,
             self.oracle_train_steps,
             enable_checkpointing=True,
@@ -113,7 +115,8 @@ class TractOracleNetTraining(object):
         # Instanciate the datamodule
         dm = StreamlineDataModule(self.dataset_file,
                                   batch_size=self.oracle_batch_size,
-                                  num_workers=self.num_workers)
+                                  num_workers=self.num_workers,
+                                  nb_points=self.nb_points)
 
         dm.setup('fit', dense=self.dense, partial=self.partial)
         oracle_trainer.fit_iter(train_dataloader=dm.train_dataloader(),
@@ -176,6 +179,8 @@ def parse_args():
     parser.add_argument('--oracle_architecture', type=str, default='transformer',
                         choices=['transformer', 'cnn'],
                         help='Architecture to use for the oracle.')
+    parser.add_argument('--nb_streamlines_points', type=int, default=128,
+                        help='Resample each streamline to this number of points.')
 
     add_oracle_train_args(parser)
 

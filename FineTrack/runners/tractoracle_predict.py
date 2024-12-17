@@ -7,7 +7,7 @@ from FineTrack.utils.torch_utils import assert_accelerator, get_device
 from FineTrack.oracles.transformer_oracle import TransformerOracle
 from FineTrack.trainers.oracle.data_module import StreamlineDataModule
 from FineTrack.trainers.oracle.oracle_trainer import OracleTrainer
-from FineTrack.utils.utils import prettier_metrics
+from FineTrack.utils.utils import prettier_metrics, SimpleTimer
 
 
 assert_accelerator()
@@ -46,15 +46,15 @@ class TractOracleNetPredict(object):
         if not os.path.exists(root_dir):
             os.makedirs(root_dir)
 
-        # Get example input to define NN input size
-        # 128 points directions -> 127 3D directions
-        self.input_size = (128-1) * 3  # Get this from datamodule ?
-        self.output_size = 1
 
         if self.checkpoint:
             checkpoint = torch.load(self.checkpoint)
             model = TransformerOracle.load_from_checkpoint(checkpoint)
         else:
+            # Get example input to define NN input size
+            # 128 points directions -> 127 3D directions
+            self.input_size = (128-1) * 3  # Get this from datamodule ?
+            self.output_size = 1
             model = TransformerOracle(
                 self.input_size, self.output_size, self.n_head,
                 self.n_layers, self.lr)
@@ -67,12 +67,12 @@ class TractOracleNetPredict(object):
             parse_args=False,
             auto_metric_logging=False,
             disabled=True)
+        oracle_experiment.set_name(self.id)
 
         print("Done.")
 
         oracle_trainer = OracleTrainer(
             oracle_experiment,
-            self.id,
             root_dir,
             self.oracle_train_steps,
             enable_checkpointing=True,
@@ -83,14 +83,18 @@ class TractOracleNetPredict(object):
         oracle_trainer.setup_model_training(model)
 
         # Instanciate the datamodule
+        nb_points = (model.input_size // 3) + 1
         dm = StreamlineDataModule(self.dataset_file,
                                   batch_size=self.oracle_batch_size,
-                                  num_workers=self.num_workers)
+                                  num_workers=self.num_workers,
+                                  nb_points=nb_points)
 
         # Test the model
         dm.setup('test')
-        test_metrics = oracle_trainer.test(
-            test_dataloader=dm.test_dataloader(), compute_histogram_metrics=True)
+        with SimpleTimer() as t:
+            test_metrics = oracle_trainer.test(
+                test_dataloader=dm.test_dataloader(), compute_histogram_metrics=False)
+        print("Testing took {:.2f} seconds.".format(t.interval))
         print("Performance on the test set:\n",
               prettier_metrics(test_metrics))
 

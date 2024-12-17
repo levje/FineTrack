@@ -3,15 +3,18 @@ import json
 import os
 import tempfile
 from collections import namedtuple
+from tempfile import TemporaryDirectory
 
 import nibabel as nib
 import numpy as np
-from dipy.io.streamline import load_tractogram
+from dipy.io.streamline import load_tractogram, save_tractogram
 from scilpy.io.image import get_data_as_mask
 from scilpy.segment.tractogram_from_roi import segment_tractogram_from_roi
 from scilpy.tractanalysis.scoring import compute_tractometry
 from scilpy.tractanalysis.streamlines_metrics import compute_tract_counts_map
 from scilpy.utils.filenames import split_name_with_nii
+from scilpy.tractograms.streamline_operations import \
+    filter_streamlines_by_length
 
 from FineTrack.utils.logging import get_logger
 from FineTrack.experiment.validators import Validator
@@ -336,8 +339,9 @@ class TractometerValidator(Validator):
         base_dir,
         reference,
         dilate_endpoints=1,
+        min_length=20,
+        max_length=200
     ):
-
         self.name = 'Tractometer'
 
         self.gt_config = os.path.join(base_dir, 'scil_scoring_config.json')
@@ -345,6 +349,8 @@ class TractometerValidator(Validator):
         self.gt_dir = base_dir
         self.reference = reference
         self.dilation_factor = dilate_endpoints
+        self.min_length = min_length
+        self.max_length = max_length
 
         # Load
         (self.gt_tails, self.gt_heads, self.bundle_names, self.list_rois,
@@ -398,5 +404,36 @@ class TractometerValidator(Validator):
                             'mean_OL': final_results.get('mean_OL', 0),
                             'VB': final_results['VB'],
                             'IB': final_results.get('IB', 0)}
+        
+        # Also filter by length to get the VC ratio.
+        total_encountered = 0
+        total_removed = 0
+        for i in range(len(vb_sft_list)):
+            sft = vb_sft_list[i]
+            if len(sft) == 0:
+                continue
+            
+            valid_sft, _, rejected_sft = filter_streamlines_by_length(
+                sft, self.min_length, self.max_length, return_rejected=True)
+            
+            rejected_sft.to_center() # Why do we need to do that?
+
+            if len(rejected_sft) > 0:
+                vb_sft_list[i] = valid_sft
+                nc_sft = nc_sft + rejected_sft
+
+            total_encountered += len(sft)
+            total_removed += len(sft) - len(valid_sft)
+        
+        perc_removed = (total_removed / total_encountered) * 100
+        LOGGER.info("Removed {} too short/long streamlines (which was {:.1f}% of the total nb of streamlines)".format(
+            total_removed,
+            perc_removed))
+        
+        postproc_results = compute_tractometry(
+            vb_sft_list, wpc_sft_list, ib_sft_list, nc_sft,
+            args, self.bundle_names, self.gt_masks, dimensions, ib_names)
+        
+        relevant_results["VC_postproc"] = postproc_results['VS_ratio']
 
         return relevant_results
