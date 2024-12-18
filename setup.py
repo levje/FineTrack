@@ -2,13 +2,13 @@ from setuptools import setup
 from torch.utils import cpp_extension
 
 setup(
-    packages=['finetrack'],
+    packages=['FineTrack'],
 
     # List C++ extensions
     ext_modules=[
         cpp_extension.CppExtension(
-            'finetrack.algorithms.shared.disc_cumsum',
-            ['finetrack/algorithms/shared/disc_cumsum.cpp'],
+            'FineTrack.algorithms.shared.disc_cumsum',
+            ['FineTrack/algorithms/shared/disc_cumsum.cpp'],
         ),
     ],
 
