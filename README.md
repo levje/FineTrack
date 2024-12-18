@@ -1,4 +1,4 @@
-# FineTrack: 
+# FineTrack
 
 FineTrack is a reinforcement learning (RL) framework applied to [tractography](https://tractography.io/about/) where the **reward model is iteratively aligned with the policy** during training. This work also bring some architectural improvements along with an added module for Monte-Carlo exploration during training and inference/tracking.
 
