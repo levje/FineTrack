@@ -1,2 +1,24 @@
 [build-system]
-requires = ["setuptools", "wheel", "torch==2.2.0"]
+requires = ["setuptools >= 61.0", "torch==2.2.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finetrack"
+version = "0.1.0"
+authors = [
+    { name="Jeremi Levesque", email="jeremi.levesque@usherbrooke.ca" }
+]
+description = "RL-based tractography with policy-aligned reward model"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    'Programming Language :: Python :: 3',
+    'Development Status :: 3 - Alpha',
+    'Intended Audience :: Science/Research',
+    'Topic :: Scientific/Engineering :: Artificial Intelligence',
+]
+keywords = ["reinforcement-learning", "tractography", "diffusion-MRI"]
+
+[project.urls]
+Repository = "https://github.com/levje/FineTrack"
+
