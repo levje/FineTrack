@@ -6,12 +6,7 @@ from FineTrack.oracles.transformer_oracle import TransformerOracle
 from FineTrack.utils.torch_utils import get_device_str, get_device
 from nibabel.streamlines.array_sequence import ArraySequence
 from FineTrack.environments.utils import resample_streamlines_if_needed
-import contextlib
 from tqdm import tqdm
-
-autocast_context = torch.cuda.amp.autocast if torch.cuda.is_available(
-) else contextlib.nullcontext
-
 
 class OracleSingleton:
     _registered_checkpoints = {
@@ -28,7 +23,7 @@ class OracleSingleton:
         return cls._registered_checkpoints[checkpoint_str]
 
     def __init__(self, checkpoint: str, device: str, batch_size=4096, lr=None):
-        self.checkpoint = torch.load(checkpoint, map_location=get_device())
+        self.checkpoint = torch.load(checkpoint, map_location=get_device(), weights_only=False)
 
         # The model's class is saved in hparams
         is_pl_checkpoint = "pytorch-lightning_version" in self.checkpoint.keys()
@@ -89,7 +84,7 @@ class OracleSingleton:
                     # Put the directions in pinned memory
                     placeholder[:current_batch_size] = torch.from_numpy(dirs)
 
-                with autocast_context():
+                with torch.amp.autocast(device_type='cuda'):
                     with torch.no_grad():
                         predictions = self.model(input_data)
                         result[
@@ -113,7 +108,7 @@ class OracleSingleton:
                 dirs = np.diff(data, axis=1)
                 dirs = torch.tensor(dirs, device=self.device)
 
-                with autocast_context():
+                with torch.amp.autocast(device_type='cuda'):
                     with torch.no_grad():
                         predictions = self.model(dirs)
                         result[start:end] = predictions

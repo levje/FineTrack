@@ -48,7 +48,7 @@ class TractOracleNetPredict(object):
 
 
         if self.checkpoint:
-            checkpoint = torch.load(self.checkpoint)
+            checkpoint = torch.load(self.checkpoint, weights_only=False)
             model = TransformerOracle.load_from_checkpoint(checkpoint)
         else:
             # Get example input to define NN input size

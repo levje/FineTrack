@@ -116,7 +116,7 @@ def load_model(checkpoint: str, singleton=False):
     if singleton:
         model = OracleSingleton(checkpoint, device="cuda")
     else:
-        model = TransformerOracle.load_from_checkpoint(torch.load(checkpoint))
+        model = TransformerOracle.load_from_checkpoint(torch.load(checkpoint, weights_only=False))
     return model
 
 def load_sft(tractogram, reference, filter_for_score=1):

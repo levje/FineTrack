@@ -528,7 +528,7 @@ class PPO(RLAlgorithm):
         checkpoint: dict
             Dictionary containing the checkpoint to load.
         """
-        checkpoint = torch.load(checkpoint_file)
+        checkpoint = torch.load(checkpoint_file, weights_only=False)
 
         self.agent.load_checkpoint(checkpoint['agent'])
         self.optimizer.load_state_dict(checkpoint['optimizer'])

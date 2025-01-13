@@ -424,10 +424,10 @@ class ActorCritic(object):
         """
         self.critic.load_state_dict(
             torch.load(pjoin(path, filename + '_critic.pth'),
-                       map_location=self.device))
+                       map_location=self.device), weights_only=False)
         self.actor.load_state_dict(
             torch.load(pjoin(path, filename + '_actor.pth'),
-                       map_location=self.device))
+                       map_location=self.device), weights_only=False)
         
     def load_checkpoint(self, agent_checkpoint: dict):
         """

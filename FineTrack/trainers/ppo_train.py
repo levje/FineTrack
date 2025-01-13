@@ -56,7 +56,7 @@ class PPOFineTrackTraining(FineTrackTraining):
         if ppo_train_dto['init_critic_to_oracle']:
             if self.oracle_checkpoint:
                 self.critic_checkpoint = torch.load(ppo_train_dto['oracle_checkpoint'],\
-                                                    map_location=get_device())
+                                                    map_location=get_device(), weights_only=False)
             else:
                 warnings.warn("No oracle checkpoint provided, but init_critic_to_oracle is set to True.\n"
                               "Critic will be initialized randomly.")

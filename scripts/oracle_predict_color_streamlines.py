@@ -171,7 +171,7 @@ class TractOracleNetPredictor():
         """
         Main method where the magic happens
         """
-        checkpoint = torch.load(self.checkpoint, map_location=device)
+        checkpoint = torch.load(self.checkpoint, map_location=device, weights_only=False)
         model = TransformerOracle.load_from_checkpoint(checkpoint).to(device)
 
         # Load the tractogram using a reference to make sure it can
