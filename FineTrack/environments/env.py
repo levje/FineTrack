@@ -218,7 +218,9 @@ class BaseEnv(object):
         self.add_neighborhood_vox = convert_length_mm2vox(
             self.step_size_mm,
             self.affine_vox2rasmm)
-        self.neighborhood_radius = 2
+        self.neighborhood_radius = 2  # e.g. a radius of 4 voxels will produce
+                                      # a 9x9x9 neighborhood (4 + 1 + 4 for
+                                      # each dimension).
         
         self.neighborhood_directions = prepare_neighborhood_vectors('grid',
             self.neighborhood_radius, self.add_neighborhood_vox).to(

@@ -9,7 +9,7 @@ from typing import Tuple
 
 from FineTrack.algorithms.sac import SAC
 from FineTrack.algorithms.shared.offpolicy import SACActorCritic
-from FineTrack.algorithms.shared.replay import OffPolicyReplayBuffer
+from FineTrack.algorithms.shared.replay import OffPolicyReplayBuffer, OffPolicyLazyReplayBuffer
 from FineTrack.utils.torch_utils import get_device, gradients_norm
 from FineTrack.algorithms.shared.kl import AdaptiveKLController, FixedKLController
 from FineTrack.environments.conv_state import ConvStateShape
@@ -97,6 +97,7 @@ class SACAuto(SAC):
 
         self.max_action = 1.
         self.t = 1
+        self.nb_updates_per_sample = 5
 
         self.action_size = action_size
         self.device = device
@@ -159,7 +160,7 @@ class SACAuto(SAC):
         self.agent_freq = 1
 
         # Replay buffer
-        self.replay_buffer = OffPolicyReplayBuffer(
+        self.replay_buffer = OffPolicyLazyReplayBuffer(
             input_shape, action_size, max_size=self.hparams.replay_size)
 
         self.rng = rng

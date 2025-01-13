@@ -81,3 +81,5 @@ custom_models/
 out_tractograms/
 histograms/
 dipy_segment_*/
+comet_plots/
+test.h5

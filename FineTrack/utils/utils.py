@@ -462,3 +462,51 @@ def get_unique_experiment_name(experiment_name, exp_id):
     
     unique_name = digestible_hash[:8] + experiment_name
     return unique_name
+
+def assert_space_available(size_in_gb, perc_threshold=0.8):
+    assert perc_threshold > 0 and perc_threshold < 1, \
+        "The threshold should be between 0 and 1."
+
+    # Get the disk space available
+    statvfs = os.statvfs("/")
+    free_space = statvfs.f_frsize * statvfs.f_bavail
+    free_space_in_gb = free_space / (1024**3)
+
+    # Make sure that new file doesn't exceed 80% of the disk space.
+    if size_in_gb > perc_threshold * free_space_in_gb:
+        raise RuntimeError("The file you're trying to create will probably "
+                           "fill up (or almost) the disk space available "
+                           "(size: {} GB, available: {} GB).".format(
+                               size_in_gb, free_space_in_gb))
+
+def get_size_in_gb(shapes, dtype=np.float32):
+    """
+    This function takes a list of shapes and a dtype and computes the total
+    size of the file that would be created if we were to store the data all
+    at once (in GB).
+
+    This could be used to compare with the remaining disk space to make sure
+    that we don't fill up the disk.
+
+    Parameters
+    ----------
+    shapes: tuple
+        An array of tuples of shapes to be stored in the file. We will need to add 
+        the size of the state and next_state arrays.
+    dtype: np.dtype
+        The data type of the arrays to be stored in the file. Used to compute the
+        number of bytes each element requires.
+    """
+
+    if not isinstance(shapes, list):
+        shapes = [shapes]
+
+    def get_gb_for_shape(shape):
+        total_size_in_bytes = np.prod(shape) * np.dtype(dtype).itemsize
+        total_size_in_gb = total_size_in_bytes / (1024**3)
+        return total_size_in_gb
+
+    total_file_size_in_gb = sum(map(get_gb_for_shape, shapes))
+
+    return total_file_size_in_gb
+

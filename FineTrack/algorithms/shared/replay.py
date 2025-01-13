@@ -6,12 +6,131 @@ from typing import Tuple
 from FineTrack.algorithms.shared.disc_cumsum import disc_cumsum
 from FineTrack.utils.utils import break_if_found_nans, break_if_found_nans_args
 from FineTrack.environments.conv_state import ConvState, ConvStateShape
-
+from FineTrack.utils.lazy_tensor import LazyTensorManager
 
 from FineTrack.utils.torch_utils import get_device, get_device_str
 
 device = get_device()
 rb_type = torch.float32
+
+DEFAULT_BUFFER_PATH = "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/replay_buffer.h5"
+
+class OffPolicyLazyReplayBuffer(object):
+    """ Replay buffer to store transitions. Implemented in a "ring-buffer"
+    fashion.
+
+    If the data to store in the replay buffer gets very large, a simple replay
+    buffer will have a limited size to be able to fit in memory. This class
+    allows to have a big replay buffer by storing the data on disk and only
+    loading it when needed.
+
+    There are some optimizations behind the scenes such as pre-fetching the
+    next data that will be sampled to mitigate the disk I/O bottleneck.
+    """
+
+    def __init__(self, state_dim: ConvStateShape, action_dim: int,
+                 max_size=int(1e6)):
+        print("Creating replay buffer with shape: ", (max_size, *state_dim.conv_state_common_shape))
+        self.size = 0
+        self.ptr = 0
+        self.device = device
+        self.max_size = int(max_size)
+
+        nb_readers = nb_prefetch = 10
+        self.state_manager = LazyTensorManager(max_size,
+                                       state_dim,
+                                       batch_size=4096,
+                                       nb_prefetch=nb_prefetch,
+                                       nb_readers=nb_readers)
+
+        self.action = torch.zeros((max_size, action_dim), dtype=rb_type)
+        self.reward = torch.zeros((max_size, 1), dtype=rb_type)
+        self.not_done = torch.zeros((max_size, 1), dtype=rb_type)
+
+        self.is_in_writing_mode = True
+        self.state_manager.enter_write_mode()
+
+    def enter_read_mode(self):
+        # Upon repeated calls, just ignore.
+        if self.is_in_writing_mode:
+            self.is_in_writing_mode = False
+            self.state_manager.enter_read_mode(self.size)
+
+    def enter_write_mode(self):
+        # Upon repeated calls, just ignore.
+        if not self.is_in_writing_mode:
+            self.is_in_writing_mode = True
+            self.state_manager.enter_write_mode()
+
+    def add(self, state: ConvState, action, next_state: ConvState, reward, done):
+        if not self.is_in_writing_mode:
+            raise RuntimeError("The buffer is not in writing mode. Call writing_mode first.")
+
+        indices = (np.arange(0, len(state)) + self.ptr) % self.max_size
+
+        self.action[indices] = action
+        self.reward[indices] = reward
+        self.not_done[indices] = 1. - done
+
+        # This might be a bit slower.
+        self.state_manager.add(state, next_state, indices)
+
+        self.ptr = (self.ptr + len(indices)) % self.max_size
+        self.size = min(self.size + len(indices), self.max_size)
+
+    def __len__(self):
+        return self.size
+
+    def sample(self, batch_size=4096):
+        if self.is_in_writing_mode:
+            raise RuntimeError("The buffer is in writing mode. Call reading_mode first.")
+
+        s, ns, ind = self.state_manager.get_next_batch() # This will block until the data is ready
+
+        ind = torch.from_numpy(ind)
+
+        a = self.action.index_select(0, ind)
+        r = self.reward.index_select(0, ind).squeeze(-1)
+        d = self.not_done.index_select(0, ind).to(
+            dtype=torch.float32).squeeze(-1)
+        
+        if get_device_str() == "cuda":
+            s = s.pin_memory()
+            a = a.pin_memory()
+            ns = ns.pin_memory()
+            r = r.pin_memory()
+            d = d.pin_memory()
+
+        # Return tensors on the same device as the buffer in pinned memory
+        return (s.to(device=self.device, non_blocking=True),
+                a.to(device=self.device, non_blocking=True),
+                ns.to(device=self.device, non_blocking=True),
+                r.to(device=self.device, non_blocking=True),
+                d.to(device=self.device, non_blocking=True))
+
+    def clear_memory(self):
+        """ Reset the buffer
+        """
+        self.state.clear()
+        self.next_state.clear()
+        self.ptr = 0
+        self.size = 0
+
+    def save_to_file(self, path):
+        """ TODO for imitation learning
+        """
+        pass
+
+    def load_from_file(self, path):
+        """ TODO for imitation learning
+        """
+        pass
+
+    def state_dict(self):
+        pass
+    
+    def load_state_dict(self, state_dict):
+        pass
 
 class OffPolicyReplayBuffer(object):
     """ Replay buffer to store transitions. Implemented in a "ring-buffer"

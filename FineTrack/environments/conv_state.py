@@ -35,6 +35,15 @@ class ConvStateShape(object):
             'conv_state_common_shape': self.conv_state_common_shape
         }
     
+    def __eq__(self, other):
+        return self.nb_streamlines == other.nb_streamlines and \
+            self.nb_sh_coefs == other.nb_sh_coefs and \
+            self.depth == other.depth and \
+            self.height == other.height and \
+            self.width == other.width and \
+            self.prev_dirs == other.prev_dirs and \
+            self.conv_state_common_shape == other.conv_state_common_shape
+
     @classmethod
     def from_dict(cls, d):
         return cls(

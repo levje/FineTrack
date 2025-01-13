@@ -80,6 +80,9 @@ class DDPG(RLAlgorithm):
 
         self.rng = rng
 
+        # TODO: See RedQ, CrossQ instead of doing this. This can introduce bias and instability.
+        self.nb_updates_per_sample = 5
+
         # Initialize main policy
         self.agent = ActorCritic(
             input_size, action_size, hidden_dims, device,
@@ -177,6 +180,8 @@ class DDPG(RLAlgorithm):
 
         episode_length = 0
 
+        self.replay_buffer.enter_write_mode()
+
         while not np.all(done):
 
             # Select action according to policy + noise for exploration
@@ -210,11 +215,18 @@ class DDPG(RLAlgorithm):
 
             # Train agent after collecting sufficient data
             if self.t >= self.start_timesteps:
+                # Update several times
+                self.replay_buffer.enter_read_mode()
 
-                batch = self.replay_buffer.sample(self.batch_size)
-                losses = self.update(
-                    batch)
-                running_losses = add_item_to_means(running_losses, losses)
+                # TODO: See RedQ, CrossQ instead of doing this. This can introduce bias and instability.
+                # Details: https://vitalab.github.io/article/2024/06/28/AdvancesRL.html
+                for _ in range(self.nb_updates_per_sample):
+                    batch = self.replay_buffer.sample(self.batch_size)
+                    losses = self.update(
+                        batch)
+                
+                    running_losses = add_item_to_means(running_losses, losses)
+                self.replay_buffer.enter_write_mode()
 
             self.t += action.shape[0]
 
