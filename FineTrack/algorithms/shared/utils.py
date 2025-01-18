@@ -85,22 +85,29 @@ def make_fc_network(
     return nn.Sequential(*layers)
 
 class ResidualBlock(nn.Module):
-    def __init__(self, in_channels):
+    def __init__(self, in_channels, norm_layer=nn.Identity, norm_layer_kwargs={}):
         super(ResidualBlock, self).__init__()
         self.conv1 = nn.Conv3d(in_channels, 2*in_channels, kernel_size=3, stride=1, padding=1)
         self.conv2 = nn.Conv3d(2*in_channels, in_channels, kernel_size=3, stride=1, padding=1)
         self.activation = nn.GELU()
-
+        self.norm_layer_1 = norm_layer(2*in_channels, **norm_layer_kwargs)
+        self.norm_layer_2 = norm_layer(in_channels, **norm_layer_kwargs)
+ 
     def forward(self, x):
         residual = x
         out = self.conv1(x)
         out = self.activation(out)
+        out = self.norm_layer_1(out)
         out = self.conv2(out)
         out += residual
         out = self.activation(out)
+        out = self.norm_layer_2(out)
         return out
 
-def make_conv_network(input_size, output_size):
+def make_conv_network(input_size, output_size,
+                      norm_layer_3d=nn.Identity,
+                      norm_layer_1d=nn.Identity,
+                      norm_layer_kwargs={}):
 
     # input_size = [in_channels, depth, height, width]
     # input_size = [c, d, h, w]
@@ -111,30 +118,35 @@ def make_conv_network(input_size, output_size):
         nn.Conv3d(c, 16, kernel_size=3, stride=1, padding=1),
         # [16, d, h, w]
         nn.GELU(),
+        norm_layer_3d(16, **norm_layer_kwargs),
         # nn.MaxPool3d(kernel_size=2, stride=2),
         # [16, d/2, h/2, w/2]
 
-        ResidualBlock(16),
+        ResidualBlock(16, norm_layer=norm_layer_3d, norm_layer_kwargs=norm_layer_kwargs),
 
         nn.Conv3d(16, 32, kernel_size=3, stride=1, padding=1),
         # [32, d/2, h/2, w/2]
         nn.GELU(),
+        norm_layer_3d(32, **norm_layer_kwargs),
         # nn.MaxPool3d(kernel_size=2, stride=2),
         # [32, d/4, h/4, w/4]
 
-        ResidualBlock(32),
+        ResidualBlock(32, norm_layer=norm_layer_3d, norm_layer_kwargs=norm_layer_kwargs),
 
         nn.Conv3d(32, 64, kernel_size=3, stride=1, padding=1),
         # [64, d/4, h/4, w/4]
         nn.GELU(),
+        norm_layer_3d(64, **norm_layer_kwargs),
         # nn.MaxPool3d(kernel_size=2, stride=2),
         # [64, d/8, h/8, w/8]
 
-        ResidualBlock(64),
+        ResidualBlock(64, norm_layer=norm_layer_3d, norm_layer_kwargs=norm_layer_kwargs),
 
         nn.Flatten(), # -> 64 * d/8 * h/8 * w/8
         nn.Linear(size_after_conv, 1024),
         nn.GELU(),
+        norm_layer_1d(1024),
+
         nn.Linear(1024, output_size)
     )
 

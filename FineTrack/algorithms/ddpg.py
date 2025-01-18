@@ -81,7 +81,7 @@ class DDPG(RLAlgorithm):
         self.rng = rng
 
         # TODO: See RedQ, CrossQ instead of doing this. This can introduce bias and instability.
-        self.nb_updates_per_sample = 5
+        self.nb_updates_per_sample = 1
 
         # Initialize main policy
         self.agent = ActorCritic(

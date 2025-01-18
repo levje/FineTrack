@@ -6,7 +6,7 @@ from typing import Tuple
 from FineTrack.algorithms.shared.disc_cumsum import disc_cumsum
 from FineTrack.utils.utils import break_if_found_nans, break_if_found_nans_args
 from FineTrack.environments.conv_state import ConvState, ConvStateShape
-from FineTrack.utils.lazy_tensor import LazyTensorManager
+from FineTrack.utils.lazy_tensor import LazyTensorManager, NaiveLazyTensorManager
 
 from FineTrack.utils.torch_utils import get_device, get_device_str
 
@@ -37,7 +37,7 @@ class OffPolicyLazyReplayBuffer(object):
         self.max_size = int(max_size)
 
         nb_readers = nb_prefetch = 10
-        self.state_manager = LazyTensorManager(max_size,
+        self.state_manager = NaiveLazyTensorManager(max_size,
                                        state_dim,
                                        batch_size=4096,
                                        nb_prefetch=nb_prefetch,
@@ -176,6 +176,12 @@ class OffPolicyReplayBuffer(object):
             self.next_state = self.next_state.pin_memory()
             self.reward = self.reward.pin_memory()
             self.not_done = self.not_done.pin_memory()
+
+    def enter_write_mode(self, *args, **kwargs):
+        pass
+
+    def enter_read_mode(self, *args, **kwargs):
+        pass
 
     def add(
         self,

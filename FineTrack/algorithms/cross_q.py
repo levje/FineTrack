@@ -7,18 +7,17 @@ import torch.nn.functional as F
 from dataclasses import dataclass
 from typing import Tuple
 
-from FineTrack.algorithms.sac import SAC
-from FineTrack.algorithms.shared.offpolicy import SACActorCritic
+from FineTrack.algorithms.sac_auto import SACAuto
+from FineTrack.algorithms.shared.offpolicy_crossq import CrossQActorCritic
 from FineTrack.algorithms.shared.replay import OffPolicyReplayBuffer, OffPolicyLazyReplayBuffer
 from FineTrack.utils.torch_utils import get_device, gradients_norm
-from FineTrack.algorithms.shared.kl import AdaptiveKLController, FixedKLController
 from FineTrack.environments.conv_state import ConvStateShape
 
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
 
 @dataclass
-class SACAutoHParams:
+class CrossQHParams:
     lr: float = 3e-4
     gamma: float = 0.99
     n_actors: int = 4096
@@ -32,7 +31,7 @@ class SACAutoHParams:
     kl_target: float = 0.005
     kl_horizon: int = 1000
 
-class SACAuto(SAC):
+class CrossQ(SACAuto):
     """
     The sample-gathering and training algorithm.
     Based on
@@ -56,7 +55,7 @@ class SACAuto(SAC):
         input_shape: ConvStateShape,
         action_size: int,
         hidden_dims: int,
-        hparams: SACAutoHParams = SACAutoHParams(),
+        hparams: CrossQHParams = CrossQHParams(),
         rng: np.random.RandomState = None,
         device: torch.device = get_device,
     ):
@@ -88,7 +87,6 @@ class SACAuto(SAC):
         """
         self.hparams = hparams
         
-        # TO REMOVE
         self.batch_size = hparams.batch_size
         self.gamma = hparams.gamma
         self.alpha = hparams.alpha
@@ -104,27 +102,10 @@ class SACAuto(SAC):
 
         self.rng = rng
 
-        def _assert_same_weights(model1, model2):
-            for p1, p2 in zip(model1.parameters(), model2.parameters()):
-                assert torch.all(torch.eq(p1, p2))
-
         # Initialize main agent
-        self.agent = SACActorCritic(
+        self.agent = CrossQActorCritic(
             input_shape, action_size, hidden_dims, device,
         )
-        self.old_agent = copy.deepcopy(self.agent.actor)
-        _assert_same_weights(self.agent.actor, self.old_agent)
-
-        def _post_state_dict_agent_hook(module, incompatible_keys):
-            """
-            Since we are initializing the current and the reference policy
-            with the same weights, we need to make sure that when there's a
-            checkpoint loaded for the current policy (initially), the reference
-            should also be updated with the same weights.
-            """
-            self.old_agent.load_state_dict(self.agent.actor.state_dict())
-
-        self.agent.actor.register_load_state_dict_post_hook(_post_state_dict_agent_hook)
 
         # Auto-temperature adjustment
         # SAC automatically adjusts the temperature to maximize entropy and
@@ -139,7 +120,7 @@ class SACAuto(SAC):
             [self.log_alpha], lr=self.hparams.lr)
 
         # Initialize target agent to provide baseline
-        self.target = copy.deepcopy(self.agent)
+        self.target_critic = copy.deepcopy(self.agent.critic)
 
         # SAC requires a different model for actors and critics
         # Optimizer for actor
@@ -165,12 +146,6 @@ class SACAuto(SAC):
 
         self.rng = rng
 
-        if self.hparams.adaptive_kl:
-            self.kl_penalty_ctrler = AdaptiveKLController(
-                self.hparams.kl_penalty_coeff, self.hparams.kl_target, self.hparams.kl_horizon)
-        else:
-            self.kl_penalty_ctrler = FixedKLController(self.hparams.kl_penalty_coeff)
-
     def load_checkpoint(self, checkpoint_file: str):
         """
         Load a checkpoint into the algorithm.
@@ -183,7 +158,7 @@ class SACAuto(SAC):
         checkpoint = torch.load(checkpoint_file, weights_only=False)
 
         self.agent.load_checkpoint(checkpoint['agent'])
-        self.target.load_checkpoint(checkpoint['target'])
+        self.target_critic.load_state_dict(checkpoint['target_critic'])
         self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
         self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
         self.alpha_optimizer.load_state_dict(checkpoint['alpha_optimizer'])
@@ -203,7 +178,7 @@ class SACAuto(SAC):
         """
         checkpoint = {
             'agent': self.agent.state_dict(as_dict=True),
-            'target': self.target.state_dict(as_dict=True),
+            'target_critic': self.target_critic.state_dict(),
             'actor_optimizer': self.actor_optimizer.state_dict(),
             'critic_optimizer': self.critic_optimizer.state_dict(),
             'alpha_optimizer': self.alpha_optimizer.state_dict(),
@@ -243,6 +218,11 @@ class SACAuto(SAC):
         # Sample replay buffer
         state, action, next_state, reward, not_done = \
             batch
+        
+        ############################
+        # UPDATE ALPHA
+        ############################
+
         # Compute \pi_\theta(s_t) and log \pi_\theta(s_t)
         pi, logp_pi = self.agent.act(
             state, probabilistic=1.0)
@@ -251,42 +231,24 @@ class SACAuto(SAC):
             logp_pi + self.target_entropy).detach()).mean()
         alpha = self.log_alpha.exp()
 
-        # Compute the Q values and the minimum Q value
-        q1, q2 = self.agent.critic(state, pi)
-        q_pi = torch.min(q1, q2)
-
-        # Entropy-regularized agent loss
-        actor_loss = (alpha * logp_pi - q_pi).mean()
-
-        with torch.no_grad():
-            # Target actions come from *current* agent
-            next_action, logp_next_action = self.agent.act(
-                next_state, probabilistic=1.0)
-
-            # Compute the next Q values using the target agent
-            target_Q1, target_Q2 = self.target.critic(
-                next_state, next_action)
-            target_Q = torch.min(target_Q1, target_Q2)
-
-            # Compute the backup which is the Q-learning "target"
-            backup = reward + self.gamma * not_done * \
-                (target_Q - alpha * logp_next_action)
-
-        # Get current Q estimates
-        current_Q1, current_Q2 = self.agent.critic(
-            state, action)
-
-        # MSE loss against Bellman backup
-        loss_q1 = F.mse_loss(current_Q1, backup.detach()).mean()
-        loss_q2 = F.mse_loss(current_Q2, backup.detach()).mean()
-        # Total critic loss
-        critic_loss = loss_q1 + loss_q2
-
         # Optimize the temperature
         self.alpha_optimizer.zero_grad()
         alpha_loss.backward()
         nn.utils.clip_grad_norm_(self.log_alpha, 0.5)
         self.alpha_optimizer.step()
+
+        ############################
+        # UPDATE ACTOR
+        ############################
+
+        # Compute the Q values and the minimum Q value
+        self.agent.actor.train() # https://www.reddit.com/r/reinforcementlearning/comments/1bj3rln/trying_to_implement_crossq_in_pytorch_does_not/
+        self.agent.critic.eval() 
+        q1, q2 = self.agent.critic(state, pi)
+        q_pi = torch.min(q1, q2)
+
+        # Entropy-regularized agent loss
+        actor_loss = (alpha * logp_pi - q_pi).mean()
 
         # Optimize the actor
         self.actor_optimizer.zero_grad()
@@ -294,46 +256,46 @@ class SACAuto(SAC):
         nn.utils.clip_grad_norm_(self.agent.actor.parameters(), 0.5)
         self.actor_optimizer.step()
 
+        ############################
+        # UPDATE CRITIC
+        ############################
+        self.agent.actor.eval()
+        self.agent.critic.train()
+
+        with torch.no_grad():
+            # Target actions come from *current* agent
+            next_action, logp_next_action = self.agent.act(
+                next_state, probabilistic=1.0)
+
+        # Get Q estimates all at once from the critic
+        current_q1, next_q1, current_q2, next_q2 = self.agent.critic(
+            state, action, next_state, next_action)
+        
+        with torch.no_grad():
+            next_q = torch.min(next_q1, next_q2)  # Double critic
+            backup = reward + self.gamma * not_done * (next_q - alpha * logp_next_action)
+
+        # MSE loss against Bellman backup
+        loss_q1 = F.mse_loss(current_q1, backup.detach()).mean()
+        loss_q2 = F.mse_loss(current_q2, backup.detach()).mean()
+
+        # Total critic loss
+        critic_loss = loss_q1 + loss_q2
+
         # Optimize the critic
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         nn.utils.clip_grad_norm_(self.agent.critic.parameters(), 0.5)
         self.critic_optimizer.step()
 
-        # Update the frozen target models
-        for param, target_param in zip(
-            self.agent.critic.parameters(),
-            self.target.critic.parameters()
-        ):
-            target_param.data.copy_(
-                self.tau * param.data + (1 - self.tau) * target_param.data)
-
-        for param, target_param in zip(
-            self.agent.actor.parameters(),
-            self.target.actor.parameters()
-        ):
-            target_param.data.copy_(
-                self.tau * param.data + (1 - self.tau) * target_param.data)
+        self.agent.critic.eval()
 
         # Compute the norm of the gradients to plot.
         alpha_norm = self.log_alpha.grad.norm(2).cpu().detach().numpy()
         critic_norm = gradients_norm(self.agent.critic)
         actor_norm = gradients_norm(self.agent.actor)
 
-        # print("alpha_norm: ", type(alpha_norm))
-        # print("critic_norm: ", type(critic_norm))
-        # print("actor_norm: ", type(actor_norm))
-
         losses = {
-            # 'actor_loss': actor_loss.detach(),
-            # 'alpha_loss': alpha_loss.detach(),
-            # 'critic_loss': critic_loss.detach(),
-            # 'loss_q1': loss_q1.detach(),
-            # 'loss_q2': loss_q2.detach(),
-            # 'entropy': alpha.detach(),
-            # 'Q1': current_Q1.mean().detach(),
-            # 'Q2': current_Q2.mean().detach(),
-            # 'backup': backup.mean().detach(),
             "alpha_norm": alpha_norm,
             "critic_norm": critic_norm,
             "actor_norm": actor_norm,

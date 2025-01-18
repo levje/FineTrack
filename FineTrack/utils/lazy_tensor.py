@@ -83,17 +83,24 @@ def create_rb_file(shape, dtype=np.float32, file_path=None, permanent=False):
             yield file_path
 
 class NaiveLazyTensorManager(object):
-    def __init__(self, max_size: int, state_dim: ConvStateShape, batch_size, file_name=None, dtype = torch.float32):
+    def __init__(self, max_size: int, state_dim: ConvStateShape, batch_size, file_name=None, dtype = torch.float32, nb_prefetch=None, nb_readers=None):
         self.max_size = max_size
         self._shape = (max_size, *state_dim.conv_state_common_shape)
+        self._state_dim = state_dim
         self.current_read_size = 0
         self.batch_size = batch_size
+        self._state_ds_name = "state"
+        self._next_state_ds_name = "next_state"
 
         self.torch_dtype = np_to_torch[dtype] if is_np_type(dtype) else dtype
         self.np_dtype = torch_to_np[dtype] if is_torch_type(dtype) else dtype
         
-        self._file_gen = create_rb_file(shape, self.np_dtype, file_path=file_name)
+        self._file_gen = create_rb_file(self._shape, self.np_dtype, file_path=file_name)
         self._file = next(self._file_gen)
+
+        self.s_prev_dirs = torch.zeros((self.max_size, self._state_dim.prev_dirs), dtype=self.torch_dtype)
+        self.ns_prev_dirs = torch.zeros((self.max_size, self._state_dim.prev_dirs), dtype=self.torch_dtype)
+        self.read_batch_size = None
 
     def enter_write_mode(self):
         pass
@@ -101,19 +108,64 @@ class NaiveLazyTensorManager(object):
     def enter_read_mode(self, size):
         self.current_read_size = size
 
-    def add(self, state, n_state, index):
+    def add(self, state: ConvState, n_state: ConvState, index):
+        state_cpu = state.to('cpu')
+        n_state_cpu = n_state.to('cpu')
+
+        # Make sure the indices are sorted as it's required by h5py.
+        if isinstance(index, torch.Tensor):
+            index = index.cpu().numpy()
+        
+        index.sort()
+
+        # Separate the state into neighborhood and previous directions
+        state_conv = state_cpu._state_conv
+        state_prev_dirs = state_cpu._previous_directions
+        
+        n_state_conv = n_state_cpu._state_conv
+        n_state_prev_dirs = n_state_cpu._previous_directions
+
+        # Write the data to the file
         with h5.File(self._file, 'r+') as f:
-            f["state"][index] = state.cpu().numpy()
-            f["next_state"][index] = n_state.cpu().numpy()
+            f[self._state_ds_name][index] = state_conv.cpu().numpy()
+            f[self._next_state_ds_name][index] = n_state_conv.cpu().numpy()
+
+        # Add the previous dirs too
+        self.s_prev_dirs[index] = state_prev_dirs
+        self.ns_prev_dirs[index] = n_state_prev_dirs
         
     def get_next_batch(self):
-        random_indices = np.random.choice(self.current_read_size, self.batch_size, replace=False)
-        random_indices.sort()
-        with h5.File(self._file, 'r') as f:
-            state = torch.from_numpy(f["state"][random_indices])
-            next_state = torch.from_numpy(f["next_state"][random_indices])
+        indices = np.random.choice(self.current_read_size, self.batch_size, replace=False)
+        indices.sort()
 
-        return state, next_state, random_indices
+        if self.read_batch_size is not None:
+            o_state = np.zeros((self.batch_size, *self._state_dim.conv_state_common_shape), dtype=self.np_dtype)
+            o_next_state = np.zeros((self.batch_size, *self._state_dim.conv_state_common_shape), dtype=self.np_dtype)
+
+        with h5.File(self._file, 'r') as f:
+            if self.read_batch_size is not None:
+                # Read the data at the indices in batches as it's sometimes faster than in one go.
+                for start in range(0, len(indices), self.read_batch_size):
+                    end = min(start + self.read_batch_size, len(indices))
+
+                    batch_indices = indices[start:end]
+
+                    o_state[start:end] = f["state"][batch_indices]
+                    o_next_state[start:end] = f["next_state"][batch_indices]
+            else:
+                # Read the data in one go from the file.
+                o_state = f["state"][indices]
+                o_next_state = f["next_state"][indices]
+
+        # Convert to tensors.
+        o_state = torch.from_numpy(o_state)
+        o_next_state = torch.from_numpy(o_next_state)
+
+        # Reconstruct the ConvState so we can have the previous directions.
+        o_state = ConvState(o_state, self.s_prev_dirs[indices])
+        o_next_state = ConvState(o_next_state, self.ns_prev_dirs[indices])
+
+        return o_state, o_next_state, indices
 
 class LazyTensorManager(object):
     def __init__(self, max_size, state_dim: ConvStateShape, batch_size, dtype = torch.float32, nb_prefetch = 3,

@@ -510,3 +510,6 @@ def get_size_in_gb(shapes, dtype=np.float32):
 
     return total_file_size_in_gb
 
+def assert_same_weights(model1, model2):
+    for p1, p2 in zip(model1.parameters(), model2.parameters()):
+        assert torch.all(torch.eq(p1, p2))
