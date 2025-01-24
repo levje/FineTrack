@@ -44,6 +44,7 @@ class SACAutoFineTrackTraining(FineTrackTraining):
         self.alpha = sac_auto_train_dto['alpha']
         self.batch_size = sac_auto_train_dto['batch_size']
         self.replay_size = sac_auto_train_dto['replay_size']
+        self.big_neighborhood = sac_auto_train_dto['big_neighborhood']
         self.adaptive_kl = sac_auto_train_dto.get('adaptive_kl', None)
         self.kl_penalty_coeff = sac_auto_train_dto.get('kl_penalty_coeff', None)
         self.kl_target = sac_auto_train_dto.get('kl_target', None)
@@ -77,7 +78,8 @@ class SACAutoFineTrackTraining(FineTrackTraining):
             {'algorithm': 'SACAuto',
              'alpha': self.alpha,
              'batch_size': self.batch_size,
-             'replay_size': self.replay_size})
+             'replay_size': self.replay_size,
+             'big_neighborhood': self.big_neighborhood,})
 
         super().save_hyperparameters()
 
@@ -86,6 +88,7 @@ class SACAutoFineTrackTraining(FineTrackTraining):
             self.input_size,
             self.action_size,
             self.hidden_dims,
+            self.big_neighborhood,
             self.sac_auto_hparams,
             self.rng,
             device)
@@ -100,6 +103,8 @@ def add_sac_auto_args(parser):
                         'buffer.')
     parser.add_argument('--replay_size', default=1e6, type=int,
                         help='How many tuples to store in the replay buffer.')
+    parser.add_argument('--big_neighborhood', default=False, type=bool,
+                        help="Whether to use a big neighborhood with convs.")
 
 
 def parse_args():

@@ -13,13 +13,13 @@ set -e
 EXPNAME="TrackToLearn-CrossQ"
 COMETPROJECT="TrackToLearn-CrossQ"
 NB_STREAMLINES_POINTS=32
-EXPID="test-"_$(date +"%F-%H_%M_%S")
+EXPID="CrossQ-NoConv-"_$(date +"%F-%H_%M_%S")
 MAXEP=1000
-BATCHSIZE=128
+BATCHSIZE=4096
 SEEDS=(1111)
 NPV=20
-GAMMA=0.95
-LR=0.0002
+GAMMA=0.99
+LR=0.00002
 THETA=30
 
 # Check if the script is ran locally or on a cluster node.
@@ -118,13 +118,13 @@ do
         --tractometer_validator \
         --workspace "mrzarfir" \
         --rng_seed ${RNGSEED} \
-        --n_actor 1024 \
+        --n_actor 4096 \
         --npv ${NPV} \
         --min_length 20 \
         --max_length 200 \
         --noise 0.0 \
         --batch_size ${BATCHSIZE} \
-        --replay_size 100000 \
+        --replay_size 1000000 \
         --lr ${LR} \
         --gamma ${GAMMA} \
         --theta ${THETA} \
@@ -132,8 +132,8 @@ do
         --binary_stopping_threshold 0.1 \
         --n_dirs=100 \
         --alignment_weighting=1.0 \
+        --use_comet \
         "${additionnal_args[@]}"
-        # --use_comet \
 
     # POST-PROCESSING
     bash scripts/tractogram_post_processing.sh ${DEST_FOLDER} ${DATASETDIR}

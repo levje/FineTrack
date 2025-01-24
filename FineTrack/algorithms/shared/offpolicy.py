@@ -7,7 +7,7 @@ from os.path import join as pjoin
 from torch import nn
 from torch.distributions.normal import Normal
 
-from FineTrack.environments.conv_state import ConvState, ConvStateShape
+from FineTrack.environments.state import State, StateShape
 from FineTrack.algorithms.shared.utils import (
     format_widths, make_fc_network, make_conv_network)
 
@@ -23,7 +23,7 @@ class Actor(nn.Module):
 
     def __init__(
         self,
-        state_dim: ConvStateShape,
+        state_dim: StateShape,
         action_dim: int,
         hidden_dims: str,
         output_activation=nn.Tanh
@@ -49,7 +49,7 @@ class Actor(nn.Module):
 
         self.conv_layers = make_conv_network(input_size=conv_state_shape,
             output_size=conv_output_size)
-        full_fc_state_dim = conv_output_size + state_dim.prev_dirs
+        full_fc_state_dim = conv_output_size + state_dim.prev_dirs_size
 
         self.hidden_layers = format_widths(hidden_dims)
         self.layers = make_fc_network(
@@ -67,16 +67,17 @@ class Actor(nn.Module):
         return p
 
 
-class MaxEntropyActor(Actor):
+class MaxEntropyActor(nn.Module):
     """ Actor module that takes in a state and outputs an action.
     Its policy is the neural network layers
     """
 
     def __init__(
         self,
-        state_dim: ConvStateShape,
+        state_dim: StateShape,
         action_dim: int,
         hidden_dims: str,
+        big_neighborhood: bool ,
     ):
         """
         Parameters:
@@ -89,20 +90,29 @@ class MaxEntropyActor(Actor):
                 String representing layer widths
 
         """
-        super(MaxEntropyActor, self).__init__(
-            state_dim, action_dim, hidden_dims)
+        super(MaxEntropyActor, self).__init__()
+        
+        self.big_neighborhood = big_neighborhood
+
+        # Setup the encoding part of the actor if required.
+        # e.g. when we are requiring a large neighborhood
+        # that requires convolutions.
+        if self.big_neighborhood:
+            # Large neighborhood will be encoded by some CNN layers.
+            conv_state_shape = (state_dim.nb_sh_coefs, state_dim.depth,
+                                state_dim.height, state_dim.width)
+            flat_neigh_size = 256
+            self.conv_layers = make_conv_network(input_size=conv_state_shape,
+                output_size=flat_neigh_size)
+            
+        else:
+            flat_neigh_size = state_dim.neighborhood_common_shape[0]
 
         self.action_dim = action_dim
-
         self.hidden_layers = format_widths(hidden_dims)
 
-        conv_state_shape = (state_dim.nb_sh_coefs, state_dim.depth,
-                            state_dim.height, state_dim.width)
-        conv_output_size = 256
-        self.conv_layers = make_conv_network(input_size=conv_state_shape,
-            output_size=conv_output_size)
-
-        total_fc_input_size = conv_output_size + state_dim.prev_dirs
+        # Setup the core of the policy
+        total_fc_input_size = flat_neigh_size + state_dim.prev_dirs_size
         self.layers = make_fc_network(
             self.hidden_layers, total_fc_input_size, action_dim * 2)
         
@@ -110,7 +120,7 @@ class MaxEntropyActor(Actor):
 
     def forward(
         self,
-        state: ConvState,
+        state: State,
         probabilistic: float,
     ) -> torch.Tensor:
         """ Forward propagation of the actor. Log probability is computed
@@ -125,16 +135,14 @@ class MaxEntropyActor(Actor):
             Factor to multiply the standard deviation by when sampling.
             0 means a deterministic policy, 1 means a fully stochastic.
         """
-        # Encode the state
-        conv_state, prev_dims = state.conv_state, state.prev_dirs
-        encoded_neighborhood = self.conv_layers(conv_state)
+        # Encode the state if needed.
+        if self.big_neighborhood:
+            flat_neighborhood = self.conv_layers(state.neighborhood)
+        else:
+            flat_neighborhood = state.neighborhood
 
         # Concatenate the encoded neighborhood with the previous directions
-        state = torch.cat([encoded_neighborhood, prev_dims], dim=1)
-
-        # DEBUGGING
-        # print("Policy state dict: ", self.state_dict().__str__())
-        # END DEBUGGING
+        state = torch.cat([flat_neighborhood, state.prev_dirs], dim=1)
         
         # Compute mean and log_std from neural network. Instead of
         # have two separate outputs, we have one output of size
@@ -175,7 +183,7 @@ class Critic(nn.Module):
 
     def __init__(
         self,
-        state_dim: ConvStateShape,
+        state_dim: StateShape,
         action_dim: int,
         hidden_dims: str,
     ):
@@ -200,17 +208,17 @@ class Critic(nn.Module):
         # self.conv_layers = make_conv_network(input_size=conv_state_shape,
         #     output_size=conv_output_size)
 
-        # full_fc_state_dim = + state_dim.prev_dirs
+        # full_fc_state_dim = + state_dim.prev_dirs_size
 
         # self.hidden_layers = format_widths(hidden_dims)
         # self.q1 = make_fc_network(
         #     self.hidden_layers, full_fc_state_dim + action_dim, 1)
 
-    def forward(self, state: ConvState, action) -> torch.Tensor:
+    def forward(self, state: State, action) -> torch.Tensor:
         """ Forward propagation of the actor.
         Outputs a q estimate from both critics
         """
-        q1_input = torch.cat([state, action], -1)
+        q1_input = torch.cat([state.neighborhood, state.prev_dirs, action], -1)
 
         q1 = self.q1(q1_input).squeeze(-1)
 
@@ -225,9 +233,10 @@ class DoubleCritic(Critic):
 
     def __init__(
         self,
-        state_dim: ConvStateShape,
+        state_dim: StateShape,
         action_dim: int,
         hidden_dims: str,
+        big_neighborhood: bool,
         critic_size_factor=1,
     ):
         """
@@ -244,17 +253,22 @@ class DoubleCritic(Critic):
         super(DoubleCritic, self).__init__(
             state_dim, action_dim, hidden_dims)
 
-        conv_state_shape = (state_dim.nb_sh_coefs, state_dim.depth,
-                    state_dim.height, state_dim.width)
-        conv_output_size = 256
-
-
-        self.q1_neighbor_encoder = make_conv_network(
-            input_size=conv_state_shape, output_size=256)
-        self.q2_neighbor_encoder = make_conv_network(
-            input_size=conv_state_shape, output_size=256)
+        self.big_neighborhood = big_neighborhood
         
-        full_fc_state_dim = conv_output_size + state_dim.prev_dirs
+        if self.big_neighborhood:
+
+            conv_state_shape = (state_dim.nb_sh_coefs, state_dim.depth,
+                        state_dim.height, state_dim.width)
+            flat_neigh_size = 256
+
+            self.q1_neighbor_encoder = make_conv_network(
+                input_size=conv_state_shape, output_size=flat_neigh_size)
+            self.q2_neighbor_encoder = make_conv_network(
+                input_size=conv_state_shape, output_size=flat_neigh_size)
+        else:
+            flat_neigh_size = state_dim.neighborhood_common_shape[0]
+        
+        full_fc_state_dim = flat_neigh_size + state_dim.prev_dirs_size
         self.hidden_layers = format_widths(
             hidden_dims) * critic_size_factor
 
@@ -262,29 +276,19 @@ class DoubleCritic(Critic):
             self.hidden_layers, full_fc_state_dim + action_dim, 1)
         self.q2 = make_fc_network(
             self.hidden_layers, full_fc_state_dim + action_dim, 1)
-        
-        for param in self.q1.parameters():
-            assert param.requires_grad, "q1 parameters must have requires_grad=True"
-        
-        for param in self.q2.parameters():
-            assert param.requires_grad, "q2 parameters must have requires_grad=True"
-        
-        for param in self.q1_neighbor_encoder.parameters():
-            assert param.requires_grad, "q1_neighbor_encoder parameters must have requires_grad=True"
 
-        for param in self.q2_neighbor_encoder.parameters():
-            assert param.requires_grad, "q2_neighbor_encoder parameters must have requires_grad=True"
-
-        
-
-    def forward(self, state: ConvState, action) -> torch.Tensor:
+    def forward(self, state: State, action) -> torch.Tensor:
         """ Forward propagation of the actor.
         Outputs a q estimate from both critics
         """
-        # assert isinstance(state.conv_state, torch.Tensor), "state.conv_state must be a tensor"
-        # assert state.conv_state.requires_grad, "state.conv_state must have requires_grad=True"
-        encoded_neighborhood_1 = self.q1_neighbor_encoder(state.conv_state)
-        encoded_neighborhood_2 = self.q2_neighbor_encoder(state.conv_state)
+        # assert isinstance(state.neighborhood, torch.Tensor), "state.neighborhood must be a tensor"
+        # assert state.neighborhood.requires_grad, "state.neighborhood must have requires_grad=True"
+        if self.big_neighborhood:
+            encoded_neighborhood_1 = self.q1_neighbor_encoder(state.neighborhood)
+            encoded_neighborhood_2 = self.q2_neighbor_encoder(state.neighborhood)
+        else:
+            encoded_neighborhood_1 = state.neighborhood
+            encoded_neighborhood_2 = state.neighborhood
 
         q1_input = torch.cat([encoded_neighborhood_1, state.prev_dirs, action], -1)
         q2_input = torch.cat([encoded_neighborhood_2, state.prev_dirs, action], -1)
@@ -294,7 +298,7 @@ class DoubleCritic(Critic):
 
         return q1, q2
 
-    def Q1(self, state: ConvState, action) -> torch.Tensor:
+    def Q1(self, state: State, action) -> torch.Tensor:
         """ Forward propagation of the actor.
         Outputs a q estimate from first critic
         """
@@ -311,7 +315,7 @@ class ActorCritic(object):
 
     def __init__(
         self,
-        state_dim: ConvStateShape,
+        state_dim: StateShape,
         action_dim: int,
         hidden_dims: str,
         device: torch.device,
@@ -336,7 +340,7 @@ class ActorCritic(object):
             state_dim, action_dim, hidden_dims,
         ).to(device)
 
-    def act(self, state: ConvState) -> torch.Tensor:
+    def act(self, state: State) -> torch.Tensor:
         """ Select action according to actor
 
         Parameters:
@@ -351,7 +355,7 @@ class ActorCritic(object):
         """
         return self.actor(state)
 
-    def select_action(self, state: ConvState, probabilistic=0.0) -> np.ndarray:
+    def select_action(self, state: State, probabilistic=0.0) -> np.ndarray:
         """ Move state to torch tensor, select action and
         move it back to numpy array
 
@@ -492,9 +496,10 @@ class SACActorCritic(ActorCritic):
 
     def __init__(
         self,
-        state_dim: ConvStateShape,
+        state_dim: StateShape,
         action_dim: int,
         hidden_dims: str,
+        big_neighborhood: bool,
         device: torch.device,
     ):
         """
@@ -511,14 +516,14 @@ class SACActorCritic(ActorCritic):
         """
         self.device = device
         self.actor = MaxEntropyActor(
-            state_dim, action_dim, hidden_dims,
+            state_dim, action_dim, hidden_dims, big_neighborhood
         ).to(device)
 
         self.critic = DoubleCritic(
-            state_dim, action_dim, hidden_dims,
+            state_dim, action_dim, hidden_dims, big_neighborhood
         ).to(device)
 
-    def act(self, state: ConvState, probabilistic=1.0) -> torch.Tensor:
+    def act(self, state: State, probabilistic=1.0) -> torch.Tensor:
         """ Select action according to actor
 
         Parameters:
@@ -539,7 +544,7 @@ class SACActorCritic(ActorCritic):
         action, logprob = self.actor(state, probabilistic)
         return action, logprob
 
-    def select_action(self, state: ConvState, probabilistic=1.0) -> np.ndarray:
+    def select_action(self, state: State, probabilistic=1.0) -> np.ndarray:
         """ Act on a state and return an action.
 
         Parameters:

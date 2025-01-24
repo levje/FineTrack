@@ -34,7 +34,7 @@ from FineTrack.environments.utils import (  # is_looping,
     is_too_curvy, is_too_long, has_reached_gm)
 from FineTrack.utils.utils import normalize_vectors
 from FineTrack.environments.rollout_env import RolloutEnvironment
-from FineTrack.environments.conv_state import ConvState
+from FineTrack.environments.state import ConvState, State
 
 LOGGER = get_logger(__name__)
 
@@ -146,6 +146,8 @@ class BaseEnv(object):
         self.reward_with_gt = env_dto['reward_with_gt']
         self.rollout_env = None
 
+        self.big_neighborhood = env_dto['big_neighborhood']
+
         # Load one subject as an example
         self.load_subject()
 
@@ -218,12 +220,22 @@ class BaseEnv(object):
         self.add_neighborhood_vox = convert_length_mm2vox(
             self.step_size_mm,
             self.affine_vox2rasmm)
-        self.neighborhood_radius = 2  # e.g. a radius of 4 voxels will produce
-                                      # a 9x9x9 neighborhood (4 + 1 + 4 for
-                                      # each dimension).
         
-        self.neighborhood_directions = prepare_neighborhood_vectors('grid',
-            self.neighborhood_radius, self.add_neighborhood_vox).to(
+        if self.big_neighborhood:
+            # Capture the surrounding voxels.
+            self.neighborhood_type = 'grid'
+            self.neighborhood_radius = 2  # e.g. a radius of 4 voxels will produce
+                                          # a 9x9x9 neighborhood (4 + 1 + 4 for
+                                          # each dimension).
+        else:
+            # Just capture the immediate neighbors.
+            self.neighborhood_type = 'axes'
+            self.neighborhood_radius = 1
+
+        self.neighborhood_directions = prepare_neighborhood_vectors(
+            self.neighborhood_type,
+            self.neighborhood_radius,
+            self.add_neighborhood_vox).to(
                 self.device)
 
         # Tracking seeds
@@ -596,15 +608,16 @@ class BaseEnv(object):
             self.neighborhood_directions)
         N, S = signal.shape
 
-        # Unflatten the signal to use it for convolutions
-        # Unflatten the signal into (N, W, H, D, C) shape
-        unflattened = unflatten_neighborhood(
-            signal, self.neighborhood_directions, 'grid',
-            self.neighborhood_radius, self.add_neighborhood_vox)
+        if self.big_neighborhood:
+            # Unflatten the signal to use it for convolutions
+            # Unflatten the signal into (N, W, H, D, C) shape
+            unflattened = unflatten_neighborhood(
+                signal, self.neighborhood_directions, 'grid',
+                self.neighborhood_radius, self.add_neighborhood_vox)
 
-        # Permute axes to fit PyTorch's convention of (N, C, D, H, W)
-        # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
-        unflattened = unflattened.permute(0, 4, 1, 2, 3)
+            # Permute axes to fit PyTorch's convention of (N, C, D, H, W)
+            # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
+            unflattened = unflattened.permute(0, 4, 1, 2, 3)
 
         # Placeholder for the previous directions
         previous_dirs = np.zeros((N, self.n_dirs, P), dtype=np.float32)
@@ -622,8 +635,11 @@ class BaseEnv(object):
 
         # Return them separately so we can run convolutions on unflattened
         # but not dir_inputs.
-        conv_state = ConvState(unflattened, dir_inputs, self.device)
-        return conv_state
+        if self.big_neighborhood:
+            state = ConvState(unflattened, dir_inputs, self.device)
+        else:
+            state = State(signal, dir_inputs, self.device)
+        return state
 
     def _compute_stopping_flags(
         self,

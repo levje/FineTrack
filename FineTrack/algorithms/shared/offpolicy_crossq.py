@@ -3,15 +3,16 @@ import torch.nn as nn
 from FineTrack.algorithms.shared.offpolicy import SACActorCritic, MaxEntropyActor
 from FineTrack.algorithms.shared.utils import (
     format_widths, make_fc_network, make_conv_network)
-from FineTrack.environments.conv_state import ConvState, ConvStateShape
+from FineTrack.environments.state import State, StateShape
 from FineTrack.algorithms.shared.batch_renorm import BatchRenorm1d, BatchRenorm3d
 
 class CrossQCritic(nn.Module):
     def __init__(
         self,
-        state_dim: ConvStateShape,
+        state_dim: StateShape,
         action_dim: int,
         hidden_dims: str,
+        big_neighborhood: bool,
         critic_size_factor=1,
         batch_renorm=False
     ):
@@ -27,10 +28,7 @@ class CrossQCritic(nn.Module):
 
         """
         super(CrossQCritic, self).__init__()
-
-        conv_state_shape = (state_dim.nb_sh_coefs, state_dim.depth,
-                    state_dim.height, state_dim.width)
-        conv_output_size = 256
+        self.big_neighborhood = big_neighborhood
 
         if batch_renorm:
             self.norm_func_3d = BatchRenorm3d
@@ -40,13 +38,22 @@ class CrossQCritic(nn.Module):
             self.norm_func_1d = nn.BatchNorm1d
         batch_norm_kwargs = {"momentum": 0.01}
 
-        self.q_neighbor_encoder = make_conv_network(
-            input_size=conv_state_shape, output_size=256,
-            norm_layer_1d=self.norm_func_1d, norm_layer_3d=self.norm_func_3d,
-            norm_layer_kwargs=batch_norm_kwargs
-            )
+        print("Init CrossQCritic with big_neighborhood: ", big_neighborhood)
+
+        if self.big_neighborhood:
+            conv_state_shape = (state_dim.nb_sh_coefs, state_dim.depth,
+                        state_dim.height, state_dim.width)
+            flat_neigh_size = 256
+            self.q_neighbor_encoder = make_conv_network(
+                input_size=conv_state_shape, output_size=flat_neigh_size,
+                norm_layer_1d=self.norm_func_1d, norm_layer_3d=self.norm_func_3d,
+                norm_layer_kwargs=batch_norm_kwargs
+                )
+        else:
+            flat_neigh_size = state_dim.neighborhood_common_shape[0]
         
-        full_fc_state_dim = conv_output_size + state_dim.prev_dirs
+        full_fc_state_dim = flat_neigh_size + state_dim.prev_dirs_size
+        print("Full FC state dim: ", full_fc_state_dim)
         self.hidden_layers = format_widths(
             hidden_dims) * critic_size_factor
 
@@ -55,6 +62,7 @@ class CrossQCritic(nn.Module):
         # From CrossQ implementation, we need to introduce batch renormalization
         # in order to avoid utilizing target networks.
         input_size = full_fc_state_dim + action_dim
+        print("input size: ", input_size)
         self.q1 = nn.Sequential(
             nn.Linear(input_size, self.hidden_layers[0]),
             nn.ReLU(),
@@ -71,31 +79,38 @@ class CrossQCritic(nn.Module):
             nn.Linear(self.hidden_layers[2], 1)
         )
 
-    def forward(self, state: ConvState, action, next_state=None, next_action=None) -> torch.Tensor:
+    def forward(self, state: State, action, next_state: State=None, next_action=None) -> torch.Tensor:
 
         if next_state is None or next_action is None:
             assert next_state is None and next_action is None, \
                 "Either both next_state and next_action must be provided or neither."
 
-        if next_state is not None and next_action is not None:    
+        if next_state is not None and next_action is not None:
             # Predict on both state-action pairs at the same time.
-            #encoder_states_input = torch.cat([state.conv_state, next_state.conv_state]) # concat batch dimension
-            #encoded_neighborhood_1 = self.q_neighbor_encoder(encoder_states_input)
+
+            if self.big_neighborhood:
+                encoder_states_input = torch.cat([state.neighborhood, next_state.neighborhood]) # concat batch dimension
+                encoded_neighborhood_1 = self.q_neighbor_encoder(encoder_states_input)
+            else:
+                encoded_neighborhood_1 = torch.cat([state.neighborhood, next_state.neighborhood], dim=0)
 
             all_prev_dirs = torch.cat([state.prev_dirs, next_state.prev_dirs]) # concat batch-wise
             
             # add all prev dirs to the input
-            #q1_states_input = torch.cat([encoded_neighborhood_1, all_prev_dirs], -1) # concat feature-wise
+            q1_states_input = torch.cat([encoded_neighborhood_1, all_prev_dirs], -1) # concat feature-wise
             q1_actions_input = torch.cat([action, next_action]) # concat batch-wise
 
-            q1_input = torch.cat([all_prev_dirs, q1_actions_input], -1) # Add actions as features
+            q1_input = torch.cat([q1_states_input, q1_actions_input], -1) # Add actions as features
             pred = self.q1(q1_input).squeeze(-1)
 
             q, next_q = torch.tensor_split(pred, 2, dim=0)
             return q, next_q
         else:
             # Predict on single state-action pair
-            encoded_neighborhood_1 = self.q_neighbor_encoder(state.conv_state)
+            if self.big_neighborhood:
+                encoded_neighborhood_1 = self.q_neighbor_encoder(state.neighborhood)
+            else:
+                encoded_neighborhood_1 = state.neighborhood
             q1_states_input = torch.cat([encoded_neighborhood_1, state.prev_dirs], -1)
             q1_input = torch.cat([q1_states_input, action], -1)
             pred = self.q1(q1_input).squeeze(-1)
@@ -126,16 +141,17 @@ class CrossQDoubleCritic(nn.Module):
 class CrossQActorCritic(SACActorCritic):
     def __init__(
             self,
-            state_dim: ConvStateShape,
+            state_dim: StateShape,
             action_dim,
             hidden_dims,
+            big_neighborhood,
             device
     ):
         self.device = device
         self.actor = MaxEntropyActor(
-            state_dim, action_dim, hidden_dims
+            state_dim, action_dim, hidden_dims, big_neighborhood
         ).to(device)
 
         self.critic = CrossQDoubleCritic(
-            state_dim, action_dim, hidden_dims
+            state_dim, action_dim, hidden_dims, big_neighborhood
         ).to(device)

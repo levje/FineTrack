@@ -5,7 +5,7 @@ from typing import Tuple
 #FineTrack.algorithms.shared.disc_cumsum
 from FineTrack.algorithms.shared.disc_cumsum import disc_cumsum
 from FineTrack.utils.utils import break_if_found_nans, break_if_found_nans_args
-from FineTrack.environments.conv_state import ConvState, ConvStateShape
+from FineTrack.environments.state import State, StateShape
 from FineTrack.utils.lazy_tensor import LazyTensorManager, NaiveLazyTensorManager
 
 from FineTrack.utils.torch_utils import get_device, get_device_str
@@ -28,9 +28,9 @@ class OffPolicyLazyReplayBuffer(object):
     next data that will be sampled to mitigate the disk I/O bottleneck.
     """
 
-    def __init__(self, state_dim: ConvStateShape, action_dim: int,
+    def __init__(self, state_dim: StateShape, action_dim: int,
                  max_size=int(1e6)):
-        print("Creating replay buffer with shape: ", (max_size, *state_dim.conv_state_common_shape))
+        print("Creating replay buffer with shape: ", (max_size, *state_dim.neighborhood_common_shape))
         self.size = 0
         self.ptr = 0
         self.device = device
@@ -62,7 +62,7 @@ class OffPolicyLazyReplayBuffer(object):
             self.is_in_writing_mode = True
             self.state_manager.enter_write_mode()
 
-    def add(self, state: ConvState, action, next_state: ConvState, reward, done):
+    def add(self, state: State, action, next_state: State, reward, done):
         if not self.is_in_writing_mode:
             raise RuntimeError("The buffer is not in writing mode. Call writing_mode first.")
 
@@ -140,7 +140,7 @@ class OffPolicyReplayBuffer(object):
     """
 
     def __init__(
-        self, state_dim: ConvStateShape, action_dim: int, max_size=int(1e6)
+        self, state_dim: StateShape, action_dim: int, max_size=int(1e6)
     ):
         """
         Parameters:
@@ -158,12 +158,12 @@ class OffPolicyReplayBuffer(object):
         self.size = 0
 
         # Buffers "filled with zeros"
-        self.state = ConvState.zeros(
-            (self.max_size, *state_dim.conv_state_common_shape), prev_dirs_size=state_dim.prev_dirs, dtype=rb_type)
+        self.state = State.zeros(
+            (self.max_size, *state_dim.neighborhood_common_shape), prev_dirs_size=state_dim.prev_dirs_size, dtype=rb_type)
         self.action = torch.zeros(
             (self.max_size, action_dim), dtype=rb_type)
-        self.next_state = ConvState.zeros(
-            (self.max_size, *state_dim.conv_state_common_shape), prev_dirs_size=state_dim.prev_dirs, dtype=rb_type)
+        self.next_state = State.zeros(
+            (self.max_size, *state_dim.neighborhood_common_shape), prev_dirs_size=state_dim.prev_dirs_size, dtype=rb_type)
         self.reward = torch.zeros(
             (self.max_size, 1), dtype=rb_type)
         self.not_done = torch.zeros(

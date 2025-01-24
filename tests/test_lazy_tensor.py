@@ -1,6 +1,6 @@
 import pytest
 
-from FineTrack.environments.conv_state import ConvStateShape, ConvState
+from FineTrack.environments.state import ConvStateShape, ConvState
 from FineTrack.utils.lazy_tensor import (LazyTensorManager,
                                          NaiveLazyTensorManager,
                                          MonitorThread)

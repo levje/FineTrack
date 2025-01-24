@@ -44,8 +44,9 @@ class CrossQFineTrackTraining(FineTrackTraining):
         self.alpha = cross_q_train_dto['alpha']
         self.batch_size = cross_q_train_dto['batch_size']
         self.replay_size = cross_q_train_dto['replay_size']
+        self.big_neighborhood = cross_q_train_dto['big_neighborhood']
 
-        self.sac_auto_hparams = CrossQHParams(
+        self.cross_q_hparams = CrossQHParams(
             self.lr,
             self.gamma,
             self.n_actor,
@@ -63,7 +64,8 @@ class CrossQFineTrackTraining(FineTrackTraining):
             {'algorithm': 'SACAuto',
              'alpha': self.alpha,
              'batch_size': self.batch_size,
-             'replay_size': self.replay_size})
+             'replay_size': self.replay_size,
+             'big_neighborhood': self.big_neighborhood})
 
         super().save_hyperparameters()
 
@@ -72,7 +74,8 @@ class CrossQFineTrackTraining(FineTrackTraining):
             self.input_size,
             self.action_size,
             self.hidden_dims,
-            self.sac_auto_hparams,
+            self.big_neighborhood,
+            self.cross_q_hparams,
             self.rng,
             device)
         return alg
@@ -86,6 +89,8 @@ def add_sac_auto_args(parser):
                         'buffer.')
     parser.add_argument('--replay_size', default=1e6, type=int,
                         help='How many tuples to store in the replay buffer.')
+    parser.add_argument('--big_neighborhood', default=False, type=bool,
+                        help='Whether to use a bigger neighborhood or just the regular neighborhood without convolutions.')
 
 
 def parse_args():

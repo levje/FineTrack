@@ -12,7 +12,7 @@ from FineTrack.algorithms.shared.offpolicy import SACActorCritic
 from FineTrack.algorithms.shared.replay import OffPolicyReplayBuffer, OffPolicyLazyReplayBuffer
 from FineTrack.utils.torch_utils import get_device, gradients_norm
 from FineTrack.algorithms.shared.kl import AdaptiveKLController, FixedKLController
-from FineTrack.environments.conv_state import ConvStateShape
+from FineTrack.environments.state import StateShape
 
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
@@ -53,9 +53,10 @@ class SACAuto(SAC):
 
     def __init__(
         self,
-        input_shape: ConvStateShape,
+        input_shape: StateShape,
         action_size: int,
         hidden_dims: int,
+        big_neighborhood: bool,
         hparams: SACAutoHParams = SACAutoHParams(),
         rng: np.random.RandomState = None,
         device: torch.device = get_device,
@@ -94,6 +95,7 @@ class SACAuto(SAC):
         self.alpha = hparams.alpha
         self.n_actors = hparams.n_actors
         self.replay_size = hparams.replay_size
+        self.big_neighborhood = big_neighborhood
 
         self.max_action = 1.
         self.t = 1

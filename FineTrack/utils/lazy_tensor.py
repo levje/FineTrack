@@ -10,7 +10,7 @@ import os
 from time import sleep
 from tqdm import tqdm
 
-from FineTrack.environments.conv_state import ConvState, ConvStateShape
+from FineTrack.environments.state import State, StateShape, ConvState, ConvStateShape
 from FineTrack.utils.torch_utils import (torch_to_np, np_to_torch,
                                          is_torch_type, is_np_type)
 from FineTrack.utils.logging import get_logger
@@ -83,14 +83,15 @@ def create_rb_file(shape, dtype=np.float32, file_path=None, permanent=False):
             yield file_path
 
 class NaiveLazyTensorManager(object):
-    def __init__(self, max_size: int, state_dim: ConvStateShape, batch_size, file_name=None, dtype = torch.float32, nb_prefetch=None, nb_readers=None):
+    def __init__(self, max_size: int, state_dim: StateShape, batch_size, file_name=None, dtype = torch.float32, nb_prefetch=None, nb_readers=None):
         self.max_size = max_size
-        self._shape = (max_size, *state_dim.conv_state_common_shape)
+        self._shape = (max_size, *state_dim.neighborhood_common_shape)
         self._state_dim = state_dim
         self.current_read_size = 0
         self.batch_size = batch_size
         self._state_ds_name = "state"
         self._next_state_ds_name = "next_state"
+        self._state_class = ConvState if isinstance(state_dim, ConvStateShape) else State
 
         self.torch_dtype = np_to_torch[dtype] if is_np_type(dtype) else dtype
         self.np_dtype = torch_to_np[dtype] if is_torch_type(dtype) else dtype
@@ -108,7 +109,7 @@ class NaiveLazyTensorManager(object):
     def enter_read_mode(self, size):
         self.current_read_size = size
 
-    def add(self, state: ConvState, n_state: ConvState, index):
+    def add(self, state: State, n_state: State, index):
         state_cpu = state.to('cpu')
         n_state_cpu = n_state.to('cpu')
 
@@ -139,8 +140,8 @@ class NaiveLazyTensorManager(object):
         indices.sort()
 
         if self.read_batch_size is not None:
-            o_state = np.zeros((self.batch_size, *self._state_dim.conv_state_common_shape), dtype=self.np_dtype)
-            o_next_state = np.zeros((self.batch_size, *self._state_dim.conv_state_common_shape), dtype=self.np_dtype)
+            o_state = np.zeros((self.batch_size, *self._state_dim.neighborhood_common_shape), dtype=self.np_dtype)
+            o_next_state = np.zeros((self.batch_size, *self._state_dim.neighborhood_common_shape), dtype=self.np_dtype)
 
         with h5.File(self._file, 'r') as f:
             if self.read_batch_size is not None:
@@ -161,27 +162,28 @@ class NaiveLazyTensorManager(object):
         o_state = torch.from_numpy(o_state)
         o_next_state = torch.from_numpy(o_next_state)
 
-        # Reconstruct the ConvState so we can have the previous directions.
-        o_state = ConvState(o_state, self.s_prev_dirs[indices])
-        o_next_state = ConvState(o_next_state, self.ns_prev_dirs[indices])
+        # Reconstruct the State object so we can have the previous directions.
+        o_state = self._state_class(o_state, self.s_prev_dirs[indices])
+        o_next_state = self._state_class(o_next_state, self.ns_prev_dirs[indices])
 
         return o_state, o_next_state, indices
 
 class LazyTensorManager(object):
-    def __init__(self, max_size, state_dim: ConvStateShape, batch_size, dtype = torch.float32, nb_prefetch = 3,
+    def __init__(self, max_size, state_dim: StateShape, batch_size, dtype = torch.float32, nb_prefetch = 3,
                  nb_readers = 3, file_name=None):
 
         print("Creating LazyTensorManager")
         # TODO: parameterize these
         self.max_size = max_size
         self._state_dim = state_dim
-        self._shape = (max_size, *state_dim.conv_state_common_shape) # (max_size, *shape)
-        self._placeholder_shape = (batch_size, *state_dim.conv_state_common_shape) # (batch_size, *shape)
+        self._shape = (max_size, *state_dim.neighborhood_common_shape) # (max_size, *shape)
+        self._placeholder_shape = (batch_size, *state_dim.neighborhood_common_shape) # (batch_size, *shape)
         self._read_batch_size = 2 # TODO: Why is it that the read batch size can't be higher than 5? If it is, the child process is terminated because of a segmentation fault.
         self._nb_prefetch = nb_prefetch
         self._nb_readers = nb_readers
         self._state_ds_name = "state"
         self._next_state_ds_name = "next_state"
+        self._state_class = ConvState if isinstance(state_dim, ConvStateShape) else State
 
         self.torch_dtype = np_to_torch[dtype] if is_np_type(dtype) else dtype
         self.np_dtype = torch_to_np[dtype] if is_torch_type(dtype) else dtype
@@ -205,7 +207,7 @@ class LazyTensorManager(object):
         # print("File created")
         self._file = next(self._file_gen)
 
-        # Since the states we are storing are ConvStates, we need to store the previous directions as well.
+        # Since the states we are storing are State objects, we need to store the previous directions as well.
         # However, it's light enough to store them in memory directly.
         self.s_prev_dirs = torch.zeros((self.max_size, self._state_dim.prev_dirs), dtype=self.torch_dtype)
         self.ns_prev_dirs = torch.zeros((self.max_size, self._state_dim.prev_dirs), dtype=self.torch_dtype)
@@ -222,7 +224,7 @@ class LazyTensorManager(object):
         self.stop_workers(kill=True, force=False)
         LOGGER.debug("LazyTensorManager object deleted. Cleaned up.")
 
-    def add(self, state: ConvState, n_state: ConvState, index):
+    def add(self, state: State, n_state: State, index):
         if not self.is_writing_mode:
             raise RuntimeError("The manager is not in writing mode. Call enter_write_mode first.")
 
@@ -365,9 +367,9 @@ class LazyTensorManager(object):
 
         self.add_indices()
 
-        # Reconstruct the ConvState so we can have the previous directions.
-        o_state = ConvState(o_state, self.s_prev_dirs[indices])
-        o_next_state = ConvState(o_next_state, self.ns_prev_dirs[indices])
+        # Reconstruct the State object so we can have the previous directions.
+        o_state = self._state_class(o_state, self.s_prev_dirs[indices])
+        o_next_state = self._state_class(o_next_state, self.ns_prev_dirs[indices])
 
         return o_state, o_next_state, indices
 
