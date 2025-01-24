@@ -320,7 +320,7 @@ def main():
         n_coeffs=nb_coefs,
         nb_epochs=100,
         neighborhood_radius=neighborhood_radius,
-        batch_size=1000,
+        batch_size=100,
         device="cpu")
     
     trainer.train()
