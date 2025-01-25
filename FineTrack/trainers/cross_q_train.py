@@ -90,7 +90,7 @@ def add_cross_q_auto_args(parser):
                         'buffer.')
     parser.add_argument('--replay_size', default=1e6, type=int,
                         help='How many tuples to store in the replay buffer.')
-    parser.add_argument('--big_neighborhood', default=False, type=bool,
+    parser.add_argument('--big_neighborhood', action='store_true',
                         help='Whether to use a bigger neighborhood or just the regular neighborhood without convolutions.')
     parser.add_argument('--fodf_encoder_ckpt', type=str, default=None,
                         help='Path to the encoder checkpoint to use for FODF input.')

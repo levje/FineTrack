@@ -618,7 +618,7 @@ class BaseEnv(object):
                 self.neighborhood_directions)
             N, S = signal.shape
 
-            if self.big_neighborhood:
+            if self.big_neighborhood or self.fodf_encoder is not None:
                 # Unflatten the signal to use it for convolutions
                 # Unflatten the signal into (N, W, H, D, C) shape
                 signal = unflatten_neighborhood(
@@ -649,7 +649,7 @@ class BaseEnv(object):
 
             # Return them separately so we can run convolutions on unflattened
             # but not dir_inputs.
-            if self.big_neighborhood and self.fodf_encoder is None:
+            if self.big_neighborhood:
                 state = ConvState(signal, dir_inputs, device=self.device)
             else:
                 state = State(signal, dir_inputs, device=self.device)
