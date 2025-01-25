@@ -7,14 +7,16 @@ import numpy as np
 from tqdm import tqdm
 from FineTrack.algorithms.shared.utils import ResidualBlock
 from FineTrack.algorithms.shared.batch_renorm import BatchRenorm1d, BatchRenorm3d
-from FineTrack.utils.torch_utils import get_device
+from FineTrack.utils.torch_utils import get_device_str
+from FineTrack.utils.utils import ManualProfiler
 from FineTrack.utils.logging import get_logger, setLevel
-from dwi_ml.data.processing.volume.interpolation import \
+from FineTrack.utils.neighborhood_interpolation import \
     interpolate_volume_in_neighborhood
 from dwi_ml.data.processing.space.neighborhood import \
     unflatten_neighborhood, prepare_neighborhood_vectors
 
 LOGGER = get_logger(__name__)
+device = get_device_str()
 
 class FodfAe(nn.Module):
     def __init__(self, input_shape, n_coeffs=28, renorm=False):
@@ -124,11 +126,13 @@ class NeighborhoodManager(object):
         return (self.radius * 2 + 1, ) * 3
 
     def get(self, coords):
-        signal, _ = interpolate_volume_in_neighborhood(
-            self.data_volume,
-            coords,
-            self.neighborhood_directions)
-        
+        with torch.no_grad(), torch.autocast(device_type=device, dtype=torch.float16):
+            signal, _ = interpolate_volume_in_neighborhood(
+                self.data_volume,
+                coords,
+                self.neighborhood_directions,
+                clear_cache=False)
+
         if not self.flatten:
             # Unflatten the signal into (N, W, H, D, C) shape, where this is the
             # convention for PyTorch's Conv3d module.
@@ -211,11 +215,12 @@ class FodfAeTrainer(object):
 
         self.project_name = "fodf_ae"
         self.workspace="mrzarfir"
-        self.comet_enabled = False
+        self.comet_enabled = True
         self.experiment = None
 
-        self.lr = 1e-4
+        self.lr = 1e-6
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=len(self.train_loader))
         self._create_comet_experiment()
 
     def to(self, device):
@@ -254,31 +259,46 @@ class FodfAeTrainer(object):
             self.model.train()
             with tqdm(range(len(self.train_loader)), desc="Training batches", leave=False) as train_batch_pbar:
                 for i, coords in enumerate(self.train_loader):
-                    coords = coords.squeeze(0)
-                    batch = self.neigh_manager.get(coords)
-                    if len(batch.shape) > 5:
-                        batch = batch.squeeze(0)
-                    batch = batch.to(self.device)
+                    with ManualProfiler("train_batch", print_enabled=False) as p:
+                        coords = coords.squeeze(0)
+                        batch = self.neigh_manager.get(coords)
+                        
+                        p.point("get_coords")
+                        
+                        if len(batch.shape) > 5:
+                            batch = batch.squeeze(0)
+                        batch = batch.to(self.device)
 
-                    with torch.autocast(device_type='cuda', dtype=torch.float16):
-                        output = self.model(batch)
-                        loss = self.reconstruction_loss(output, batch)
-                    self.optimizer.zero_grad()
-                    loss.backward()
-                    self.optimizer.step()
-                    loss_item = loss.item()
-                    self.train_losses.append(loss_item)
+                        p.point("batch to device")
 
-                    train_batch_pbar.set_postfix({"loss": loss_item})
-                    train_batch_pbar.update(1)
+                        with torch.autocast(device_type='cuda', dtype=torch.float16):
+                            output = self.model(batch)
+                            loss = self.reconstruction_loss(output, batch)
 
-                    if loss_item < best_loss:
-                        best_loss = loss_item
-                        torch.save(self.model.state_dict(), "fodf_ae/best_model.pth")
+                        p.point("forward pass")
 
-                    # Send to Comet.ml
-                    self.experiment.log_metric("train_loss", loss_item, step=i, epoch=epoch)
+                        self.optimizer.zero_grad()
+                        loss.backward()
+                        self.optimizer.step()
+                        self.scheduler.step()
 
+                        p.point("backward pass")
+
+                        loss_item = loss.item()
+                        self.train_losses.append(loss_item)
+
+                        train_batch_pbar.set_postfix({"loss": loss_item})
+                        train_batch_pbar.update(1)
+
+                        if loss_item < best_loss:
+                            best_loss = loss_item
+                            torch.save(self.model.state_dict(), "fodf_ae/best_model.pth")
+
+                        # Send to Comet.ml
+                        self.experiment.log_metric("train_loss", loss_item, step=i, epoch=epoch)
+                        self.experiment.log_metric("lr", self.optimizer.param_groups[0]['lr'], step=i, epoch=epoch)
+
+                        p.point("logging")
 
             # avg_loss = np.mean(self.train_losses)
             self.train_losses = []
@@ -336,7 +356,7 @@ def main():
         n_coeffs=nb_coefs,
         nb_epochs=100,
         neighborhood_radius=neighborhood_radius,
-        batch_size=50,
+        batch_size=64,
         device="cuda")
     
     trainer.train()
