@@ -586,59 +586,60 @@ class BaseEnv(object):
         inputs: `numpy.ndarray`
             Observations of the state, incl. previous directions.
         """
-        N, L, P = streamlines.shape
+        with torch.no_grad(), torch.autocast(device_type=str(self.device), dtype=torch.float16):
+            N, L, P = streamlines.shape
 
-        if N <= 0:
-            return []
+            if N <= 0:
+                return []
 
-        # Get the last point of each streamline
-        segments = streamlines[:, -1, :][:, None, :]
+            # Get the last point of each streamline
+            segments = streamlines[:, -1, :][:, None, :]
 
-        # Reshape to get a list of coordinates
-        N, H, P = segments.shape
-        flat_coords = np.reshape(segments, (N * H, P))
-        coords = torch.as_tensor(flat_coords).to(self.device)
+            # Reshape to get a list of coordinates
+            N, H, P = segments.shape
+            flat_coords = np.reshape(segments, (N * H, P))
+            coords = torch.as_tensor(flat_coords).to(self.device)
 
-        # Get the SH coefficients at the last point of each streamline
-        # The neighborhood is used to get the SH coefficients around
-        # the last point
-        signal, _ = interpolate_volume_in_neighborhood(
-            self.data_volume,
-            coords,
-            self.neighborhood_directions)
-        N, S = signal.shape
+            # Get the SH coefficients at the last point of each streamline
+            # The neighborhood is used to get the SH coefficients around
+            # the last point
+            signal, _ = interpolate_volume_in_neighborhood(
+                self.data_volume,
+                coords,
+                self.neighborhood_directions)
+            N, S = signal.shape
 
-        if self.big_neighborhood:
-            # Unflatten the signal to use it for convolutions
-            # Unflatten the signal into (N, W, H, D, C) shape
-            unflattened = unflatten_neighborhood(
-                signal, self.neighborhood_directions, 'grid',
-                self.neighborhood_radius, self.add_neighborhood_vox)
+            if self.big_neighborhood:
+                # Unflatten the signal to use it for convolutions
+                # Unflatten the signal into (N, W, H, D, C) shape
+                unflattened = unflatten_neighborhood(
+                    signal, self.neighborhood_directions, 'grid',
+                    self.neighborhood_radius, self.add_neighborhood_vox)
 
-            # Permute axes to fit PyTorch's convention of (N, C, D, H, W)
-            # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
-            unflattened = unflattened.permute(0, 4, 1, 2, 3)
+                # Permute axes to fit PyTorch's convention of (N, C, D, H, W)
+                # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
+                unflattened = unflattened.permute(0, 4, 1, 2, 3)
 
-        # Placeholder for the previous directions
-        previous_dirs = np.zeros((N, self.n_dirs, P), dtype=np.float32)
-        if L > 1:
-            # Compute directions from the streamlines
-            dirs = np.diff(streamlines, axis=1)
-            # Fetch the N last directions
-            previous_dirs[:, :min(dirs.shape[1], self.n_dirs), :] = \
-                dirs[:, :-(self.n_dirs+1):-1, :]
+            # Placeholder for the previous directions
+            previous_dirs = np.zeros((N, self.n_dirs, P), dtype=np.float32)
+            if L > 1:
+                # Compute directions from the streamlines
+                dirs = np.diff(streamlines, axis=1)
+                # Fetch the N last directions
+                previous_dirs[:, :min(dirs.shape[1], self.n_dirs), :] = \
+                    dirs[:, :-(self.n_dirs+1):-1, :]
 
-        # Flatten the directions to fit in the inputs and send to device
-        dir_inputs = torch.reshape(
-            torch.from_numpy(previous_dirs).to(self.device),
-            (N, self.n_dirs * P))
+            # Flatten the directions to fit in the inputs and send to device
+            dir_inputs = torch.reshape(
+                torch.from_numpy(previous_dirs).to(self.device),
+                (N, self.n_dirs * P))
 
-        # Return them separately so we can run convolutions on unflattened
-        # but not dir_inputs.
-        if self.big_neighborhood:
-            state = ConvState(unflattened, dir_inputs, self.device)
-        else:
-            state = State(signal, dir_inputs, self.device)
+            # Return them separately so we can run convolutions on unflattened
+            # but not dir_inputs.
+            if self.big_neighborhood:
+                state = ConvState(unflattened, dir_inputs, self.device)
+            else:
+                state = State(signal, dir_inputs, self.device)
         return state
 
     def _compute_stopping_flags(

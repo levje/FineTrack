@@ -16,10 +16,10 @@ NB_STREAMLINES_POINTS=32
 EXPID="CrossQ-NoConv-"_$(date +"%F-%H_%M_%S")
 MAXEP=1000
 BATCHSIZE=4096
-SEEDS=(1111)
+SEEDS=(1111 2222 3333 4444 5555)
 NPV=20
-GAMMA=0.99
-LR=0.00002
+GAMMA=0.95
+LR=0.00005
 THETA=30
 
 # Check if the script is ran locally or on a cluster node.
