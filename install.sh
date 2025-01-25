@@ -30,17 +30,17 @@ echo "Updating pip ..."
 pip install --upgrade pip --quiet
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    echo "Installing PyTorch 2.2.0"
-    pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --quiet
+    echo "Installing PyTorch 2.5.1"
+    pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1
 else
     # Install pytorch
-    echo "Installing PyTorch 2.2.0+${CUDA_VERSION}"
+    echo "Installing PyTorch 2.5.1+${CUDA_VERSION}"
     # Install PyTorch with CUDA support
     pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --extra-index-url https://download.pytorch.org/whl/${CUDA_VERSION} --quiet
 fi
 
 echo "Installing other required packages ..."
-pip install -r requirements.txt --quiet
+pip install -r requirements.txt
 
 # Install other required packages and modules
 echo "Finalizing installation ..."
