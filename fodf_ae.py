@@ -7,7 +7,7 @@ import numpy as np
 from tqdm import tqdm
 from FineTrack.algorithms.shared.utils import ResidualBlock
 from FineTrack.algorithms.shared.batch_renorm import BatchRenorm1d, BatchRenorm3d
-from FineTrack.utils.torch_utils import get_device
+from FineTrack.utils.torch_utils import get_device, get_device_str
 from FineTrack.utils.logging import get_logger, setLevel
 from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
@@ -15,6 +15,43 @@ from dwi_ml.data.processing.space.neighborhood import \
     unflatten_neighborhood, prepare_neighborhood_vectors
 
 LOGGER = get_logger(__name__)
+device = "cpu"
+
+class FodfEncoder(nn.Module):
+    def __init__(self, n_coeffs=28, renorm=False, activation=nn.GELU):
+        super().__init__()
+
+        norm_layer = nn.BatchNorm3d if not renorm else BatchRenorm3d
+
+        self.encoder = nn.Sequential(
+            nn.Conv3d(in_channels=n_coeffs, out_channels=n_coeffs, kernel_size=1, stride=1, padding=0),
+            activation(),
+            nn.BatchNorm3d(n_coeffs),  # 28x19x19x19
+            nn.Conv3d(in_channels=n_coeffs, out_channels=64, kernel_size=3, stride=1, padding=1),  # 90x108x90x64
+            activation(),
+            norm_layer(64),
+
+            ResidualBlock(64, norm_layer=norm_layer),  # 64x19x19x19
+            ResidualBlock(64, norm_layer=norm_layer),  # 64x19x19x19
+            nn.Conv3d(64, 128, kernel_size=3, stride=2, padding=1),  # 128x10x10x10
+            
+            ResidualBlock(128, norm_layer=norm_layer),  # 128x10x10x10
+            ResidualBlock(128, norm_layer=norm_layer),  # 128x10x10x10
+            nn.Conv3d(128, 256, kernel_size=3, stride=2, padding=1),  # 256x5x5x5
+
+            ResidualBlock(256, norm_layer=norm_layer),  # 256x5x5x5
+            ResidualBlock(256, norm_layer=norm_layer),  # 256x5x5x5
+            nn.Conv3d(256, 512, kernel_size=3, stride=2, padding=1),  # 512x3x3x3
+        )
+
+        # self.encoder4 = nn.Sequential(
+        #     ResidualBlock(512, norm_layer=norm_layer),  # 11x13x11x512
+        #     ResidualBlock(512, norm_layer=norm_layer),  # 11x13x11x512
+        #     nn.Conv3d(512, 1024, kernel_size=3, stride=2, padding=1),  # 5x6x5x1024
+        # )
+
+    def forward(self, x):
+        return self.encoder(x)
 
 class FodfAe(nn.Module):
     def __init__(self, input_shape, n_coeffs=28, renorm=False):
@@ -26,41 +63,7 @@ class FodfAe(nn.Module):
         # Let's say the input image is 128x128x128x28
         self.input_shape = input_shape
 
-        flat_shape = 1
-        for dim in input_shape:
-            o_dim = dim // 16
-            flat_shape *= o_dim
-
-        self.encoder0 = nn.Sequential(
-            nn.Conv3d(in_channels=n_coeffs, out_channels=n_coeffs, kernel_size=1, stride=1, padding=0),
-            self.activation(),
-            nn.BatchNorm3d(n_coeffs),  # 28x19x19x19
-        )
-        self.encoder1 = nn.Sequential(
-            nn.Conv3d(in_channels=n_coeffs, out_channels=64, kernel_size=3, stride=1, padding=1),  # 90x108x90x64
-            self.activation(),
-            self.norm_layer(64),
-
-            ResidualBlock(64, norm_layer=self.norm_layer),  # 64x19x19x19
-            ResidualBlock(64, norm_layer=self.norm_layer),  # 64x19x19x19
-            nn.Conv3d(64, 128, kernel_size=3, stride=2, padding=1),  # 128x10x10x10
-        )
-
-        self.encoder2 = nn.Sequential(
-            ResidualBlock(128, norm_layer=self.norm_layer),  # 128x10x10x10
-            ResidualBlock(128, norm_layer=self.norm_layer),  # 128x10x10x10
-            nn.Conv3d(128, 256, kernel_size=3, stride=2, padding=1),  # 256x5x5x5
-        )
-        self.encoder3 = nn.Sequential(
-            ResidualBlock(256, norm_layer=self.norm_layer),  # 256x5x5x5
-            ResidualBlock(256, norm_layer=self.norm_layer),  # 256x5x5x5
-            nn.Conv3d(256, 512, kernel_size=3, stride=2, padding=1),  # 512x3x3x3
-        )
-        # self.encoder4 = nn.Sequential(
-        #     ResidualBlock(512, norm_layer=self.norm_layer),  # 11x13x11x512
-        #     ResidualBlock(512, norm_layer=self.norm_layer),  # 11x13x11x512
-        #     nn.Conv3d(512, 1024, kernel_size=3, stride=2, padding=1),  # 5x6x5x1024
-        # )
+        self.encoder = FodfEncoder(n_coeffs, renorm)
 
         self.decoder = nn.Sequential(
             # ResidualBlock(1024, norm_layer=self.norm_layer),  # 8x8x8x1024
@@ -89,23 +92,24 @@ class FodfAe(nn.Module):
         )
 
     def forward(self, x):
-        latent = self.encode(x)
+        latent = self.encoder(x)
         output = self.decode(latent)
         return output
-
-    def encode(self, x):
-        latent = self.encoder0(x)
-        latent = self.encoder1(latent)
-        latent = self.encoder2(latent)
-        latent = self.encoder3(latent)
-        # latent = self.encoder4(latent)
-
-        return latent
 
     def decode(self, latent):
         output = self.decoder(latent)
         output = output[..., :-1, :-1, :-1]
         return output
+    
+    def state_dict(self):
+        return {
+            "encoder": self.encoder.state_dict(),
+            "decoder": self.decoder.state_dict()
+        }
+    
+    def load_state_dict(self, state_dict):
+        self.encoder.load_state_dict(state_dict["encoder"])
+        self.decoder.load_state_dict(state_dict["decoder"])
 
 class NeighborhoodManager(object):
     def __init__(self, data_volume, radius, add_neighborhood_vox, neighborhood_type='grid', resolution=1, flatten=False):
@@ -260,7 +264,7 @@ class FodfAeTrainer(object):
                         batch = batch.squeeze(0)
                     batch = batch.to(self.device)
 
-                    with torch.autocast(device_type='cuda', dtype=torch.float16):
+                    with torch.autocast(device_type=device, dtype=torch.float16):
                         output = self.model(batch)
                         loss = self.reconstruction_loss(output, batch)
                     self.optimizer.zero_grad()
@@ -275,6 +279,7 @@ class FodfAeTrainer(object):
                     if loss_item < best_loss:
                         best_loss = loss_item
                         torch.save(self.model.state_dict(), "fodf_ae/best_model.pth")
+                        torch.save(self.model.encoder.state_dict(), "fodf_ae/best_encoder.pth")
 
                     # Send to Comet.ml
                     self.experiment.log_metric("train_loss", loss_item, step=i, epoch=epoch)
@@ -337,7 +342,7 @@ def main():
         nb_epochs=100,
         neighborhood_radius=neighborhood_radius,
         batch_size=50,
-        device="cuda")
+        device=device)
     
     trainer.train()
     trainer.test()
