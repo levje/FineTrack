@@ -154,9 +154,10 @@ class FodfDataset(torch.utils.data.Dataset):
         coords = self.coords[idx]
         if isinstance(idx, int):
             coords = coords.unsqueeze(0)
-        signal = self.neigh_manager.get(coords)
-        signal = signal.squeeze(0)
-        return signal
+        # signal = self.neigh_manager.get(coords)
+        # signal = signal.squeeze(0)
+        # return signal
+        return coords
 
 class FodfAeTrainer(object):
     def __init__(self, input_shape, n_coeffs=28, nb_epochs=100, neighborhood_radius=9, batch_size=1, device="cpu"):
@@ -165,7 +166,7 @@ class FodfAeTrainer(object):
         self.batch_size = batch_size
         self.nb_epochs = 100
 
-        fodf_path = "/Users/jeremilevesque/Documents/uni/TrackToLearn/data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz"
+        fodf_path = "data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz"
         fodf_img = nib.load(fodf_path)
         fodf_data = fodf_img.get_fdata()
         data_volume = torch.from_numpy(fodf_data)
@@ -194,27 +195,28 @@ class FodfAeTrainer(object):
         self.valid_dataset = FodfDataset(self.neigh_manager, self.valid_coords)
         self.test_dataset = FodfDataset(self.neigh_manager, self.test_coords)
 
-        # train_sampler = BatchSampler(SequentialSampler(
-        #     self.train_dataset), self.batch_size,
-        #     drop_last=False)
-        # valid_sampler = BatchSampler(SequentialSampler(
-        #     self.valid_dataset), self.batch_size,
-        #     drop_last=False)
-        # test_sampler = BatchSampler(SequentialSampler(
-        #     self.test_dataset), self.batch_size,
-        #     drop_last=False)
+        train_sampler = BatchSampler(SequentialSampler(
+            self.train_dataset), self.batch_size,
+            drop_last=False)
+        valid_sampler = BatchSampler(SequentialSampler(
+            self.valid_dataset), self.batch_size,
+            drop_last=False)
+        test_sampler = BatchSampler(SequentialSampler(
+            self.test_dataset), self.batch_size,
+            drop_last=False)
 
-        self.train_loader = DataLoader(self.train_dataset, batch_size=self.batch_size)
-        self.valid_loader = DataLoader(self.valid_dataset, batch_size=self.batch_size)
-        self.test_loader = DataLoader(self.test_dataset, batch_size=self.batch_size)
+        self.train_loader = DataLoader(self.train_dataset, sampler=train_sampler, num_workers=1)
+        self.valid_loader = DataLoader(self.valid_dataset, sampler=valid_sampler)
+        self.test_loader = DataLoader(self.test_dataset, sampler=test_sampler)
 
         self.project_name = "fodf_ae"
         self.workspace="mrzarfir"
-        self.comet_enabled = True
+        self.comet_enabled = False
         self.experiment = None
 
         self.lr = 1e-4
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        self._create_comet_experiment()
 
     def to(self, device):
         self.model.to(device)
@@ -245,28 +247,42 @@ class FodfAeTrainer(object):
         self.train_losses = []
         self.valid_losses = []
 
+        self.model = self.model.to(self.device)
+        best_loss = np.inf
+
         for epoch in tqdm(range(self.nb_epochs), desc="Epochs"):
             self.model.train()
             with tqdm(range(len(self.train_loader)), desc="Training batches", leave=False) as train_batch_pbar:
-                for batch in self.train_loader:
+                for i, coords in enumerate(self.train_loader):
+                    coords = coords.squeeze(0)
+                    batch = self.neigh_manager.get(coords)
+                    if len(batch.shape) > 5:
+                        batch = batch.squeeze(0)
                     batch = batch.to(self.device)
-                    output = self.model(batch)
-                    loss = self.reconstruction_loss(output, batch)
+
+                    with torch.autocast(device_type='cuda', dtype=torch.float16):
+                        output = self.model(batch)
+                        loss = self.reconstruction_loss(output, batch)
                     self.optimizer.zero_grad()
                     loss.backward()
                     self.optimizer.step()
                     loss_item = loss.item()
                     self.train_losses.append(loss_item)
-                    
+
                     train_batch_pbar.set_postfix({"loss": loss_item})
                     train_batch_pbar.update(1)
 
+                    if loss_item < best_loss:
+                        best_loss = loss_item
+                        torch.save(self.model.state_dict(), "fodf_ae/best_model.pth")
 
-            avg_loss = np.mean(self.train_losses)
+                    # Send to Comet.ml
+                    self.experiment.log_metric("train_loss", loss_item, step=i, epoch=epoch)
+
+
+            # avg_loss = np.mean(self.train_losses)
             self.train_losses = []
 
-            # Send to Comet.ml
-            self.experiment.log_metric("train_loss", avg_loss, epoch=epoch)
 
             self.model.eval()
             with torch.no_grad():
@@ -281,7 +297,7 @@ class FodfAeTrainer(object):
 
             # Send to Comet.ml
             self.experiment.log_metric("valid_loss", avg_loss, epoch=epoch)
-        
+
         return self.valid_losses
 
     def test(self):
@@ -303,7 +319,7 @@ class FodfAeTrainer(object):
 
 def main():
     print("loading fodf image")
-    fodf_path = "/Users/jeremilevesque/Documents/uni/TrackToLearn/data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz"
+    fodf_path = "data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz"
     fodf_img = nib.load(fodf_path)
     fodf_data = fodf_img.get_fdata()
     fodf_shape = fodf_data.shape
@@ -320,8 +336,8 @@ def main():
         n_coeffs=nb_coefs,
         nb_epochs=100,
         neighborhood_radius=neighborhood_radius,
-        batch_size=100,
-        device="cpu")
+        batch_size=50,
+        device="cuda")
     
     trainer.train()
     trainer.test()
