@@ -10,13 +10,14 @@
 set -e
 
 # Expriment parameters
+USECOMET=0
 EXPNAME="TrackToLearn-CrossQ"
 COMETPROJECT="TrackToLearn-CrossQ"
 NB_STREAMLINES_POINTS=32
 EXPID="CrossQ-NoConv-"_$(date +"%F-%H_%M_%S")
-MAXEP=1000
+MAXEP=50
 BATCHSIZE=4096
-SEEDS=(1111 2222 3333 4444 5555)
+SEEDS=(1111)
 NPV=20
 GAMMA=0.95
 LR=0.00005
@@ -100,6 +101,11 @@ do
         additionnal_args+=('--backup_dir' "${BACKUPDIR}")
     fi
 
+    # Add use_comet flag is USECOMET is set to 1
+    if [ $USECOMET -eq 1 ]; then
+        additionnal_args+=('--use_comet')
+    fi
+
     # Start training
     python -O $SOURCEDIR/FineTrack/trainers/cross_q_train.py \
         ${DEST_FOLDER} \
@@ -132,7 +138,7 @@ do
         --binary_stopping_threshold 0.1 \
         --n_dirs=100 \
         --alignment_weighting=1.0 \
-        --use_comet \
+        --fodf_encoder="fodf_ae/best_encoder_test.pth" \
         "${additionnal_args[@]}"
 
     # POST-PROCESSING

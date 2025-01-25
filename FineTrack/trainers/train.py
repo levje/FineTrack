@@ -50,7 +50,6 @@ class FineTrackTraining(Experiment):
         self.best_epoch_vc = -np.inf
         self._hooks_manager = HooksManager(RlHookEvent)
 
-
         # Setup validators, which will handle validation and scoring
         # of the generated streamlines
         self.validators = []
@@ -150,6 +149,16 @@ class FineTrackTraining(Experiment):
         backup_dir = train_dto['backup_dir']
         self.backuper = Backuper(self.experiment_path, self.experiment,
                                     self.name, backup_dir)
+        
+        # FODF autoencoder
+        self.big_neighborhood = train_dto['big_neighborhood']
+        self.fodf_encoder_ckpt = train_dto['fodf_encoder_ckpt']
+        if self.big_neighborhood:
+            if self.fodf_encoder_ckpt is None:
+                raise ValueError("big_neighborhood set to True but no encoder provided.")
+            
+            if not os.path.exists(self.fodf_encoder_ckpt):
+                raise ValueError(f"Encoder checkpoint {self.fodf_encoder_ckpt} does not exist.")
 
         self.hyperparameters = {
             # RL parameters

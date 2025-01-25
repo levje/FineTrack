@@ -44,7 +44,7 @@ class CrossQFineTrackTraining(FineTrackTraining):
         self.alpha = cross_q_train_dto['alpha']
         self.batch_size = cross_q_train_dto['batch_size']
         self.replay_size = cross_q_train_dto['replay_size']
-        self.big_neighborhood = cross_q_train_dto['big_neighborhood']
+        self.fodf_encoder_ckpt = cross_q_train_dto['fodf_encoder_ckpt']
 
         self.cross_q_hparams = CrossQHParams(
             self.lr,
@@ -65,7 +65,8 @@ class CrossQFineTrackTraining(FineTrackTraining):
              'alpha': self.alpha,
              'batch_size': self.batch_size,
              'replay_size': self.replay_size,
-             'big_neighborhood': self.big_neighborhood})
+             'big_neighborhood': self.big_neighborhood,
+             'fodf_encoder_ckpt': self.fodf_encoder_ckpt})
 
         super().save_hyperparameters()
 
@@ -81,7 +82,7 @@ class CrossQFineTrackTraining(FineTrackTraining):
         return alg
 
 
-def add_sac_auto_args(parser):
+def add_cross_q_auto_args(parser):
     parser.add_argument('--alpha', default=0.2, type=float,
                         help='Initial temperature parameter')
     parser.add_argument('--batch_size', default=2**12, type=int,
@@ -91,6 +92,8 @@ def add_sac_auto_args(parser):
                         help='How many tuples to store in the replay buffer.')
     parser.add_argument('--big_neighborhood', default=False, type=bool,
                         help='Whether to use a bigger neighborhood or just the regular neighborhood without convolutions.')
+    parser.add_argument('--fodf_encoder_ckpt', type=str, default=None,
+                        help='Path to the encoder checkpoint to use for FODF input.')
 
 
 def parse_args():
@@ -99,7 +102,7 @@ def parse_args():
         description=parse_args.__doc__,
         formatter_class=RawTextHelpFormatter)
     add_training_args(parser)
-    add_sac_auto_args(parser)
+    add_cross_q_auto_args(parser)
 
     arguments = parser.parse_args()
     return arguments

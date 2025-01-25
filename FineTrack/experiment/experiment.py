@@ -132,6 +132,7 @@ class Experiment(object):
             'target_sh_order': self.target_sh_order if hasattr(self, 'target_sh_order') else None,
             'reward_with_gt': self.reward_with_gt,
             'big_neighborhood': self.big_neighborhood,
+            'fodf_encoder_ckpt': self.fodf_encoder_ckpt,
         }
 
         if noisy:

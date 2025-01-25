@@ -425,7 +425,10 @@ class TractometerValidator(Validator):
             total_encountered += len(sft)
             total_removed += len(sft) - len(valid_sft)
         
-        perc_removed = (total_removed / total_encountered) * 100
+        if total_encountered == 0:
+            perc_removed = 0
+        else:
+            perc_removed = (total_removed / total_encountered) * 100
         LOGGER.info("Removed {} too short/long streamlines (which was {:.1f}% of the total nb of streamlines)".format(
             total_removed,
             perc_removed))

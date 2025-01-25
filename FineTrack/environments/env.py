@@ -35,6 +35,7 @@ from FineTrack.environments.utils import (  # is_looping,
 from FineTrack.utils.utils import normalize_vectors
 from FineTrack.environments.rollout_env import RolloutEnvironment
 from FineTrack.environments.state import ConvState, State
+from FineTrack.algorithms.shared.fodf_encoder import FodfEncoder
 
 LOGGER = get_logger(__name__)
 
@@ -148,6 +149,15 @@ class BaseEnv(object):
 
         self.big_neighborhood = env_dto['big_neighborhood']
 
+        # ==========================================
+        # FODF Encoder
+        # ==========================================
+        self.fodf_encoder_ckpt = env_dto['fodf_encoder_ckpt']
+        self.fodf_encoder = None
+        if self.fodf_encoder_ckpt is not None:
+            self.fodf_encoder = FodfEncoder(n_coeffs=28)
+            self.fodf_encoder.load_state_dict(torch.load(self.fodf_encoder_ckpt, map_location=self.device))
+
         # Load one subject as an example
         self.load_subject()
 
@@ -224,7 +234,7 @@ class BaseEnv(object):
         if self.big_neighborhood:
             # Capture the surrounding voxels.
             self.neighborhood_type = 'grid'
-            self.neighborhood_radius = 2  # e.g. a radius of 4 voxels will produce
+            self.neighborhood_radius = 9  # e.g. a radius of 4 voxels will produce
                                           # a 9x9x9 neighborhood (4 + 1 + 4 for
                                           # each dimension).
         else:
@@ -328,7 +338,6 @@ class BaseEnv(object):
             self.reward_function = RewardFunction(
                 factors,
                 weights)
-            
 
     @classmethod
     def from_dataset(
@@ -612,13 +621,17 @@ class BaseEnv(object):
             if self.big_neighborhood:
                 # Unflatten the signal to use it for convolutions
                 # Unflatten the signal into (N, W, H, D, C) shape
-                unflattened = unflatten_neighborhood(
+                signal = unflatten_neighborhood(
                     signal, self.neighborhood_directions, 'grid',
                     self.neighborhood_radius, self.add_neighborhood_vox)
 
                 # Permute axes to fit PyTorch's convention of (N, C, D, H, W)
                 # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
-                unflattened = unflattened.permute(0, 4, 1, 2, 3)
+                signal = signal.permute(0, 4, 1, 2, 3)
+
+                if self.fodf_encoder is not None:
+                    # Encode the FODF signal
+                    signal = self.fodf_encoder(signal)
 
             # Placeholder for the previous directions
             previous_dirs = np.zeros((N, self.n_dirs, P), dtype=np.float32)
@@ -636,10 +649,10 @@ class BaseEnv(object):
 
             # Return them separately so we can run convolutions on unflattened
             # but not dir_inputs.
-            if self.big_neighborhood:
-                state = ConvState(unflattened, dir_inputs, self.device)
+            if self.big_neighborhood and self.fodf_encoder is None:
+                state = ConvState(signal, dir_inputs, device=self.device)
             else:
-                state = State(signal, dir_inputs, self.device)
+                state = State(signal, dir_inputs, device=self.device)
         return state
 
     def _compute_stopping_flags(
