@@ -46,7 +46,7 @@ class FodfAe(nn.Module):
             
             nn.Conv3d(128, 256, kernel_size=3, stride=1, padding=1),  # 256x3x3x3
             self.activation(),
-            self.norm_layer(128),
+            self.norm_layer(256),
 
             # Start upsampling
             nn.Upsample(scale_factor=2),  # 512x6x6x6
