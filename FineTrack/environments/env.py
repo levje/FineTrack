@@ -157,6 +157,8 @@ class BaseEnv(object):
         if self.fodf_encoder_ckpt is not None:
             self.fodf_encoder = FodfEncoder(n_coeffs=28)
             self.fodf_encoder.load_state_dict(torch.load(self.fodf_encoder_ckpt, map_location=self.device))
+            self.fodf_encoder = self.fodf_encoder.to(self.device)
+            print("Sending the encoder to the device: ", self.device)
 
         # Load one subject as an example
         self.load_subject()
@@ -231,7 +233,7 @@ class BaseEnv(object):
             self.step_size_mm,
             self.affine_vox2rasmm)
         
-        if self.big_neighborhood:
+        if self.big_neighborhood or self.fodf_encoder is not None:
             # Capture the surrounding voxels.
             self.neighborhood_type = 'grid'
             self.neighborhood_radius = 9  # e.g. a radius of 4 voxels will produce
@@ -595,7 +597,7 @@ class BaseEnv(object):
         inputs: `numpy.ndarray`
             Observations of the state, incl. previous directions.
         """
-        with torch.no_grad(), torch.autocast(device_type=str(self.device), dtype=torch.float16):
+        with torch.no_grad():
             N, L, P = streamlines.shape
 
             if N <= 0:
@@ -631,6 +633,7 @@ class BaseEnv(object):
 
                 if self.fodf_encoder is not None:
                     # Encode the FODF signal
+                    #with torch.autocast(device_type=str(self.device), dtype=torch.float16):
                     signal = self.fodf_encoder(signal)
 
             # Placeholder for the previous directions

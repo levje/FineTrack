@@ -74,12 +74,14 @@ class State(object):
 
     @classmethod
     def zeros(cls, shape, prev_dirs_size, device=None, dtype=torch.float32):
+        print("State shape: {}".format(shape))
         state_conv = torch.zeros(shape, device=device, dtype=dtype)
         previous_directions = torch.zeros((shape[0], prev_dirs_size), device=device, dtype=dtype)
         return cls(state_conv, previous_directions)
     
     @classmethod
     def ones(cls, shape, prev_dirs_size, device=None, dtype=torch.float32):
+        print("State shape: {}".format(shape))
         state_conv = torch.ones(shape, dtype=dtype, device=device)
         previous_directions = torch.ones((shape[0], prev_dirs_size), dtype=dtype, device=device)
         return cls(state_conv, previous_directions)

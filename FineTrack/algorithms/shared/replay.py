@@ -3,7 +3,7 @@ import torch
 import scipy.signal
 from typing import Tuple
 #FineTrack.algorithms.shared.disc_cumsum
-from FineTrack.algorithms.shared.disc_cumsum import disc_cumsum
+#from FineTrack.algorithms.shared.disc_cumsum import disc_cumsum
 from FineTrack.utils.utils import break_if_found_nans, break_if_found_nans_args
 from FineTrack.environments.state import State, StateShape
 from FineTrack.utils.lazy_tensor import LazyTensorManager, NaiveLazyTensorManager
@@ -740,11 +740,11 @@ class RlhfReplayBuffer(object):
                  x1 + discount * x2,
                  x2]
         """
-        if isinstance(x, torch.Tensor):
-            return disc_cumsum(x, discount)
-        else:
-            return scipy.signal.lfilter(
-                [1], [1, float(-discount)], x[::-1], axis=0)[::-1]
+        #if isinstance(x, torch.Tensor):
+        #    return disc_cumsum(x, discount)
+        #else:
+        return scipy.signal.lfilter(
+            [1], [1, float(-discount)], x[::-1], axis=0)[::-1]
             
 
     def sample(
