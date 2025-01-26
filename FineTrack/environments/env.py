@@ -157,6 +157,14 @@ class BaseEnv(object):
         if self.fodf_encoder_ckpt is not None:
             self.fodf_encoder = FodfEncoder(n_coeffs=28)
             self.fodf_encoder.load_state_dict(torch.load(self.fodf_encoder_ckpt, map_location=self.device))
+
+            # Make sure that we never calculate gradients for this model
+            self.fodf_encoder.eval()
+
+            # Freeze the model
+            for param in self.fodf_encoder.parameters():
+                param.requires_grad = False
+
             self.fodf_encoder = self.fodf_encoder.to(self.device)
             print("Sending the encoder to the device: ", self.device)
 
