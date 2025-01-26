@@ -622,7 +622,6 @@ class BaseEnv(object):
             # Get the SH coefficients at the last point of each streamline
             # The neighborhood is used to get the SH coefficients around
             # the last point
-            print("Interpolating volume for batch of {} coords".format(coords.shape))
             signal, _ = interpolate_volume_in_neighborhood(
                 self.data_volume,
                 coords,
@@ -643,6 +642,9 @@ class BaseEnv(object):
                 if self.fodf_encoder is not None:
                     # Encode the FODF signal
                     signal = self.fodf_encoder(signal)
+
+                    # Flatten the signal as this will be fed to a MLP
+                    signal = signal.reshape(N, -1)
 
             # Placeholder for the previous directions
             previous_dirs = np.zeros((N, self.n_dirs, P), dtype=np.float32)
