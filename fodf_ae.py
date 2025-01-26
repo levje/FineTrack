@@ -267,9 +267,13 @@ class FodfAeTrainer(object):
             self.model.eval()
             with torch.no_grad():
                 for batch in tqdm(self.valid_loader, desc="Validation", leave=False):
+                    if len(batch.shape) > 5:
+                        batch = batch.squeeze(0)
                     batch = batch.to(self.device)
-                    output = self.model(batch)
-                    loss = self.reconstruction_loss(output, batch)
+
+                    with torch.autocast(device_type=device, dtype=torch.float16):
+                        output = self.model(batch)
+                        loss = self.reconstruction_loss(output, batch)
                     self.valid_losses.append(loss.item())
 
             avg_loss = np.mean(self.valid_losses)
