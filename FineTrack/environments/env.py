@@ -605,7 +605,7 @@ class BaseEnv(object):
         inputs: `numpy.ndarray`
             Observations of the state, incl. previous directions.
         """
-        with torch.no_grad():
+        with torch.no_grad(), torch.autocast(device_type=str(self.device), dtype=torch.float16):
             N, L, P = streamlines.shape
 
             if N <= 0:
@@ -622,6 +622,7 @@ class BaseEnv(object):
             # Get the SH coefficients at the last point of each streamline
             # The neighborhood is used to get the SH coefficients around
             # the last point
+            print("Interpolating volume for batch of {} coords".format(coords.shape))
             signal, _ = interpolate_volume_in_neighborhood(
                 self.data_volume,
                 coords,
@@ -641,7 +642,6 @@ class BaseEnv(object):
 
                 if self.fodf_encoder is not None:
                     # Encode the FODF signal
-                    #with torch.autocast(device_type=str(self.device), dtype=torch.float16):
                     signal = self.fodf_encoder(signal)
 
             # Placeholder for the previous directions
