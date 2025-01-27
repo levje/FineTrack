@@ -15,8 +15,8 @@ EXPNAME="TrackToLearn-CrossQ"
 COMETPROJECT="TrackToLearn-CrossQ"
 NB_STREAMLINES_POINTS=32
 EXPID="CrossQ-NoConv-"_$(date +"%F-%H_%M_%S")
-MAXEP=50
-BATCHSIZE=4096
+MAXEP=1000
+BATCHSIZE=1024
 SEEDS=(1111)
 NPV=20
 GAMMA=0.95
@@ -37,7 +37,7 @@ if [ $islocal -eq 1 ]; then
     DATADIR=data/datasets/ismrm2015_2mm
     EXPDIR=data/experiments
     LOGSDIR=data/logs
-    BACKUPDIR=data/backups
+    # BACKUPDIR=data/backups
 
     # If CONDAENV is not set, PYTHON EXEC should be python, else it should be the python executable of the conda environment.
     if [ -z $1 ]; then
@@ -124,7 +124,7 @@ do
         --tractometer_validator \
         --workspace "mrzarfir" \
         --rng_seed ${RNGSEED} \
-        --n_actor 4096 \
+        --n_actor 1024 \
         --npv ${NPV} \
         --min_length 20 \
         --max_length 200 \
@@ -138,7 +138,7 @@ do
         --binary_stopping_threshold 0.1 \
         --n_dirs=100 \
         --alignment_weighting=1.0 \
-        --fodf_encoder="fodf_ae/best_encoder_test.pth" \
+        --fodf_encoder="fodf_ae/best_encoder.pth" \
         "${additionnal_args[@]}"
 
     # POST-PROCESSING

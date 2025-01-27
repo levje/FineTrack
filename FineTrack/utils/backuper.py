@@ -17,7 +17,7 @@ class Backuper(object):
     HPC).
     """
     def __init__(self, exp_path, exp, exp_name, backup_dir: str = None,
-                 min_interval: int = 60, remove_old_backups=True):
+                 min_interval: int = 60, remove_old_backups=True, start_at_step=200):
         self.exp_path = Path(exp_path)
         if not self.exp_path.exists() or not self.exp_path.is_dir():
             raise FileNotFoundError("The provided experiment directory"
@@ -32,6 +32,7 @@ class Backuper(object):
                                     "exist or is not a directory ({})".format(
                                         str(self.backup_dir)))
         
+        self.start_at_step = start_at_step
         self.min_interval = min_interval # In seconds.
         self.last_timestamp = 0 # Used to make sure we don't save periodically too often.
 
@@ -46,7 +47,7 @@ class Backuper(object):
                         "{}".format(self.backup_dir))
 
     def backup(self, step: int = None):
-        if self.backup_dir is None:
+        if self.backup_dir is None or step < self.start_at_step:
             return ""
         
         # Check the interval since last backup

@@ -187,7 +187,8 @@ class RlhfTraining(FineTrackTraining):
         alg: RLAlgorithm,
         env: BaseEnv,
         valid_env: BaseEnv,
-        max_ep: int = 10
+        max_ep: int = 10,
+        **kwargs
     ):
         """ Train the RL algorithm for N epochs. An epoch here corresponds to
         running tracking on the training set until all streamlines are done.

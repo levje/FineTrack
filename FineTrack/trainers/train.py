@@ -2,10 +2,11 @@ import json
 import os
 import random
 from os.path import join as pjoin
-
+from pathlib import Path
 import numpy as np
 import torch
 import time
+import shutil
 
 from FineTrack.algorithms.rl import RLAlgorithm
 from FineTrack.algorithms.shared.utils import old_mean_losses as mean_losses, mean_rewards
@@ -25,6 +26,7 @@ from FineTrack.tracking.tracker import Tracker
 from FineTrack.utils.torch_utils import get_device, assert_accelerator
 from FineTrack.utils.hooks import HooksManager, RlHookEvent
 from FineTrack.utils.backuper import Backuper
+from FineTrack.utils.utils import TTLProfiler
 
 
 class FineTrackTraining(Experiment):
@@ -226,9 +228,12 @@ class FineTrackTraining(Experiment):
             os.makedirs(directory)
 
         if is_best_model:
-            alg.save_checkpoint(os.path.join(directory, "best_model_state.ckpt"), **scores_info)
+            ckpt_path = os.path.join(directory, "best_model_state.ckpt")
         else:
-            alg.save_checkpoint(os.path.join(directory, "last_model_state.ckpt"), **scores_info)
+            ckpt_path = os.path.join(directory, "last_model_state.ckpt")    
+        alg.save_checkpoint(ckpt_path, **scores_info)
+
+        return ckpt_path
 
     def rl_train(
         self,
@@ -300,7 +305,6 @@ class FineTrackTraining(Experiment):
 
         # Main training loop
         while i_episode < upper_bound:
-
             # Last episode/epoch. Was initially for resuming experiments but
             # since they take so little time I just restart them from scratch
             # Not sure what to do with this
@@ -308,6 +312,7 @@ class FineTrackTraining(Experiment):
 
             # Train for an episode
             env.load_subject()
+
             tractogram, losses, reward, reward_factors, mean_ratio = \
                 train_tracker.track_and_train(env)
 
@@ -362,7 +367,6 @@ class FineTrackTraining(Experiment):
                 valid_env.load_subject()
                 print(f" in {time.time() - start} seconds")
 
-                print("Tracking and validating...", end="")
                 start = time.time()
                 valid_tractogram, valid_reward = \
                     valid_tracker.track_and_validate(valid_env)
@@ -400,7 +404,7 @@ class FineTrackTraining(Experiment):
                 self.log(
                     valid_tractogram, valid_reward, i_episode)
                 self.comet_monitor.log_losses(scores, i_episode)
-                self.save_model(alg, save_model_dir=save_model_dir)
+                ckpt_path = self.save_model(alg, save_model_dir=save_model_dir)
 
                 # Save best_epoch separately
                 is_best_agent = scores["VC"] > self.best_epoch_vc
@@ -409,10 +413,17 @@ class FineTrackTraining(Experiment):
                     self._hooks_manager.trigger_hooks(
                         RlHookEvent.ON_RL_BEST_VC)
 
-                    self.save_model(alg, save_model_dir=save_model_dir,
-                                    is_best_model=True)
+                    # Instead of having to pack and serialize the model again,
+                    # as this takes time, just copy the file.
+                    # This aims to do the following:
+                    # self.save_model(alg, save_model_dir=save_model_dir,
+                    #                 is_best_model=True)
+                    ckpt_path = Path(ckpt_path)
+                    best_ckpt_path = ckpt_path.parent / "best_model_state.ckpt"
+                    shutil.copyfile(ckpt_path, best_ckpt_path)
                 
                 # Backup to that directory after each validation run.
+                # This can take a while.
                 self.backuper.backup(step=i_episode)
 
         # End of training, save the model and hyperparameters and track
@@ -499,7 +510,7 @@ class FineTrackTraining(Experiment):
         self.setup_logging()
 
         # Start training !
-        self.rl_train(alg, env, valid_env, self.max_ep)
+        self.rl_train(alg, env, valid_env, self.max_ep, test_before_training=False)
 
 
 def add_rl_args(parser):

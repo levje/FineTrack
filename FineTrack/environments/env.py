@@ -32,10 +32,11 @@ from FineTrack.environments.stopping_criteria import (
     StoppingFlags)
 from FineTrack.environments.utils import (  # is_looping,
     is_too_curvy, is_too_long, has_reached_gm)
-from FineTrack.utils.utils import normalize_vectors
+from FineTrack.utils.utils import normalize_vectors, SimpleTimer
 from FineTrack.environments.rollout_env import RolloutEnvironment
 from FineTrack.environments.state import ConvState, State
-from FineTrack.algorithms.shared.fodf_encoder import FodfEncoder
+from FineTrack.algorithms.shared.fodf_encoder import FodfEncoder, DummyFodfEncoder
+from FineTrack.utils.interpolation import calc_neighborhood_grid, neighborhood_interpolation
 
 LOGGER = get_logger(__name__)
 
@@ -155,8 +156,10 @@ class BaseEnv(object):
         self.fodf_encoder_ckpt = env_dto['fodf_encoder_ckpt']
         self.fodf_encoder = None
         if self.fodf_encoder_ckpt is not None:
-            self.fodf_encoder = FodfEncoder(n_coeffs=28)
-            self.fodf_encoder.load_state_dict(torch.load(self.fodf_encoder_ckpt, map_location=self.device))
+            self.fodf_encoder = DummyFodfEncoder(n_coeffs=28)
+            self.fodf_encoder.load_state_dict(torch.load(self.fodf_encoder_ckpt,
+                                                         map_location=self.device,
+                                                         weights_only=False))
 
             # Make sure that we never calculate gradients for this model
             self.fodf_encoder.eval()
@@ -167,6 +170,13 @@ class BaseEnv(object):
 
             self.fodf_encoder = self.fodf_encoder.to(self.device)
             print("Sending the encoder to the device: ", self.device)
+            
+            print("Compiling the fodf encoder")
+            with SimpleTimer() as t:
+                self.fodf_encoder.compile()
+            print(f"Compilation done in {t.interval:.2f}s")
+
+        self.use_custom_interpolation = True # TODO: This implementation wasn't tested
 
         # Load one subject as an example
         self.load_subject()
@@ -199,6 +209,9 @@ class BaseEnv(object):
             # Volumes and masks
             self.data_volume = torch.from_numpy(
                 input_volume.data).to(self.device, dtype=torch.float32)
+            
+            if self.use_custom_interpolation:
+                self.data_volume = self.data_volume.permute(3, 2, 1, 0) # Torch convention (C, D, H, W)
         else:
             (input_volume, tracking_mask, seeding_mask, peaks,
              reference, gm_mask) = self.subject_data
@@ -209,6 +222,9 @@ class BaseEnv(object):
             # Volumes and masks
             self.data_volume = torch.from_numpy(
                 input_volume.data).to(self.device, dtype=torch.float32)
+            
+            if self.use_custom_interpolation:
+                self.data_volume = self.data_volume.permute(3, 2, 1, 0) # Torch convention (C, D, H, W)
 
             self.reference = reference
 
@@ -252,11 +268,19 @@ class BaseEnv(object):
             self.neighborhood_type = 'axes'
             self.neighborhood_radius = 1
 
-        self.neighborhood_directions = prepare_neighborhood_vectors(
-            self.neighborhood_type,
-            self.neighborhood_radius,
-            self.add_neighborhood_vox).to(
-                self.device)
+        if self.use_custom_interpolation and (self.big_neighborhood or self.fodf_encoder):
+            print("Using custom interpolation")
+            self.neighborhood_directions = \
+                calc_neighborhood_grid(
+                    self.neighborhood_radius, self.device,
+                    resolution=self.add_neighborhood_vox)
+        else:
+            print("Using dwi_ml's interpolation")
+            self.neighborhood_directions = prepare_neighborhood_vectors(
+                self.neighborhood_type,
+                self.neighborhood_radius,
+                self.add_neighborhood_vox).to(
+                    self.device)
 
         # Tracking seeds
         self.seeds = track_utils.random_seeds_from_mask(
@@ -622,29 +646,33 @@ class BaseEnv(object):
             # Get the SH coefficients at the last point of each streamline
             # The neighborhood is used to get the SH coefficients around
             # the last point
-            signal, _ = interpolate_volume_in_neighborhood(
-                self.data_volume,
-                coords,
-                self.neighborhood_directions)
-            N, S = signal.shape
+            if self.use_custom_interpolation:
+                signal = neighborhood_interpolation(
+                    self.data_volume, coords, self.neighborhood_directions)
+            else:
+                signal, _ = interpolate_volume_in_neighborhood(
+                    self.data_volume,
+                    coords,
+                    self.neighborhood_directions, clear_cache=False)
+                N, S = signal.shape
 
-            if self.big_neighborhood or self.fodf_encoder is not None:
-                # Unflatten the signal to use it for convolutions
-                # Unflatten the signal into (N, W, H, D, C) shape
-                signal = unflatten_neighborhood(
-                    signal, self.neighborhood_directions, 'grid',
-                    self.neighborhood_radius, self.add_neighborhood_vox)
+                if self.big_neighborhood or self.fodf_encoder is not None:
+                    # Unflatten the signal to use it for convolutions
+                    # Unflatten the signal into (N, W, H, D, C) shape
+                    signal = unflatten_neighborhood(
+                        signal, self.neighborhood_directions, 'grid',
+                        self.neighborhood_radius, self.add_neighborhood_vox)
 
-                # Permute axes to fit PyTorch's convention of (N, C, D, H, W)
-                # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
-                signal = signal.permute(0, 4, 1, 2, 3)
+                    # Permute axes to fit PyTorch's convention of (N, C, D, H, W)
+                    # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
+                    signal = signal.permute(0, 4, 1, 2, 3)
 
-                if self.fodf_encoder is not None:
-                    # Encode the FODF signal
-                    signal = self.fodf_encoder(signal)
+            if self.fodf_encoder is not None:
+                # Encode the FODF signal
+                signal = self.fodf_encoder(signal)
 
-                    # Flatten the signal as this will be fed to a MLP
-                    signal = signal.reshape(N, -1)
+            # Flatten the signal as this will be fed to a MLP
+            signal = signal.reshape(N, -1)
 
             # Placeholder for the previous directions
             previous_dirs = np.zeros((N, self.n_dirs, P), dtype=np.float32)

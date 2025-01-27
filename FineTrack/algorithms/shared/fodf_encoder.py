@@ -3,6 +3,24 @@ import torch.nn as nn
 
 from FineTrack.algorithms.shared.utils import ResidualBlock
 from FineTrack.algorithms.shared.batch_renorm import BatchRenorm1d, BatchRenorm3d
+from FineTrack.utils.utils import count_parameters
+
+class DummyFodfEncoder(nn.Module):
+    """
+    This should not be a bottleneck
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        print(f"{self.__class__.__name__} __init__ with {count_parameters(self)} parameters")
+
+    def forward(self, x):
+        return x[:, :64, :3, :3, :3]
+    
+    def load_state_dict(self, state_dict, strict = True, assign = False):
+        return
+    
+    def state_dict(self):
+        return {}
 
 class FodfEncoder(nn.Module):
     def __init__(self, n_coeffs=28, renorm=False, activation=nn.GELU):
@@ -49,6 +67,8 @@ class FodfEncoder(nn.Module):
         #     ResidualBlock(512, norm_layer=norm_layer),  # 11x13x11x512
         #     nn.Conv3d(512, 1024, kernel_size=3, stride=2, padding=1),  # 5x6x5x1024
         # )
+
+        print(f"{self.__class__.__name__} __init__ with {count_parameters(self)} parameters")
 
     def forward(self, x):
         return self.encoder(x)
