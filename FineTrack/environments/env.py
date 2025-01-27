@@ -605,7 +605,7 @@ class BaseEnv(object):
         inputs: `numpy.ndarray`
             Observations of the state, incl. previous directions.
         """
-        with torch.no_grad(), torch.autocast(device_type=str(self.device), dtype=torch.float16):
+        with torch.no_grad(), torch.autocast(device_type=str(self.device), dtype=torch.float16, enabled=False):
             N, L, P = streamlines.shape
 
             if N <= 0:

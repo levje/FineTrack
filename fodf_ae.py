@@ -105,7 +105,7 @@ class NeighborhoodManager(object):
         return (self.radius * 2 + 1, ) * 3
 
     def get(self, coords):
-        with torch.no_grad(), torch.autocast(device_type=device, dtype=torch.float16):
+        with torch.no_grad(), torch.autocast(device_type=device, dtype=torch.float16, enabled=False):
             signal, _ = interpolate_volume_in_neighborhood(
                 self.data_volume,
                 coords,
@@ -245,7 +245,7 @@ class FodfAeTrainer(object):
                         batch = batch.squeeze(0)
                     batch = batch.to(self.device)
 
-                    with torch.autocast(device_type=device, dtype=torch.float16):
+                    with torch.autocast(device_type=device, dtype=torch.float16, enabled=False):
                         output = self.model(batch)
                         loss = self.reconstruction_loss(output, batch)
 
@@ -283,7 +283,7 @@ class FodfAeTrainer(object):
                         batch = batch.squeeze(0)
                     batch = batch.to(self.device)
 
-                    with torch.autocast(device_type=device, dtype=torch.float16):
+                    with torch.autocast(device_type=device, dtype=torch.float16, enabled=False):
                         output = self.model(batch)
                         loss = self.reconstruction_loss(output, batch)
                     self.valid_losses.append(loss.item())
