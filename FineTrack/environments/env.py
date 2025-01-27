@@ -269,9 +269,9 @@ class BaseEnv(object):
             functools.partial(is_too_curvy, max_theta=self.theta)
         
         # GM criterion
-        self.stopping_criteria[
-            StoppingFlags.STOPPING_TARGET] = \
-            functools.partial(has_reached_gm, mask=self.gm_data, threshold=0.5)
+        #self.stopping_criteria[
+        #    StoppingFlags.STOPPING_TARGET] = \
+        #    functools.partial(has_reached_gm, mask=self.gm_data, threshold=0.5)
 
         # Stopping criterion according to an oracle
         if self.oracle_crit_checkpoint and self.oracle_stopping_criterion:

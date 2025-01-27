@@ -20,6 +20,7 @@ from scilpy.io.utils import (add_overwrite_arg,
 from scilpy.tracking.utils import verify_streamline_length_options
 
 from FineTrack.algorithms.sac_auto import SACAuto
+from FineTrack.algorithms.cross_q import CrossQ
 from FineTrack.algorithms.ppo import PPO
 from FineTrack.datasets.utils import MRIDataVolume
 
@@ -138,6 +139,8 @@ class FineTrackTrack(Experiment):
 
         self.comet_experiment = None
 
+        self.big_neighborhood = track_dto['big_neighborhood']
+
     def run(self):
         """
         Main method where the magic happens
@@ -166,12 +169,11 @@ class FineTrackTrack(Experiment):
         env.step_size_mm = step_size_mm
 
         # Get example state to define NN input size
-        example_state, _ = env.reset(0, 1)
-        self.input_size = example_state.shape[1]
+        self.input_size = env.get_state_size()
         self.action_size = env.get_action_size()
 
         # Load agent
-        algs = {'SACAuto': SACAuto, 'PPO': PPO}
+        algs = {'SACAuto': CrossQ, 'PPO': PPO}
 
         rl_alg = algs[self.algorithm]
         print('Tracking with {} agent.'.format(self.algorithm))
@@ -180,6 +182,7 @@ class FineTrackTrack(Experiment):
             self.input_size,
             self.action_size,
             self.hidden_dims,
+            self.big_neighborhood,
             rng=self.rng,
             device=self.device)
 
@@ -283,6 +286,10 @@ def add_track_args(parser):
                              'ly.\nLimited by the size of your GPU and RAM. A '
                              'higher value\nwill speed up tracking up to a '
                              'point [%(default)s].')
+    agent_group.add_argument('--big_neighborhood', action='store_true',
+                                help='If set, the agent will consider a larger '
+                                'neighborhood\naround the current position to '
+                                'make decisions. This\nwill slow down tracking.')
 
     seed_group = parser.add_argument_group('Seeding options')
     seed_group.add_argument('--npv', type=int, default=1,
