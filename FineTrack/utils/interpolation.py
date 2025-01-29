@@ -18,7 +18,7 @@ def calc_neighborhood_grid(neighborhood_radius: int, device=None, resolution: fl
     return neighborhood_grid
 
 @torch.no_grad()
-def neighborhood_interpolation(volume: torch.Tensor, coords: torch.Tensor, neighborhood_grid: torch.Tensor):
+def neighborhood_interpolation(volume: torch.Tensor, coords: torch.Tensor, neighborhood_grid: torch.Tensor, align_corners: bool = False):
     """
     This function interpolates a volume at given coordinates using a neighborhood
     of points around the coordinates.
@@ -46,22 +46,26 @@ def neighborhood_interpolation(volume: torch.Tensor, coords: torch.Tensor, neigh
     """
     N = coords.shape[0] # Coords are in the x, y, z format
 
-    # Add the coordinates to the neighborhood grid without flattening the grid
+    # Add the coordinates to the neighborhood grid
     neighborhood_grid = neighborhood_grid + coords.unsqueeze(-2).unsqueeze(-2).unsqueeze(-2)
-
-    # We need to normalize the grid coordinates to be between -1 and 1 before giving it to grid_sample
-    neighborhood_grid = 2 * neighborhood_grid / torch.tensor([volume.shape[1]-1,
-                                                              volume.shape[2]-1,
-                                                              volume.shape[3]-1],
-                                                              dtype=torch.float32,
-                                                              device=volume.device) - 1
-
     neighborhood_grid = neighborhood_grid.permute(0, 3, 1, 2, 4)
 
     # Can we create a view of the volume that is of shape (N, C, D, H, W) to use grid_sample?
     # N being the number of coordinates.
-    volume_mod = volume.permute(0, 3, 2, 1).unsqueeze(0)
+    volume_mod = volume.permute(3, 0, 1, 2).unsqueeze(0)
     volume_mod = volume_mod.expand(N, -1, -1, -1, -1)
+
+    # We need to normalize the grid coordinates to be between -1 and 1 before giving it to grid_sample
+    offset = 0.0
+    if align_corners:
+        offset = 0.5
+    neighborhood_grid = 2 * (neighborhood_grid + offset) / torch.tensor([volume_mod.shape[2],
+                                                              volume_mod.shape[3],
+                                                              volume_mod.shape[4]],
+                                                              dtype=torch.float32,
+                                                              device=volume_mod.device) - 1
+
+
 
     # Interpolate the volume at the coordinates using grid_sample
     # 'bilinear' interpolation is specified, however, according to the documentation
@@ -73,41 +77,9 @@ def neighborhood_interpolation(volume: torch.Tensor, coords: torch.Tensor, neigh
     # as I want the agent to know that it's on the edge of the image.
     #
     interpolated_volume = torch.nn.functional.grid_sample(
-        volume_mod, neighborhood_grid, mode='bilinear', align_corners=True, padding_mode='reflection'
+        volume_mod, neighborhood_grid, mode='bilinear', align_corners=align_corners, padding_mode='border'
     )
 
-    # interpolated_volume = interpolated_volume.squeeze(0)
-    interpolated_volume = interpolated_volume.permute(0, 1, 4, 3, 2)
+    interpolated_volume = interpolated_volume.permute(0, 2, 3, 4, 1)
     
     return interpolated_volume
-    
-
-def unflatten_neighborhood(
-        data_in_neighb: torch.Tensor, neighb_vect, neighb_type, neighb_rad,
-        neighb_res):
-
-    # When we do our interpolation, each tensor is one neighborhood per
-    # coordinate.
-    assert neighb_type == 'grid'
-    nb_points = data_in_neighb.shape[0]
-    nb_neighb = len(neighb_vect)
-    out_size = int(neighb_rad * 2 + 1)
-    nb_features = int(data_in_neighb.shape[1] / nb_neighb)
-
-    # Grid is equally sampled, with a 'voxel size' defined by user.
-    # Coordinates are as indices.
-    neighb_vect = (neighb_vect / neighb_res).to(dtype=int)
-
-    # The way we perform our interpolation, we get:
-    # n1 - f1, n1 - f2, ....,  n2 - f1, n2 - f2, ...
-    unflattened = \
-        torch.zeros((nb_points, out_size, out_size, out_size, nb_features),
-                    device=data_in_neighb.device)
-
-    for n, grid_n in enumerate(neighb_vect):
-        # Ex: coordinate (0,0,0) is at the center of the neighb, i.e. neigh_rad.
-        idx = grid_n + neighb_rad
-        unflattened[:, idx[0], idx[1], idx[2], :] = \
-            data_in_neighb[:, n*nb_features:(n+1)*nb_features]
-
-    return unflattened
