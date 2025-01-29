@@ -5,7 +5,7 @@ from torch.utils.data import BatchSampler, DataLoader, SequentialSampler
 import nibabel as nib
 import numpy as np
 from tqdm import tqdm
-from FineTrack.algorithms.shared.utils import ResidualBlock
+from FineTrack.algorithms.shared.utils import ResidualBlock, DWSConv3d
 from FineTrack.algorithms.shared.batch_renorm import BatchRenorm1d, BatchRenorm3d
 from FineTrack.utils.torch_utils import get_device, get_device_str
 from FineTrack.utils.logging import get_logger, setLevel
@@ -14,6 +14,8 @@ from FineTrack.utils.neighborhood_interpolation import \
     interpolate_volume_in_neighborhood
 from dwi_ml.data.processing.space.neighborhood import \
     unflatten_neighborhood, prepare_neighborhood_vectors
+from FineTrack.utils.interpolation import neighborhood_interpolation, calc_neighborhood_grid
+from FineTrack.utils.utils import TTLProfiler
 
 LOGGER = get_logger(__name__)
 device = get_device_str()
@@ -39,12 +41,12 @@ class FodfAe(nn.Module):
             ResidualBlock(64, norm_layer=self.norm_layer),  # 64x3x3x3
 
             # Add more channels before upsampling
-            nn.Conv3d(64, 128, kernel_size=3, stride=1, padding=1),  # 128x3x3x3
+            DWSConv3d(64, 128, kernel_size=3, stride=1, padding=1),  # 128x3x3x3
             self.activation(),
             self.norm_layer(128),
             ResidualBlock(128, norm_layer=self.norm_layer),  # 128x3x3x3
             
-            nn.Conv3d(128, 256, kernel_size=3, stride=1, padding=1),  # 256x3x3x3
+            DWSConv3d(128, 256, kernel_size=3, stride=1, padding=1),  # 256x3x3x3
             self.activation(),
             self.norm_layer(256),
 
@@ -60,8 +62,6 @@ class FodfAe(nn.Module):
             nn.Upsample(scale_factor=2),  # 128x24x24x24
 
             ResidualBlock(64, norm_layer=self.norm_layer),  # 64x24x24x24
-            ResidualBlock(64, norm_layer=self.norm_layer),  # 64x24x24x24
-            
             nn.Conv3d(64, 64, kernel_size=5, stride=1, padding=0), # 64x20x20x20
             self.activation(),
             self.norm_layer(64),
@@ -90,21 +90,27 @@ class FodfAe(nn.Module):
 
 class NeighborhoodManager(object):
     def __init__(self, data_volume, radius, add_neighborhood_vox, neighborhood_type='grid', resolution=1, flatten=False):
-        self.data_volume = data_volume
+        self.data_volume = data_volume.to(get_device())
+        # self.data_volume = self.data_volume.permute(3, 0, 1, 2)
         self.radius = radius
         self.add_neighborhood_vox = add_neighborhood_vox
         self.neighborhood_type = neighborhood_type
         self.flatten = flatten
         self.resolution = resolution
 
-        self.neighborhood_directions = prepare_neighborhood_vectors(self.neighborhood_type,
-            self.radius, self.resolution, )
+        # self.neighborhood_directions = prepare_neighborhood_vectors(self.neighborhood_type,
+        #     self.radius, self.resolution, )
+        self.neighborhood_directions = calc_neighborhood_grid(self.radius, device=get_device(), resolution=self.resolution)
     
     @property
     def common_shape(self):
         return (self.radius * 2 + 1, ) * 3
 
     def get(self, coords):
+        signal = neighborhood_interpolation(self.data_volume, coords, self.neighborhood_directions)
+        return signal
+
+    def old_get(self, coords):
         with torch.no_grad(), torch.autocast(device_type=device, dtype=torch.float16, enabled=False):
             signal, _ = interpolate_volume_in_neighborhood(
                 self.data_volume,
@@ -137,10 +143,10 @@ class FodfDataset(torch.utils.data.Dataset):
         coords = self.coords[idx]
         if isinstance(idx, int):
             coords = coords.unsqueeze(0)
-        signal = self.neigh_manager.get(coords)
-        signal = signal.squeeze(0)
-        return signal
-        # return coords
+        # signal = self.neigh_manager.get(coords.to(get_device()))
+        # signal = signal.squeeze(0)
+        # return signal
+        return coords
 
 class FodfAeTrainer(object):
     def __init__(self, input_shape, n_coeffs=28, nb_epochs=100, neighborhood_radius=9, batch_size=1, device="cpu"):
@@ -151,8 +157,8 @@ class FodfAeTrainer(object):
 
         fodf_path = "data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz"
         fodf_img = nib.load(fodf_path)
-        fodf_data = fodf_img.get_fdata()
-        data_volume = torch.from_numpy(fodf_data)
+        fodf_data = fodf_img.get_fdata().astype(np.float32)
+        data_volume = torch.from_numpy(fodf_data.T).to(device)
         
         self.neigh_manager = NeighborhoodManager(
             data_volume=data_volume,
@@ -188,7 +194,7 @@ class FodfAeTrainer(object):
             self.test_dataset), self.batch_size,
             drop_last=False)
 
-        self.train_loader = DataLoader(self.train_dataset, sampler=train_sampler, num_workers=8)
+        self.train_loader = DataLoader(self.train_dataset, sampler=train_sampler)
         self.valid_loader = DataLoader(self.valid_dataset, sampler=valid_sampler)
         self.test_loader = DataLoader(self.test_dataset, sampler=test_sampler)
 
@@ -210,7 +216,8 @@ class FodfAeTrainer(object):
         grid_coords = torch.meshgrid(
             torch.arange(img_shape[0]),
             torch.arange(img_shape[1]),
-            torch.arange(img_shape[2])
+            torch.arange(img_shape[2]),
+            indexing='ij'
         )
         coords = torch.stack(grid_coords, dim=-1)
         coords = coords.reshape(-1, 3).float()
@@ -232,45 +239,45 @@ class FodfAeTrainer(object):
         self.valid_losses = []
 
         self.model = self.model.to(self.device)
-        best_loss = np.inf
+        best_loss = torch.inf
 
         for epoch in tqdm(range(self.nb_epochs), desc="Epochs"):
             self.model.train()
             with tqdm(range(len(self.train_loader)), desc="Training batches", leave=False) as train_batch_pbar:
-                for i, batch in enumerate(self.train_loader):
-                    # coords = coords.squeeze(0)
-                    # batch = self.neigh_manager.get(coords)
-                        
+                for i, coords in enumerate(self.train_loader):
+                    coords = coords.squeeze(0).to(self.device)
+
+                    batch = self.neigh_manager.get(coords)
                     if len(batch.shape) > 5:
                         batch = batch.squeeze(0)
-                    batch = batch.to(self.device)
 
-                    with torch.autocast(device_type=device, dtype=torch.float16, enabled=False):
-                        output = self.model(batch)
-                        loss = self.reconstruction_loss(output, batch)
+                    # with torch.autocast(device_type=device, dtype=torch.float16, enabled=False):
+                    output = self.model(batch)
+                    loss = self.reconstruction_loss(output, batch)
 
                     self.optimizer.zero_grad()
                     loss.backward()
                     self.optimizer.step()
-                    loss_item = loss.item()
-                    self.train_losses.append(loss_item)
+                    # loss_item = loss.item()
+                    # self.train_losses.append(loss_item)
 
-                    if loss_item < best_loss:
-                        best_loss = loss_item
-                        torch.save(self.model.state_dict(), "fodf_ae/best_model.pth")
-                        torch.save(self.model.encoder.state_dict(), "fodf_ae/best_encoder.pth")
-
-
-                        if loss_item < best_loss:
-                            best_loss = loss_item
-                            torch.save(self.model.state_dict(), "fodf_ae/best_model.pth")
+                    if loss < best_loss:
+                        best_loss = loss
+                        torch.save(self.model.state_dict(), "fodf_ae/best_model_small_good.pth")
+                        torch.save(self.model.encoder.state_dict(), "fodf_ae/best_encoder_small_good.pth")
 
                         # Send to Comet.ml
-                        self.experiment.log_metric("train_loss", loss_item, step=i, epoch=epoch)
+
+                    train_batch_pbar.update(1)
+
+                    if i % 10 == 0:
+                        loss_item = loss.item()
+                        train_batch_pbar.set_postfix({"loss": loss, "lr": self.optimizer.param_groups[0]['lr']})
+                        self.experiment.log_metric("train_loss", loss, step=i, epoch=epoch)
                         self.experiment.log_metric("lr", self.optimizer.param_groups[0]['lr'], step=i, epoch=epoch)
 
-                        train_batch_pbar.set_postfix({"loss": loss_item, "lr": self.optimizer.param_groups[0]['lr']})
-                        train_batch_pbar.update(1)
+                    if i % 100 == 0:
+                        torch.cuda.empty_cache()
 
             # avg_loss = np.mean(self.train_losses)
             self.train_losses = []
@@ -278,10 +285,12 @@ class FodfAeTrainer(object):
 
             self.model.eval()
             with torch.no_grad():
-                for batch in tqdm(self.valid_loader, desc="Validation", leave=False):
+                for coords in tqdm(self.valid_loader, desc="Validation", leave=False):
+                    coords = coords.squeeze(0).to(self.device)
+
+                    batch = self.neigh_manager.get(coords)
                     if len(batch.shape) > 5:
                         batch = batch.squeeze(0)
-                    batch = batch.to(self.device)
 
                     with torch.autocast(device_type=device, dtype=torch.float16, enabled=False):
                         output = self.model(batch)

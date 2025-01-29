@@ -14,7 +14,7 @@ USECOMET=0
 EXPNAME="TrackToLearn-CrossQ"
 COMETPROJECT="TrackToLearn-CrossQ"
 NB_STREAMLINES_POINTS=32
-EXPID="CrossQ-NoConv-"_$(date +"%F-%H_%M_%S")
+EXPID="CrossQ-wFODFEncoder-"_$(date +"%F-%H_%M_%S")
 MAXEP=1000
 BATCHSIZE=1024
 SEEDS=(1111)
@@ -138,7 +138,7 @@ do
         --binary_stopping_threshold 0.1 \
         --n_dirs=100 \
         --alignment_weighting=1.0 \
-        --fodf_encoder="fodf_ae/best_encoder.pth" \
+        --fodf_encoder="fodf_ae/best_encoder_small_good.pth" \
         "${additionnal_args[@]}"
 
     # POST-PROCESSING

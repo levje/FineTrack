@@ -87,10 +87,10 @@ def make_fc_network(
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, norm_layer=nn.Identity, norm_layer_kwargs={}):
         super(ResidualBlock, self).__init__()
-        self.conv1 = nn.Conv3d(in_channels, 2*in_channels, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv3d(2*in_channels, in_channels, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv3d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv3d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)
         self.activation = nn.GELU()
-        self.norm_layer_1 = norm_layer(2*in_channels, **norm_layer_kwargs)
+        self.norm_layer_1 = norm_layer(in_channels, **norm_layer_kwargs)
         self.norm_layer_2 = norm_layer(in_channels, **norm_layer_kwargs)
  
     def forward(self, x):
@@ -102,6 +102,17 @@ class ResidualBlock(nn.Module):
         out += residual
         out = self.activation(out)
         out = self.norm_layer_2(out)
+        return out
+    
+class DWSConv3d(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, dilation=1, stride=1, padding=1):
+        super().__init__()
+        self.conv1 = nn.Conv3d(in_channels, in_channels, kernel_size=kernel_size, groups=in_channels, stride=stride, padding=padding)
+        self.conv2 = nn.Conv3d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
+    
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.conv2(out)
         return out
 
 def make_conv_network(input_size, output_size,

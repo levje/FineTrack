@@ -17,6 +17,7 @@ from scilpy.reconst.utils import (find_order_from_nb_coeff,
 from dipy.reconst.shm import sh_to_sf_matrix
 from torch.utils.data import DataLoader
 
+from FineTrack.garbage.view_image import display_image
 from FineTrack.utils.logging import get_logger
 from FineTrack.datasets.SubjectDataset import SubjectDataset
 from FineTrack.datasets.utils import (MRIDataVolume,
@@ -36,7 +37,7 @@ from FineTrack.utils.utils import normalize_vectors, SimpleTimer
 from FineTrack.environments.rollout_env import RolloutEnvironment
 from FineTrack.environments.state import ConvState, State
 from FineTrack.algorithms.shared.fodf_encoder import FodfEncoder, DummyFodfEncoder
-from FineTrack.utils.interpolation import calc_neighborhood_grid, neighborhood_interpolation
+from FineTrack.utils.interpolation import calc_neighborhood_grid, neighborhood_interpolation, unflatten_neighborhood as custom_unflatten_neighborhood
 
 LOGGER = get_logger(__name__)
 
@@ -156,10 +157,10 @@ class BaseEnv(object):
         self.fodf_encoder_ckpt = env_dto['fodf_encoder_ckpt']
         self.fodf_encoder = None
         if self.fodf_encoder_ckpt is not None:
-            self.fodf_encoder = DummyFodfEncoder(n_coeffs=28)
-            self.fodf_encoder.load_state_dict(torch.load(self.fodf_encoder_ckpt,
-                                                         map_location=self.device,
-                                                         weights_only=False))
+            self.fodf_encoder = FodfEncoder(n_coeffs=28)
+            # self.fodf_encoder.load_state_dict(torch.load(self.fodf_encoder_ckpt,
+            #                                              map_location=self.device,
+            #                                              weights_only=False))
 
             # Make sure that we never calculate gradients for this model
             self.fodf_encoder.eval()
@@ -207,11 +208,12 @@ class BaseEnv(object):
             self.affine_rasmm2vox = np.linalg.inv(self.affine_vox2rasmm)
 
             # Volumes and masks
-            self.data_volume = torch.from_numpy(
-                input_volume.data).to(self.device, dtype=torch.float32)
             
             if self.use_custom_interpolation:
-                self.data_volume = self.data_volume.permute(3, 2, 1, 0) # Torch convention (C, D, H, W)
+                self.data_volume = torch.from_numpy(input_volume.data.T)
+            else:
+                self.data_volume = torch.from_numpy(input_volume.data)
+            self.data_volume = self.data_volume.to(self.device, dtype=torch.float32)
         else:
             (input_volume, tracking_mask, seeding_mask, peaks,
              reference, gm_mask) = self.subject_data
@@ -649,6 +651,8 @@ class BaseEnv(object):
             if self.use_custom_interpolation:
                 signal = neighborhood_interpolation(
                     self.data_volume, coords, self.neighborhood_directions)
+                # display_image(nib.Nifti1Image(signal[0].cpu().numpy(), self.affine_vox2rasmm), default_slice=self.neighborhood_radius, save_to="test_neighborhood.png")
+                # raise NotImplementedError("This implementation wasn't tested")
             else:
                 signal, _ = interpolate_volume_in_neighborhood(
                     self.data_volume,
@@ -662,10 +666,17 @@ class BaseEnv(object):
                     signal = unflatten_neighborhood(
                         signal, self.neighborhood_directions, 'grid',
                         self.neighborhood_radius, self.add_neighborhood_vox)
+                    # signal = custom_unflatten_neighborhood(
+                    #     signal, self.neighborhood_directions, 'grid',
+                    #     self.neighborhood_radius, self.add_neighborhood_vox)
 
                     # Permute axes to fit PyTorch's convention of (N, C, D, H, W)
                     # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
                     signal = signal.permute(0, 4, 1, 2, 3)
+
+                    # display_image(nib.Nifti1Image(signal[0].cpu().numpy(), self.affine_vox2rasmm), default_slice=self.neighborhood_radius, save_to="test_neighborhood_dwi.png")
+                    # raise NotImplementedError("This implementation wasn't tested")
+
 
             if self.fodf_encoder is not None:
                 # Encode the FODF signal
