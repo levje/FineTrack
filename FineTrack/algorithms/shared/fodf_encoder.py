@@ -32,30 +32,37 @@ class FodfEncoder(nn.Module):
             nn.Conv3d(in_channels=n_coeffs, out_channels=n_coeffs, kernel_size=1, stride=1, padding=0),
             nn.BatchNorm3d(n_coeffs),  # 28x19x19x19
             activation(),
+            nn.Conv3d(in_channels=n_coeffs, out_channels=n_coeffs, kernel_size=1, stride=1, padding=0),
+            nn.BatchNorm3d(n_coeffs),  # 28x19x19x19
+            activation(),
             nn.Conv3d(in_channels=n_coeffs, out_channels=32, kernel_size=3, stride=1, padding=1),  # 90x108x90x64
             norm_layer(32),
             activation(),
 
-            # ResidualBlock(64, norm_layer=norm_layer),  # 64x19x19x19
+            ResidualBlock(32, norm_layer=norm_layer),  # 64x19x19x19
             ResidualBlock(32, norm_layer=norm_layer),  # 64x19x19x19
             nn.Conv3d(32, 64, kernel_size=3, stride=2, padding=1),  # 128x10x10x10
 
-            # ResidualBlock(128, norm_layer=norm_layer),  # 128x10x10x10
+            ResidualBlock(64, norm_layer=norm_layer),  # 128x10x10x10
             ResidualBlock(64, norm_layer=norm_layer),  # 128x10x10x10
             nn.Conv3d(64, 128, kernel_size=3, stride=2, padding=1),  # 256x5x5x5
 
-            # ResidualBlock(256, norm_layer=norm_layer),  # 256x5x5x5
+            ResidualBlock(128, norm_layer=norm_layer),  # 256x5x5x5
+            ResidualBlock(128, norm_layer=norm_layer),  # 256x5x5x5
             ResidualBlock(128, norm_layer=norm_layer),  # 256x5x5x5
             nn.Conv3d(128, 256, kernel_size=3, stride=2, padding=1),  # 512x3x3x3
 
-            # Reduce the number of channels, otherwise the latent space is too large to fit in memory.
-            nn.Conv3d(256, 128, kernel_size=1, stride=1, padding=0),  # 256x3x3x3
-            norm_layer(128),
-            activation(),
+            ResidualBlock(256, norm_layer=norm_layer),  # 512x3x3x3
+            ResidualBlock(256, norm_layer=norm_layer),  # 512x3x3x3
 
-            nn.Conv3d(128, 64, kernel_size=1, stride=1, padding=0),  # 128x3x3x3
-            norm_layer(64),
-            activation(),
+            # Reduce the number of channels, otherwise the latent space is too large to fit in memory.
+            # nn.Conv3d(256, 128, kernel_size=1, stride=1, padding=0),  # 256x3x3x3
+            # norm_layer(128),
+            # activation(),
+
+            # nn.Conv3d(128, 64, kernel_size=1, stride=1, padding=0),  # 128x3x3x3
+            # norm_layer(64),
+            # activation(),
         )
 
         self.flattener = nn.Flatten()

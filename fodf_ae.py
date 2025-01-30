@@ -39,17 +39,7 @@ class FodfAe(nn.Module):
             # nn.Upsample(scale_factor=2),  # 16x16x16x1024
             # nn.Conv3d(1024, 512, kernel_size=3, stride=1, padding=1),  # 16x16x16x512
 
-            ResidualBlock(64, norm_layer=self.norm_layer),  # 64x3x3x3
-
-            # Add more channels before upsampling
-            DWSConv3d(64, 128, kernel_size=3, stride=1, padding=1),  # 128x3x3x3
-            self.activation(),
-            self.norm_layer(128),
-            ResidualBlock(128, norm_layer=self.norm_layer),  # 128x3x3x3
-            
-            DWSConv3d(128, 256, kernel_size=3, stride=1, padding=1),  # 256x3x3x3
-            self.activation(),
-            self.norm_layer(256),
+            ResidualBlock(256, norm_layer=self.norm_layer),  # 64x3x3x3
 
             # Start upsampling
             nn.Upsample(scale_factor=2),  # 512x6x6x6
@@ -61,6 +51,7 @@ class FodfAe(nn.Module):
 
             ResidualBlock(64, norm_layer=self.norm_layer),  # 128x12x12x12
             nn.Upsample(scale_factor=2),  # 128x24x24x24
+            nn.Conv3d(64, 64, kernel_size=3, stride=1, padding=1),  # 64x24x24x24
 
             ResidualBlock(64, norm_layer=self.norm_layer),  # 64x24x24x24
             nn.Conv3d(64, 64, kernel_size=5, stride=1, padding=0), # 64x20x20x20
@@ -367,11 +358,11 @@ def main():
         batch_size=4,
         device="cpu")
     
-    trainer.model.load_state_dict(torch.load("fodf_ae/best_model_small_good.pth", map_location=torch.device('cpu')))
+    # trainer.model.load_state_dict(torch.load("fodf_ae/best_model_small_good.pth", map_location=torch.device('cpu')))
 
-    # trainer.train()
+    trainer.train()
     
-    trainer.predict_examples(n=5)
+    # trainer.predict_examples(n=5)
 
 
 if '__main__' == __name__:
