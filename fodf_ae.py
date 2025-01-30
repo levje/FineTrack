@@ -1,5 +1,6 @@
 import comet_ml
 import torch
+import os
 import torch.nn as nn
 from torch.utils.data import BatchSampler, DataLoader, SequentialSampler
 import nibabel as nib
@@ -114,10 +115,11 @@ class FodfAeTrainer(object):
 
         fodf_path = "data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz"
         fodf_img = nib.load(fodf_path)
-        fodf_data = fodf_img.get_fdata().astype(np.float32)
+        self.fodf_data = fodf_img.get_fdata().astype(np.float32)
+        self.affine = fodf_img.affine
         
         self.neigh_manager = NeighborhoodManager(
-            data_volume=fodf_data,
+            data_volume=self.fodf_data,
             radius=neighborhood_radius,
             add_neighborhood_vox=1,
             flatten=False,
@@ -156,7 +158,7 @@ class FodfAeTrainer(object):
 
         self.project_name = "fodf_ae"
         self.workspace="mrzarfir"
-        self.comet_enabled = True
+        self.comet_enabled = False
         self.experiment = None
 
         self.lr = 1e-6
@@ -277,6 +279,71 @@ class FodfAeTrainer(object):
         self.experiment.log_metric("test_loss", avg_loss)
 
         return avg_loss
+    
+    def predict_examples(self, n=5):
+        # Create the reconst_ex directory if it doesn't exist
+        fodf_ae_ex = "fodf_ae_ex"
+        targets_dir = os.path.join(fodf_ae_ex, "targets")
+        reconsts_dir = os.path.join(fodf_ae_ex, "reconsts")
+        crops_dir = os.path.join(fodf_ae_ex, "crops")
+
+        os.makedirs(fodf_ae_ex, exist_ok=True)
+        os.makedirs(targets_dir, exist_ok=True)
+        os.makedirs(reconsts_dir, exist_ok=True)
+        os.makedirs(crops_dir, exist_ok=True)
+
+
+        # examples of coordinates
+        coords = [
+                  [self.fodf_data.shape[0]//2, self.fodf_data.shape[1]//2, self.fodf_data.shape[2]//2],
+                  [self.fodf_data.shape[0]//3.5, self.fodf_data.shape[1]//3.5, self.fodf_data.shape[2]//3.5],
+                #   [1, 1, 1], 
+                  ]
+        coords = torch.tensor(coords, dtype=torch.float32)
+
+        # Get crops of those regions
+        # This is basically the real value if the coordonates are aligned with the voxels
+        crops = self.neigh_manager.get_crops(coords)
+        for i, crop in enumerate(crops):
+            crop_path = os.path.join(crops_dir, f"crop_{i}.nii.gz")
+            nib.save(nib.Nifti1Image(crop.numpy(), self.affine), crop_path)
+
+        # Interpolate the neighborhood and save to 
+        targets = self.neigh_manager.get(coords, torch_convention=False)
+        rad = self.neigh_manager.radius
+        for i, target in enumerate(targets):
+            frame = np.zeros_like(self.fodf_data)
+            coord = coords[i].long()
+            frame[coord[0]-rad:coord[0]+rad+1,
+                  coord[1]-rad:coord[1]+rad+1,
+                  coord[2]-rad:coord[2]+rad+1] = target.numpy()
+            target_path = os.path.join(targets_dir, f"target_{i}.nii.gz")
+            nib.save(nib.Nifti1Image(frame, self.affine), target_path)
+
+        self.model.eval()
+        with torch.no_grad():
+            for i, coord in enumerate(coords):
+                coord = coord.unsqueeze(0)
+                coord = coord.to(self.device)
+
+                batch = self.neigh_manager.get(coord, torch_convention=True)
+                output = self.model(batch)
+                loss = self.reconstruction_loss(output, batch)
+                print(f"loss ({i}): {loss}")
+
+                # output = output.permute(0, 4, 1, 2, 3)
+                output = output.permute(0, 2, 3, 4, 1).squeeze(0)
+                reconst = output.squeeze(0).cpu().numpy()
+
+                frame = np.zeros_like(self.fodf_data)
+                coord = coord[0].long()
+                frame[coord[0]-rad:coord[0]+rad+1,
+                        coord[1]-rad:coord[1]+rad+1,
+                        coord[2]-rad:coord[2]+rad+1] = reconst
+
+                reconst_path = os.path.join(reconsts_dir, f"reconst_{i}.nii.gz")
+                nib.save(nib.Nifti1Image(frame, self.affine), reconst_path)
+
 
 def main():
     print("loading fodf image")
@@ -297,11 +364,15 @@ def main():
         n_coeffs=nb_coefs,
         nb_epochs=100,
         neighborhood_radius=neighborhood_radius,
-        batch_size=64,
-        device=device)
+        batch_size=4,
+        device="cpu")
     
-    trainer.train()
-    trainer.test()
+    trainer.model.load_state_dict(torch.load("fodf_ae/best_model_small_good.pth", map_location=torch.device('cpu')))
+
+    # trainer.train()
+    
+    trainer.predict_examples(n=5)
+
 
 if '__main__' == __name__:
     main()
