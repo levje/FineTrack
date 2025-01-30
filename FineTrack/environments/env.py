@@ -17,6 +17,7 @@ from scilpy.reconst.utils import (find_order_from_nb_coeff,
 from dipy.reconst.shm import sh_to_sf_matrix
 from torch.utils.data import DataLoader
 
+from FineTrack.environments.neighborhood_manager import NeighborhoodManager
 from FineTrack.garbage.view_image import display_image
 from FineTrack.utils.logging import get_logger
 from FineTrack.datasets.SubjectDataset import SubjectDataset
@@ -37,7 +38,7 @@ from FineTrack.utils.utils import normalize_vectors, SimpleTimer
 from FineTrack.environments.rollout_env import RolloutEnvironment
 from FineTrack.environments.state import ConvState, State
 from FineTrack.algorithms.shared.fodf_encoder import FodfEncoder, DummyFodfEncoder
-from FineTrack.utils.interpolation import calc_neighborhood_grid, neighborhood_interpolation, unflatten_neighborhood as custom_unflatten_neighborhood
+from FineTrack.utils.interpolation import calc_neighborhood_grid, neighborhood_interpolation
 
 LOGGER = get_logger(__name__)
 
@@ -208,12 +209,7 @@ class BaseEnv(object):
             self.affine_rasmm2vox = np.linalg.inv(self.affine_vox2rasmm)
 
             # Volumes and masks
-            
-            if self.use_custom_interpolation:
-                self.data_volume = torch.from_numpy(input_volume.data.T)
-            else:
-                self.data_volume = torch.from_numpy(input_volume.data)
-            self.data_volume = self.data_volume.to(self.device, dtype=torch.float32)
+            self.data_volume = input_volume.data
         else:
             (input_volume, tracking_mask, seeding_mask, peaks,
              reference, gm_mask) = self.subject_data
@@ -222,11 +218,7 @@ class BaseEnv(object):
             self.affine_rasmm2vox = np.linalg.inv(self.affine_vox2rasmm)
 
             # Volumes and masks
-            self.data_volume = torch.from_numpy(
-                input_volume.data).to(self.device, dtype=torch.float32)
-            
-            if self.use_custom_interpolation:
-                self.data_volume = self.data_volume.permute(3, 2, 1, 0) # Torch convention (C, D, H, W)
+            self.data_volume = input_volume.data
 
             self.reference = reference
 
@@ -270,19 +262,35 @@ class BaseEnv(object):
             self.neighborhood_type = 'axes'
             self.neighborhood_radius = 1
 
-        if self.use_custom_interpolation and (self.big_neighborhood or self.fodf_encoder):
-            print("Using custom interpolation")
-            self.neighborhood_directions = \
-                calc_neighborhood_grid(
-                    self.neighborhood_radius, self.device,
-                    resolution=self.add_neighborhood_vox)
+        # if self.use_custom_interpolation and (self.big_neighborhood or self.fodf_encoder):
+        #     print("Using custom interpolation")
+        #     self.neighborhood_directions = \
+        #         calc_neighborhood_grid(
+        #             self.neighborhood_radius, self.device,
+        #             resolution=self.add_neighborhood_vox)
+        # else:
+        #     print("Using dwi_ml's interpolation")
+        #     self.neighborhood_directions = prepare_neighborhood_vectors(
+        #         self.neighborhood_type,
+        #         self.neighborhood_radius,
+        #         self.add_neighborhood_vox).to(
+        #             self.device)
+
+        needs_to_flatten = not self.big_neighborhood and self.fodf_encoder is None
+        print("Needs to flatten: ", needs_to_flatten)
+        if self.use_custom_interpolation:
+            self.neigh_manager = NeighborhoodManager(self.data_volume,
+                                                     self.neighborhood_radius,
+                                                     self.add_neighborhood_vox,
+                                                     needs_to_flatten,
+                                                     method='efficient')
         else:
-            print("Using dwi_ml's interpolation")
-            self.neighborhood_directions = prepare_neighborhood_vectors(
-                self.neighborhood_type,
-                self.neighborhood_radius,
-                self.add_neighborhood_vox).to(
-                    self.device)
+            self.neigh_manager = NeighborhoodManager(self.data_volume,
+                                                        self.neighborhood_radius,
+                                                        self.add_neighborhood_vox,
+                                                        needs_to_flatten,
+                                                        self.neighborhood_type,
+                                                        method='dwi_ml')
 
         # Tracking seeds
         self.seeds = track_utils.random_seeds_from_mask(
@@ -648,42 +656,44 @@ class BaseEnv(object):
             # Get the SH coefficients at the last point of each streamline
             # The neighborhood is used to get the SH coefficients around
             # the last point
-            if self.use_custom_interpolation:
-                signal = neighborhood_interpolation(
-                    self.data_volume, coords, self.neighborhood_directions)
-                # display_image(nib.Nifti1Image(signal[0].cpu().numpy(), self.affine_vox2rasmm), default_slice=self.neighborhood_radius, save_to="test_neighborhood.png")
-                # raise NotImplementedError("This implementation wasn't tested")
-            else:
-                signal, _ = interpolate_volume_in_neighborhood(
-                    self.data_volume,
-                    coords,
-                    self.neighborhood_directions, clear_cache=False)
-                N, S = signal.shape
+            # if self.use_custom_interpolation:
+            #     signal = neighborhood_interpolation(
+            #         self.data_volume, coords, self.neighborhood_directions)
+            #     # display_image(nib.Nifti1Image(signal[0].cpu().numpy(), self.affine_vox2rasmm), default_slice=self.neighborhood_radius, save_to="test_neighborhood.png")
+            #     # raise NotImplementedError("This implementation wasn't tested")
+            # else:
+            #     signal, _ = interpolate_volume_in_neighborhood(
+            #         self.data_volume,
+            #         coords,
+            #         self.neighborhood_directions, clear_cache=False)
+            #     N, S = signal.shape
 
-                if self.big_neighborhood or self.fodf_encoder is not None:
-                    # Unflatten the signal to use it for convolutions
-                    # Unflatten the signal into (N, W, H, D, C) shape
-                    signal = unflatten_neighborhood(
-                        signal, self.neighborhood_directions, 'grid',
-                        self.neighborhood_radius, self.add_neighborhood_vox)
-                    # signal = custom_unflatten_neighborhood(
-                    #     signal, self.neighborhood_directions, 'grid',
-                    #     self.neighborhood_radius, self.add_neighborhood_vox)
+            #     if self.big_neighborhood or self.fodf_encoder is not None:
+            #         # Unflatten the signal to use it for convolutions
+            #         # Unflatten the signal into (N, W, H, D, C) shape
+            #         signal = unflatten_neighborhood(
+            #             signal, self.neighborhood_directions, 'grid',
+            #             self.neighborhood_radius, self.add_neighborhood_vox)
+            #         # signal = custom_unflatten_neighborhood(
+            #         #     signal, self.neighborhood_directions, 'grid',
+            #         #     self.neighborhood_radius, self.add_neighborhood_vox)
 
-                    # Permute axes to fit PyTorch's convention of (N, C, D, H, W)
-                    # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
-                    signal = signal.permute(0, 4, 1, 2, 3)
+            #         # Permute axes to fit PyTorch's convention of (N, C, D, H, W)
+            #         # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
+            #         signal = signal.permute(0, 4, 1, 2, 3)
 
-                    # display_image(nib.Nifti1Image(signal[0].cpu().numpy(), self.affine_vox2rasmm), default_slice=self.neighborhood_radius, save_to="test_neighborhood_dwi.png")
-                    # raise NotImplementedError("This implementation wasn't tested")
+            #         # display_image(nib.Nifti1Image(signal[0].cpu().numpy(), self.affine_vox2rasmm), default_slice=self.neighborhood_radius, save_to="test_neighborhood_dwi.png")
+            #         # raise NotImplementedError("This implementation wasn't tested")
 
+            signal = self.neigh_manager.get(coords, torch_convention=True)
 
             if self.fodf_encoder is not None:
                 # Encode the FODF signal
-                signal = self.fodf_encoder(signal)
+                signal = self.fodf_encoder(signal, flatten=True)
+
 
             # Flatten the signal as this will be fed to a MLP
-            signal = signal.reshape(N, -1)
+            # signal = signal.reshape(N, -1)
 
             # Placeholder for the previous directions
             previous_dirs = np.zeros((N, self.n_dirs, P), dtype=np.float32)
@@ -702,9 +712,9 @@ class BaseEnv(object):
             # Return them separately so we can run convolutions on unflattened
             # but not dir_inputs.
             if self.big_neighborhood:
-                state = ConvState(signal, dir_inputs, device=self.device)
+                state = ConvState(signal, dir_inputs, coords, device=self.device)
             else:
-                state = State(signal, dir_inputs, device=self.device)
+                state = State(signal, dir_inputs, coords, device=self.device)
         return state
 
     def _compute_stopping_flags(

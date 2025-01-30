@@ -7,6 +7,7 @@ from os.path import join as pjoin
 from torch import nn
 from torch.distributions.normal import Normal
 
+from FineTrack.algorithms.shared.fodf_encoder import FodfEncoder
 from FineTrack.environments.state import State, StateShape
 from FineTrack.algorithms.shared.utils import (
     format_widths, make_fc_network, make_conv_network)
@@ -101,10 +102,11 @@ class MaxEntropyActor(nn.Module):
             # Large neighborhood will be encoded by some CNN layers.
             conv_state_shape = (state_dim.nb_sh_coefs, state_dim.depth,
                                 state_dim.height, state_dim.width)
-            flat_neigh_size = 256
-            self.conv_layers = make_conv_network(input_size=conv_state_shape,
-                output_size=flat_neigh_size)
-            
+            # self.conv_layers = make_conv_network(input_size=conv_state_shape,
+            #     output_size=flat_neigh_size)
+            self.encoder = FodfEncoder(
+                conv_state_shape[0])
+            flat_neigh_size = self.encoder.flat_output_size
         else:
             flat_neigh_size = state_dim.neighborhood_common_shape[0]
 
@@ -137,11 +139,11 @@ class MaxEntropyActor(nn.Module):
         """
         # Encode the state if needed.
         if self.big_neighborhood:
-            flat_neighborhood = self.conv_layers(state.neighborhood)
+            flat_neighborhood = self.encoder(state.neighborhood, flatten=True)
         else:
             flat_neighborhood = state.neighborhood
 
-        # Concatenate the encoded neighborhood with the previous directions
+        # Concatenate the encoded neighborhood with the previous directions")
         state = torch.cat([flat_neighborhood, state.prev_dirs], dim=1)
         
         # Compute mean and log_std from neural network. Instead of
@@ -259,12 +261,19 @@ class DoubleCritic(Critic):
 
             conv_state_shape = (state_dim.nb_sh_coefs, state_dim.depth,
                         state_dim.height, state_dim.width)
-            flat_neigh_size = 256
+            # flat_neigh_size = 256
 
-            self.q1_neighbor_encoder = make_conv_network(
-                input_size=conv_state_shape, output_size=flat_neigh_size)
-            self.q2_neighbor_encoder = make_conv_network(
-                input_size=conv_state_shape, output_size=flat_neigh_size)
+            # self.q1_neighbor_encoder = make_conv_network(
+            #     input_size=conv_state_shape, output_size=flat_neigh_size)
+            # self.q2_neighbor_encoder = make_conv_network(
+            #     input_size=conv_state_shape, output_size=flat_neigh_size)
+
+            self.q1_neighbor_encoder = FodfEncoder(
+                conv_state_shape[0])
+            self.q2_neighbor_encoder = FodfEncoder(
+                conv_state_shape[0])
+            
+            flat_neigh_size = self.q1_neighbor_encoder.flat_output_size
         else:
             flat_neigh_size = state_dim.neighborhood_common_shape[0]
         
@@ -284,8 +293,8 @@ class DoubleCritic(Critic):
         # assert isinstance(state.neighborhood, torch.Tensor), "state.neighborhood must be a tensor"
         # assert state.neighborhood.requires_grad, "state.neighborhood must have requires_grad=True"
         if self.big_neighborhood:
-            encoded_neighborhood_1 = self.q1_neighbor_encoder(state.neighborhood)
-            encoded_neighborhood_2 = self.q2_neighbor_encoder(state.neighborhood)
+            encoded_neighborhood_1 = self.q1_neighbor_encoder(state.neighborhood, flatten=True)
+            encoded_neighborhood_2 = self.q2_neighbor_encoder(state.neighborhood, flatten=True)
         else:
             encoded_neighborhood_1 = state.neighborhood
             encoded_neighborhood_2 = state.neighborhood

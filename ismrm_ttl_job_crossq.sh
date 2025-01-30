@@ -16,7 +16,8 @@ COMETPROJECT="TrackToLearn-CrossQ"
 NB_STREAMLINES_POINTS=32
 EXPID="CrossQ-wFODFEncoder-"_$(date +"%F-%H_%M_%S")
 MAXEP=1000
-BATCHSIZE=1024
+BATCHSIZE=2048
+N_ACTORS=2048
 SEEDS=(1111)
 NPV=20
 GAMMA=0.95
@@ -124,7 +125,7 @@ do
         --tractometer_validator \
         --workspace "mrzarfir" \
         --rng_seed ${RNGSEED} \
-        --n_actor 1024 \
+        --n_actor ${N_ACTORS} \
         --npv ${NPV} \
         --min_length 20 \
         --max_length 200 \
@@ -138,8 +139,9 @@ do
         --binary_stopping_threshold 0.1 \
         --n_dirs=100 \
         --alignment_weighting=1.0 \
-        --fodf_encoder="fodf_ae/best_encoder_small_good.pth" \
         "${additionnal_args[@]}"
+        # --fodf_encoder="fodf_ae/best_encoder_small_good.pth" \
+        # --big_neighborhood \
 
     # POST-PROCESSING
     bash scripts/tractogram_post_processing.sh ${DEST_FOLDER} ${DATASETDIR}

@@ -9,7 +9,8 @@ from typing import Tuple
 
 from FineTrack.algorithms.sac_auto import SACAuto
 from FineTrack.algorithms.shared.offpolicy_crossq import CrossQActorCritic
-from FineTrack.algorithms.shared.replay import OffPolicyReplayBuffer, OffPolicyLazyReplayBuffer
+from FineTrack.algorithms.shared.replay import OffPolicyReplayBuffer, OffPolicyLazyReplayBuffer, OffPolicySemiLazyReplayBuffer
+from FineTrack.environments.neighborhood_manager import NeighborhoodManager
 from FineTrack.utils.torch_utils import get_device, gradients_norm
 from FineTrack.environments.state import StateShape
 
@@ -56,6 +57,7 @@ class CrossQ(SACAuto):
         action_size: int,
         hidden_dims: int,
         big_neighborhood: bool,
+        neighborhood_manager: NeighborhoodManager,
         hparams: CrossQHParams = CrossQHParams(),
         rng: np.random.RandomState = None,
         device: torch.device = get_device,
@@ -143,10 +145,19 @@ class CrossQ(SACAuto):
         self.agent_freq = 1
 
         # Replay buffer
-        self.replay_buffer = OffPolicyReplayBuffer(
-            input_shape, action_size, max_size=self.hparams.replay_size)
+        rb_type = 'semi_lazy' if big_neighborhood else 'normal'
+        if rb_type == 'normal':
+            self.replay_buffer = OffPolicyReplayBuffer(
+                input_shape, action_size, max_size=self.hparams.replay_size)
+        elif rb_type == 'lazy':
+            self.replay_buffer = OffPolicyLazyReplayBuffer(
+                input_shape, action_size, max_size=self.hparams.replay_size)
+        elif rb_type == 'semi_lazy':
+            self.replay_buffer = OffPolicySemiLazyReplayBuffer(
+                input_shape, action_size, neighborhood_manager, max_size=self.hparams.replay_size)
 
         self.rng = rng
+        self.start_update_log_was_printed = False
 
     def load_checkpoint(self, checkpoint_file: str):
         """

@@ -5,6 +5,7 @@ from FineTrack.algorithms.shared.utils import (
     format_widths, make_fc_network, make_conv_network)
 from FineTrack.environments.state import State, StateShape
 from FineTrack.algorithms.shared.batch_renorm import BatchRenorm1d, BatchRenorm3d
+from FineTrack.algorithms.shared.fodf_encoder import FodfEncoder
 
 class CrossQCritic(nn.Module):
     def __init__(
@@ -43,12 +44,14 @@ class CrossQCritic(nn.Module):
         if self.big_neighborhood:
             conv_state_shape = (state_dim.nb_sh_coefs, state_dim.depth,
                         state_dim.height, state_dim.width)
-            flat_neigh_size = 256
-            self.q_neighbor_encoder = make_conv_network(
-                input_size=conv_state_shape, output_size=flat_neigh_size,
-                norm_layer_1d=self.norm_func_1d, norm_layer_3d=self.norm_func_3d,
-                norm_layer_kwargs=batch_norm_kwargs
-                )
+            # flat_neigh_size = 256
+            # self.q_neighbor_encoder = make_conv_network(
+            #     input_size=conv_state_shape, output_size=flat_neigh_size,
+            #     norm_layer_1d=self.norm_func_1d, norm_layer_3d=self.norm_func_3d,
+            #     norm_layer_kwargs=batch_norm_kwargs
+            #     )
+            self.q_neighbor_encoder = FodfEncoder(n_coeffs=conv_state_shape[0], renorm=batch_renorm)
+            flat_neigh_size = self.q_neighbor_encoder.flat_output_size
         else:
             flat_neigh_size = state_dim.neighborhood_common_shape[0]
         
@@ -90,7 +93,7 @@ class CrossQCritic(nn.Module):
 
             if self.big_neighborhood:
                 encoder_states_input = torch.cat([state.neighborhood, next_state.neighborhood]) # concat batch dimension
-                encoded_neighborhood_1 = self.q_neighbor_encoder(encoder_states_input)
+                encoded_neighborhood_1 = self.q_neighbor_encoder(encoder_states_input, flatten=True)
             else:
                 encoded_neighborhood_1 = torch.cat([state.neighborhood, next_state.neighborhood], dim=0)
 
@@ -108,7 +111,7 @@ class CrossQCritic(nn.Module):
         else:
             # Predict on single state-action pair
             if self.big_neighborhood:
-                encoded_neighborhood_1 = self.q_neighbor_encoder(state.neighborhood)
+                encoded_neighborhood_1 = self.q_neighbor_encoder(state.neighborhood, flatten=True)
             else:
                 encoded_neighborhood_1 = state.neighborhood
             q1_states_input = torch.cat([encoded_neighborhood_1, state.prev_dirs], -1)

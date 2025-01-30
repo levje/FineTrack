@@ -12,6 +12,9 @@ from FineTrack.algorithms.shared.replay import OffPolicyReplayBuffer
 from FineTrack.algorithms.shared.utils import add_item_to_means
 from FineTrack.environments.env import BaseEnv
 from FineTrack.utils.torch_utils import get_device
+from FineTrack.utils.logging import get_logger
+
+LOGGER = get_logger(__name__)
 
 class DDPG(RLAlgorithm):
     """
@@ -120,6 +123,7 @@ class DDPG(RLAlgorithm):
         self.rng = rng
         self.device = device
         self.n_actors = n_actors
+        self.start_update_log_was_printed = False
 
     def sample_action(
         self,
@@ -215,6 +219,11 @@ class DDPG(RLAlgorithm):
 
             # Train agent after collecting sufficient data
             if self.t >= self.start_timesteps:
+                if not self.start_update_log_was_printed:
+                    self.start_update_log_was_printed = True
+                    LOGGER.info("Acquired enough data to start updating the agent!")
+                    print("Acquired enough data to start updating the agent!")
+
                 # Update several times
                 self.replay_buffer.enter_read_mode()
 

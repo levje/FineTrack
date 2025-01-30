@@ -155,12 +155,6 @@ class FineTrackTraining(Experiment):
         # FODF autoencoder
         self.big_neighborhood = train_dto['big_neighborhood']
         self.fodf_encoder_ckpt = train_dto['fodf_encoder_ckpt']
-        if self.big_neighborhood:
-            if self.fodf_encoder_ckpt is None:
-                raise ValueError("big_neighborhood set to True but no encoder provided.")
-            
-            if not os.path.exists(self.fodf_encoder_ckpt):
-                raise ValueError(f"Encoder checkpoint {self.fodf_encoder_ckpt} does not exist.")
 
         self.hyperparameters = {
             # RL parameters
@@ -358,7 +352,7 @@ class FineTrackTraining(Experiment):
                 self.comet_monitor.log_losses(mean_ep_losses, i_episode)
 
             # Time to do a valid run and display stats
-            if i_episode % self.log_interval == 0:
+            if i_episode % self.log_interval == 0 and False:
                 print("Validation run!")
                 # Validation run
 
@@ -505,7 +499,7 @@ class FineTrackTraining(Experiment):
         max_traj_length = env.max_nb_steps
 
         # The RL training algorithm
-        alg = self.get_alg(max_traj_length)
+        alg = self.get_alg(max_traj_length, env.neigh_manager)
 
         self.setup_logging()
 

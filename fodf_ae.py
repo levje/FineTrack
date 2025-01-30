@@ -16,7 +16,7 @@ from dwi_ml.data.processing.space.neighborhood import \
     unflatten_neighborhood, prepare_neighborhood_vectors
 from FineTrack.utils.interpolation import neighborhood_interpolation, calc_neighborhood_grid
 from FineTrack.utils.utils import TTLProfiler
-
+from FineTrack.environments.neighborhood_manager import NeighborhoodManager
 LOGGER = get_logger(__name__)
 device = get_device_str()
 
@@ -88,49 +88,6 @@ class FodfAe(nn.Module):
         self.encoder.load_state_dict(state_dict["encoder"])
         self.decoder.load_state_dict(state_dict["decoder"])
 
-class NeighborhoodManager(object):
-    def __init__(self, data_volume, radius, add_neighborhood_vox, neighborhood_type='grid', resolution=1, flatten=False):
-        self.data_volume = data_volume.to(get_device())
-        # self.data_volume = self.data_volume.permute(3, 0, 1, 2)
-        self.radius = radius
-        self.add_neighborhood_vox = add_neighborhood_vox
-        self.neighborhood_type = neighborhood_type
-        self.flatten = flatten
-        self.resolution = resolution
-
-        # self.neighborhood_directions = prepare_neighborhood_vectors(self.neighborhood_type,
-        #     self.radius, self.resolution, )
-        self.neighborhood_directions = calc_neighborhood_grid(self.radius, device=get_device(), resolution=self.resolution)
-    
-    @property
-    def common_shape(self):
-        return (self.radius * 2 + 1, ) * 3
-
-    def get(self, coords):
-        signal = neighborhood_interpolation(self.data_volume, coords, self.neighborhood_directions)
-        return signal
-
-    def old_get(self, coords):
-        with torch.no_grad(), torch.autocast(device_type=device, dtype=torch.float16, enabled=False):
-            signal, _ = interpolate_volume_in_neighborhood(
-                self.data_volume,
-                coords,
-                self.neighborhood_directions,
-                clear_cache=False)
-
-        if not self.flatten:
-            # Unflatten the signal into (N, W, H, D, C) shape, where this is the
-            # convention for PyTorch's Conv3d module.
-            unflattened = unflatten_neighborhood(
-                signal, self.neighborhood_directions, self.neighborhood_type,
-                self.radius, self.add_neighborhood_vox)
-
-            # Permute axes to fit PyTorch's convention of (N, C, D, H, W)
-            # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
-            signal = unflattened.permute(0, 4, 1, 2, 3)
-
-        return signal
-
 class FodfDataset(torch.utils.data.Dataset):
     def __init__(self, neighborhood_manager, coords):
         self.neigh_manager = neighborhood_manager
@@ -158,15 +115,14 @@ class FodfAeTrainer(object):
         fodf_path = "data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz"
         fodf_img = nib.load(fodf_path)
         fodf_data = fodf_img.get_fdata().astype(np.float32)
-        data_volume = torch.from_numpy(fodf_data.T).to(device)
         
         self.neigh_manager = NeighborhoodManager(
-            data_volume=data_volume,
+            data_volume=fodf_data,
             radius=neighborhood_radius,
             add_neighborhood_vox=1,
-            neighborhood_type='grid',
-            resolution=1,
-            flatten=False
+            flatten=False,
+            device=device,
+            method='efficient'
         )
 
         train_ratio = 0.8
@@ -247,9 +203,9 @@ class FodfAeTrainer(object):
                 for i, coords in enumerate(self.train_loader):
                     coords = coords.squeeze(0).to(self.device)
 
-                    batch = self.neigh_manager.get(coords)
-                    if len(batch.shape) > 5:
-                        batch = batch.squeeze(0)
+                    batch = self.neigh_manager.get(coords, torch_convention=True)
+                    # if len(batch.shape) > 5:
+                    #     batch = batch.squeeze(0)
 
                     # with torch.autocast(device_type=device, dtype=torch.float16, enabled=False):
                     output = self.model(batch)
@@ -288,9 +244,9 @@ class FodfAeTrainer(object):
                 for coords in tqdm(self.valid_loader, desc="Validation", leave=False):
                     coords = coords.squeeze(0).to(self.device)
 
-                    batch = self.neigh_manager.get(coords)
-                    if len(batch.shape) > 5:
-                        batch = batch.squeeze(0)
+                    batch = self.neigh_manager.get(coords, torch_convention=True)
+                    # if len(batch.shape) > 5:
+                    #     batch = batch.squeeze(0)
 
                     with torch.autocast(device_type=device, dtype=torch.float16, enabled=False):
                         output = self.model(batch)

@@ -58,6 +58,8 @@ class FodfEncoder(nn.Module):
             activation(),
         )
 
+        self.flattener = nn.Flatten()
+
         # self.encoder4 = nn.Sequential(
         #     ResidualBlock(512, norm_layer=norm_layer),  # 11x13x11x512
         #     ResidualBlock(512, norm_layer=norm_layer),  # 11x13x11x512
@@ -66,5 +68,22 @@ class FodfEncoder(nn.Module):
 
         print(f"{self.__class__.__name__} __init__ with {count_parameters(self)} parameters")
 
-    def forward(self, x):
-        return self.encoder(x)
+    @property
+    def flat_output_size(self):
+        return 64 * 3 * 3 * 3
+    
+    def forward(self, x, flatten=False, swap_channels=False):
+        if swap_channels:
+            x = x.permute(0, 4, 1, 2, 3)
+            
+        x = self.encoder(x)
+        if flatten:
+            x = self.flattener(x)
+            assert x.shape[1] == self.flat_output_size, \
+                "The flattened output is not the expected size of " \
+                f"{self.flat_output_size}. Make sure that the input size is " \
+                "in the correct order (N, C, D, H, W) as specified in the " \
+                "PyTorch documentation about Conv3d layers."
+
+        return x
+    

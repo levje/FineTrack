@@ -70,12 +70,13 @@ class CrossQFineTrackTraining(FineTrackTraining):
 
         super().save_hyperparameters()
 
-    def get_alg(self, max_nb_steps: int):
+    def get_alg(self, max_nb_steps: int, neighborhood_manager):
         alg = CrossQ(
             self.input_size,
             self.action_size,
             self.hidden_dims,
             self.big_neighborhood,
+            neighborhood_manager,
             self.cross_q_hparams,
             self.rng,
             device)

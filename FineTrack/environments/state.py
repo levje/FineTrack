@@ -49,7 +49,7 @@ class StateShape(object):
 
 
 class State(object):
-    def __init__(self, neighborhood=None, previous_directions=None, device=None):
+    def __init__(self, neighborhood=None, previous_directions=None, coords=None, device=None):
         if neighborhood is not None:
             self._neighborhood = neighborhood
         else:
@@ -61,6 +61,8 @@ class State(object):
         else:
             self._previous_directions = torch.tensor([], dtype=torch.float32)
             raise ValueError("Previous directions must be provided.")
+
+        self._coords = coords
 
         self._shape = self._init_shape(self.neighborhood.shape, self._previous_directions.shape)
 
@@ -77,18 +79,24 @@ class State(object):
         print("State shape: {}".format(shape))
         state_conv = torch.zeros(shape, device=device, dtype=dtype)
         previous_directions = torch.zeros((shape[0], prev_dirs_size), device=device, dtype=dtype)
-        return cls(state_conv, previous_directions)
+        coords = torch.zeros((shape[0], 3), device=device, dtype=dtype)
+        return cls(state_conv, previous_directions, coords)
     
     @classmethod
     def ones(cls, shape, prev_dirs_size, device=None, dtype=torch.float32):
         print("State shape: {}".format(shape))
         state_conv = torch.ones(shape, dtype=dtype, device=device)
         previous_directions = torch.ones((shape[0], prev_dirs_size), dtype=dtype, device=device)
-        return cls(state_conv, previous_directions)
+        coords = torch.zeros((shape[0], 3), dtype=dtype, device=device)
+        return cls(state_conv, previous_directions, coords)
 
     def to(self, device, copy=False, non_blocking=False):
         self._neighborhood = self._neighborhood.to(device, copy=copy, non_blocking=non_blocking)
         self._previous_directions = self._previous_directions.to(device, copy=copy, non_blocking=non_blocking)
+
+        if self._coords is not None:
+            self._coords = self._coords.to(device, copy=copy, non_blocking=non_blocking)
+
         return self
     
     def pin_memory(self):
@@ -99,7 +107,12 @@ class State(object):
     def index_select(self, dim, index):
         state_slice = self._neighborhood.index_select(dim, index)
         dirs_slice = self._previous_directions.index_select(dim, index)
-        return self.__class__(state_slice, dirs_slice)
+
+        coords_slice = None
+        if coords_slice is not None:
+            coords_slice = self._coords.index_select(dim, index)
+
+        return self.__class__(state_slice, dirs_slice, coords_slice)
 
     @property
     def shape(self):
@@ -124,26 +137,53 @@ class State(object):
     def prev_dirs(self, value):
         self._previous_directions = value
 
+    @property
+    def coords(self):
+        return self._coords
+    
+    @coords.setter
+    def coords(self, value):
+        self._coords = value
+
     def __getitem__(self, indices):
         state_slice = self._neighborhood[indices]
         dirs_slice = self._previous_directions[indices]
-        return self.__class__(state_slice, dirs_slice)
+
+        coords_slice = None
+        if self._coords is not None:
+            coords_slice = self._coords[indices]
+
+        return self.__class__(state_slice, dirs_slice, coords_slice)
     
     def __setitem__(self, indices, other):
         if isinstance(other, State):
             self._neighborhood[indices] = other._neighborhood
             self._previous_directions[indices] = other._previous_directions
+            if self._coords is not None:
+                self._coords[indices] = other._coords
+            else:
+                self._coords = other._coords
         elif isinstance(other, tuple) or isinstance(other, list):
-            assert len(other) == 2, "Expected a tuple of tensors holding" \
+            assert len(other) == 2 or len(other) == 3, "Expected a tuple of tensors holding" \
                 " the state and previous directions only."
             
             self._neighborhood[indices] = other[0]
             self._previous_directions[indices] = other[1]
+            if len(other) == 3:
+                if self._coords is not None:
+                    self._coords[indices] = other[2]
+                else:
+                    self._coords = other[2]
         elif isinstance(other, torch.Tensor):
-            assert other.shape[0] == 2, "Expected a tensor of dim 2 holding" \
+            assert other.shape[0] == 2 or other.shape[0] == 3, "Expected a tensor of dim 2 holding" \
                 " the state and previous directions only."
             self._neighborhood[indices] = other[0]
             self._previous_directions[indices] = other[1]
+            if other.shape[0] == 3:
+                if self._coords is not None:
+                    self._coords[indices] = other[2]
+                else:
+                    self._coords = other[2]
         else:
             raise ValueError("Expected a State object or a tuple of tensors.")
 
@@ -195,7 +235,7 @@ class ConvState(State):
     def _init_shape(self, neighborhood_shape, prev_dirs_shape):
         assert neighborhood_shape[0] == prev_dirs_shape[0], "Number of streamlines must be the same."
         return ConvStateShape(
-            nb_streamlines=neighborhood_shape[0],
-            neighborhood_common_shape=neighborhood_shape[1:],
+            neighborhood_shape[0],
+            neighborhood_shape[1:],
             prev_dirs_size=prev_dirs_shape[1:]
         )

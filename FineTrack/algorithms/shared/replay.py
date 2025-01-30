@@ -7,6 +7,7 @@ from typing import Tuple
 from FineTrack.utils.utils import break_if_found_nans, break_if_found_nans_args
 from FineTrack.environments.state import State, StateShape
 from FineTrack.utils.lazy_tensor import LazyTensorManager, NaiveLazyTensorManager
+from FineTrack.environments.neighborhood_manager import NeighborhoodManager
 
 from FineTrack.utils.torch_utils import get_device, get_device_str
 
@@ -14,6 +15,105 @@ device = get_device()
 rb_type = torch.float32
 
 DEFAULT_BUFFER_PATH = "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/replay_buffer.h5"
+
+class OffPolicySemiLazyReplayBuffer(object):
+    def __init__(self, state_dim: StateShape, action_dim: int,
+                 neighborhood_manager: NeighborhoodManager, max_size=int(1e6)):
+        print("Creating replay buffer with shape: ", (max_size, *state_dim.neighborhood_common_shape))
+        self.size = 0
+        self.ptr = 0
+        self.device = device
+        self.max_size = int(max_size)
+        self.neigh_manager = neighborhood_manager
+
+        self.state_coords = torch.zeros((max_size, 3), dtype=rb_type) # Store the coordinates of the states
+        self.state_prev_dirs = torch.zeros((max_size, state_dim.prev_dirs_size), dtype=rb_type) # Store the previous directions of the states
+
+        self.n_state_coords = torch.zeros((max_size, 3), dtype=rb_type) # Store the coordinates of the next states
+        self.n_state_prev_dirs = torch.zeros((max_size, state_dim.prev_dirs_size), dtype=rb_type) # Store the previous directions of the next states
+
+        self.action = torch.zeros((max_size, action_dim), dtype=rb_type)
+        self.reward = torch.zeros((max_size, 1), dtype=rb_type)
+        self.not_done = torch.zeros((max_size, 1), dtype=rb_type)
+
+    def add(self, state: State, action, next_state: State, reward, done):
+        indices = (np.arange(0, len(state)) + self.ptr) % self.max_size
+
+        self.state_coords[indices] = state.coords # Here we only want to keep the coordinates in memory, the rest of the state should be discarded
+        self.n_state_coords[indices] = next_state.coords
+        self.action[indices] = action
+        self.reward[indices] = reward
+        self.not_done[indices] = 1. - done
+
+        self.ptr = (self.ptr + len(indices)) % self.max_size
+        self.size = min(self.size + len(indices), self.max_size)
+
+    def __len__(self):
+        return self.size
+
+    def sample(self, batch_size=4096):
+        ind = np.random.choice(self.size, batch_size, replace=False)
+        ind = torch.from_numpy(ind)
+
+        # Interpolate the state and next state coordinates.
+        state_coords = self.state_coords.index_select(0, ind)
+        s_neigh = self.neigh_manager.get(state_coords, torch_convention=True)
+        s_prev_dirs = self.state_prev_dirs.index_select(0, ind)
+        s = State(s_neigh, s_prev_dirs, state_coords, device=self.device)
+
+        n_state_coords = self.n_state_coords.index_select(0, ind)
+        ns = self.neigh_manager.get(n_state_coords, torch_convention=True)
+        ns_prev_dirs = self.n_state_prev_dirs.index_select(0, ind)
+        ns = State(ns, ns_prev_dirs, n_state_coords, device=self.device)
+
+        a = self.action.index_select(0, ind)
+        r = self.reward.index_select(0, ind).squeeze(-1)
+        d = self.not_done.index_select(0, ind).to(
+            dtype=torch.float32).squeeze(-1)
+        
+        if get_device_str() == "cuda":
+            # s = s.pin_memory()
+            a = a.pin_memory()
+            # ns = ns.pin_memory()
+            r = r.pin_memory()
+            d = d.pin_memory()
+
+        # Return tensors on the same device as the buffer in pinned memory
+        return (s.to(device=self.device), # they are already on the device after interpolation from neighborhood manager
+                a.to(device=self.device, non_blocking=True),
+                ns.to(device=self.device),
+                r.to(device=self.device, non_blocking=True),
+                d.to(device=self.device, non_blocking=True))
+
+    def enter_read_mode(self):
+        pass
+
+    def enter_write_mode(self):
+        pass
+
+    def clear_memory(self):
+        """ Reset the buffer
+        """
+        self.state.clear()
+        self.next_state.clear()
+        self.ptr = 0
+        self.size = 0
+
+    def save_to_file(self, path):
+        """ TODO for imitation learning
+        """
+        pass
+
+    def load_from_file(self, path):
+        """ TODO for imitation learning
+        """
+        pass
+
+    def state_dict(self):
+        pass
+    
+    def load_state_dict(self, state_dict):
+        pass
 
 class OffPolicyLazyReplayBuffer(object):
     """ Replay buffer to store transitions. Implemented in a "ring-buffer"
