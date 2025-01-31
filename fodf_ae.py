@@ -39,25 +39,26 @@ class FodfAe(nn.Module):
             # nn.Upsample(scale_factor=2),  # 16x16x16x1024
             # nn.Conv3d(1024, 512, kernel_size=3, stride=1, padding=1),  # 16x16x16x512
 
-            ResidualBlock(256, norm_layer=self.norm_layer),  # 64x3x3x3
+            ResidualBlock(1024, norm_layer=self.norm_layer),  # 1024x3x3x3
 
             # Start upsampling
-            nn.Upsample(scale_factor=2),  # 512x6x6x6
-            nn.Conv3d(256, 128, kernel_size=3, stride=1, padding=1),  # 256x6x6x6
+            nn.Upsample(scale_factor=2),  # 1024x6x6x6
+            nn.Conv3d(1024, 512, kernel_size=3, stride=1, padding=1),  # 512x6x6x6
+            ResidualBlock(512, norm_layer=self.norm_layer),  # 512x6x6x6
 
-            ResidualBlock(128, norm_layer=self.norm_layer),  # 256x6x6x6
-            nn.Upsample(scale_factor=2),  # 256x12x12x12
-            nn.Conv3d(128, 64, kernel_size=3, stride=1, padding=1),  # 128x12x12x12
+            nn.Upsample(scale_factor=2),  # 512x12x12x12
+            nn.Conv3d(512, 256, kernel_size=3, stride=1, padding=1),  # 256x12x12x12
+            ResidualBlock(256, norm_layer=self.norm_layer),  # 256x12x12x12
 
-            ResidualBlock(64, norm_layer=self.norm_layer),  # 128x12x12x12
-            nn.Upsample(scale_factor=2),  # 128x24x24x24
-            nn.Conv3d(64, 64, kernel_size=3, stride=1, padding=1),  # 64x24x24x24
+            nn.Upsample(scale_factor=2),  # 256x24x24x24
+            nn.Conv3d(256, 128, kernel_size=3, stride=1, padding=1),  # 128x24x24x24
+            ResidualBlock(128, norm_layer=self.norm_layer),  # 128x24x24x24
 
-            ResidualBlock(64, norm_layer=self.norm_layer),  # 64x24x24x24
-            nn.Conv3d(64, 64, kernel_size=5, stride=1, padding=0), # 64x20x20x20
+            nn.Conv3d(128, 128, kernel_size=5, stride=1, padding=0), # 64x20x20x20
             self.activation(),
-            self.norm_layer(64),
-            nn.Conv3d(64, n_coeffs, kernel_size=1, stride=1, padding=0),  # 28x20x20x20
+            self.norm_layer(128),
+
+            nn.Conv3d(128, n_coeffs, kernel_size=1, stride=1, padding=0),  # 28x20x20x20
         )
 
     def forward(self, x):
@@ -152,7 +153,7 @@ class FodfAeTrainer(object):
         self.comet_enabled = False
         self.experiment = None
 
-        self.lr = 1e-6
+        self.lr = 1e-7
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=len(self.train_loader))
         self._create_comet_experiment()
@@ -168,6 +169,7 @@ class FodfAeTrainer(object):
             torch.arange(img_shape[2]),
             indexing='ij'
         )
+
         coords = torch.stack(grid_coords, dim=-1)
         coords = coords.reshape(-1, 3).float()
 
@@ -320,7 +322,7 @@ class FodfAeTrainer(object):
                 batch = self.neigh_manager.get(coord, torch_convention=True)
                 output = self.model(batch)
                 loss = self.reconstruction_loss(output, batch)
-                print(f"loss ({i}): {loss}")
+                print(f"loss ({i}): {loss}, sum of reconst: {np.abs(output).sum()} vs sum of target: {np.abs(batch).sum()}")
 
                 # output = output.permute(0, 4, 1, 2, 3)
                 output = output.permute(0, 2, 3, 4, 1).squeeze(0)
@@ -332,6 +334,8 @@ class FodfAeTrainer(object):
                         coord[1]-rad:coord[1]+rad+1,
                         coord[2]-rad:coord[2]+rad+1] = reconst
 
+                print(f"sum of target: {np.abs(target).sum()}, max of target: {target.max()}, min of target: {target.min()}")
+                print(f"sum of frame: {np.abs(frame).sum()}, max of frame: {frame.max()}, min of frame: {frame.min()}")
                 reconst_path = os.path.join(reconsts_dir, f"reconst_{i}.nii.gz")
                 nib.save(nib.Nifti1Image(frame, self.affine), reconst_path)
 

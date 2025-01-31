@@ -104,6 +104,31 @@ class ResidualBlock(nn.Module):
         out = self.norm_layer_2(out)
         return out
     
+class ResNextBlock(nn.Module):
+    def __init__(self, in_channels, hidden_channels, cardinality=8, stride=1):
+        super(ResNextBlock, self).__init__()
+        print(f"Trying to create a block with cardinality {cardinality}, hidden_channels {hidden_channels}, stride {stride}")
+        self.cardinality = cardinality
+        self.conv1x1_1 = nn.Conv3d(in_channels, hidden_channels, kernel_size=1)
+        self.conv3x3 = nn.Conv3d(hidden_channels, hidden_channels, kernel_size=3, stride=stride,
+                                 padding=1, groups=self.cardinality)
+        self.conv1x1_2 = nn.Conv3d(hidden_channels, in_channels, kernel_size=1)
+        self.bn = nn.BatchNorm3d(in_channels)
+        self.activ = nn.ReLU()
+
+    def forward(self, x):
+        residue = x
+        print(f"ResNextBlock input shape {x.shape}")
+        out = self.conv1x1_1(x)
+        out = self.activ(out)
+        out = self.conv3x3(out)
+        out = self.activ(out)
+        out = self.conv1x1_2(out)
+        out = self.bn(out)
+        out += residue
+        return out
+
+    
 class DWSConv3d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, dilation=1, stride=1, padding=1):
         super().__init__()

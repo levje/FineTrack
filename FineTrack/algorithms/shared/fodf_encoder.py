@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from FineTrack.algorithms.shared.utils import ResidualBlock
+from FineTrack.algorithms.shared.utils import ResidualBlock, ResNextBlock
 from FineTrack.algorithms.shared.batch_renorm import BatchRenorm1d, BatchRenorm3d
 from FineTrack.utils.utils import count_parameters
 
@@ -23,57 +23,80 @@ class DummyFodfEncoder(nn.Module):
         return {}
 
 class FodfEncoder(nn.Module):
-    def __init__(self, n_coeffs=28, renorm=False, activation=nn.GELU):
+    def __init__(self, n_coeffs=28, renorm=False, activation=nn.ReLU):
         super().__init__()
 
         norm_layer = nn.BatchNorm3d if not renorm else BatchRenorm3d
 
-        self.encoder = nn.Sequential(
-            nn.Conv3d(in_channels=n_coeffs, out_channels=n_coeffs, kernel_size=1, stride=1, padding=0),
-            nn.BatchNorm3d(n_coeffs),  # 28x19x19x19
-            activation(),
-            nn.Conv3d(in_channels=n_coeffs, out_channels=n_coeffs, kernel_size=1, stride=1, padding=0),
-            nn.BatchNorm3d(n_coeffs),  # 28x19x19x19
-            activation(),
-            nn.Conv3d(in_channels=n_coeffs, out_channels=32, kernel_size=3, stride=1, padding=1),  # 90x108x90x64
-            norm_layer(32),
-            activation(),
+        # self.encoder = nn.Sequential(
+        #     nn.Conv3d(in_channels=n_coeffs, out_channels=n_coeffs, kernel_size=1, stride=1, padding=0),
+        #     nn.BatchNorm3d(n_coeffs),  # 28x19x19x19
+        #     activation(),
+        #     nn.Conv3d(in_channels=n_coeffs, out_channels=n_coeffs, kernel_size=1, stride=1, padding=0),
+        #     nn.BatchNorm3d(n_coeffs),  # 28x19x19x19
+        #     activation(),
+        #     nn.Conv3d(in_channels=n_coeffs, out_channels=32, kernel_size=3, stride=1, padding=1),  # 90x108x90x64
+        #     norm_layer(32),
+        #     activation(),
 
-            ResidualBlock(32, norm_layer=norm_layer),  # 64x19x19x19
-            ResidualBlock(32, norm_layer=norm_layer),  # 64x19x19x19
-            nn.Conv3d(32, 64, kernel_size=3, stride=2, padding=1),  # 128x10x10x10
+        #     ResidualBlock(32, norm_layer=norm_layer),  # 64x19x19x19
+        #     ResidualBlock(32, norm_layer=norm_layer),  # 64x19x19x19
+        #     nn.MaxPool3d(kernel_size=2, stride=2),  # 64x10x10x10
+        #     nn.Conv3d(32, 64, kernel_size=3, stride=2, padding=1),  # 128x10x10x10
 
-            ResidualBlock(64, norm_layer=norm_layer),  # 128x10x10x10
-            ResidualBlock(64, norm_layer=norm_layer),  # 128x10x10x10
-            nn.Conv3d(64, 128, kernel_size=3, stride=2, padding=1),  # 256x5x5x5
+        #     ResidualBlock(64, norm_layer=norm_layer),  # 128x10x10x10
+        #     ResidualBlock(64, norm_layer=norm_layer),  # 128x10x10x10
+        #     nn.Conv3d(64, 128, kernel_size=3, stride=2, padding=1),  # 256x5x5x5
 
-            ResidualBlock(128, norm_layer=norm_layer),  # 256x5x5x5
-            ResidualBlock(128, norm_layer=norm_layer),  # 256x5x5x5
-            ResidualBlock(128, norm_layer=norm_layer),  # 256x5x5x5
-            nn.Conv3d(128, 256, kernel_size=3, stride=2, padding=1),  # 512x3x3x3
+        #     ResidualBlock(128, norm_layer=norm_layer),  # 256x5x5x5
+        #     ResidualBlock(128, norm_layer=norm_layer),  # 256x5x5x5
+        #     ResidualBlock(128, norm_layer=norm_layer),  # 256x5x5x5
+        #     nn.Conv3d(128, 256, kernel_size=3, stride=2, padding=1),  # 512x3x3x3
 
-            ResidualBlock(256, norm_layer=norm_layer),  # 512x3x3x3
-            ResidualBlock(256, norm_layer=norm_layer),  # 512x3x3x3
+        #     ResidualBlock(256, norm_layer=norm_layer),  # 512x3x3x3
+        #     ResidualBlock(256, norm_layer=norm_layer),  # 512x3x3x3
 
-            # Reduce the number of channels, otherwise the latent space is too large to fit in memory.
-            # nn.Conv3d(256, 128, kernel_size=1, stride=1, padding=0),  # 256x3x3x3
-            # norm_layer(128),
-            # activation(),
+        #     # Reduce the number of channels, otherwise the latent space is too large to fit in memory.
+        #     # nn.Conv3d(256, 128, kernel_size=1, stride=1, padding=0),  # 256x3x3x3
+        #     # norm_layer(128),
+        #     # activation(),
 
-            # nn.Conv3d(128, 64, kernel_size=1, stride=1, padding=0),  # 128x3x3x3
-            # norm_layer(64),
-            # activation(),
-        )
+        #     # nn.Conv3d(128, 64, kernel_size=1, stride=1, padding=0),  # 128x3x3x3
+        #     # norm_layer(64),
+        #     # activation(),
+        # )
+
+        self.activ = activation()
+
+        # Layers
+        self.conv1x1_1 = nn.Conv3d(n_coeffs, n_coeffs, kernel_size=1) # 28x19x19x19
+        self.conv1x1_2 = nn.Conv3d(n_coeffs, 64, kernel_size=1) # 64x19x19x19
+
+        self.conv_3 = nn.Conv3d(64, 128, kernel_size=3, stride=1, padding=1) # 128x19x19x19
+        self.bn_3 = nn.BatchNorm3d(128) # 128x19x19x19
+        self.layer_1 = self.make_layer(in_channels=128, cardinality=8, num_blocks=2, stride=1) # 128x19x19x19
+
+        self.conv_4 = nn.Conv3d(128, 256, kernel_size=3, stride=2, padding=1) # 256x10x10x10
+        self.bn_4 = nn.BatchNorm3d(256) # 256x10x10x10
+        self.layer_2 = self.make_layer(in_channels=256, cardinality=16, num_blocks=2, stride=1) # 256x10x10x10
+
+        self.conv_5 = nn.Conv3d(256, 512, kernel_size=3, stride=2, padding=1) # 512x5x5x5
+        self.bn_5 = nn.BatchNorm3d(512) # 512x5x5x5
+        self.layer_3 = self.make_layer(in_channels=512, cardinality=32, num_blocks=1, stride=1) # 512x5x5x5
+
+        self.conv_6 = nn.Conv3d(512, 1024, kernel_size=3, stride=2, padding=1) # 1024x3x3x3
+        self.bn_6 = nn.BatchNorm3d(1024) # 1024x3x3x3
+        self.layer_4 = self.make_layer(in_channels=1024, cardinality=64, num_blocks=1, stride=1) # 1024x3x3x3
 
         self.flattener = nn.Flatten()
 
-        # self.encoder4 = nn.Sequential(
-        #     ResidualBlock(512, norm_layer=norm_layer),  # 11x13x11x512
-        #     ResidualBlock(512, norm_layer=norm_layer),  # 11x13x11x512
-        #     nn.Conv3d(512, 1024, kernel_size=3, stride=2, padding=1),  # 5x6x5x1024
-        # )
-
         print(f"{self.__class__.__name__} __init__ with {count_parameters(self)} parameters")
+
+    def make_layer(self, in_channels, cardinality, num_blocks, stride=1):
+        layers = []
+        for _ in range(num_blocks):
+            layers.append(ResNextBlock(in_channels, in_channels//2, cardinality, stride))
+        return nn.Sequential(*layers)
 
     @property
     def flat_output_size(self):
@@ -83,7 +106,34 @@ class FodfEncoder(nn.Module):
         if swap_channels:
             x = x.permute(0, 4, 1, 2, 3)
             
-        x = self.encoder(x)
+        
+        x = self.conv1x1_1(x)
+        x = self.activ(x)
+        x = self.conv1x1_2(x)
+        x = self.activ(x)
+
+        x = self.conv_3(x)
+        x = self.bn_3(x)
+        x = self.activ(x)
+        x = self.layer_1(x)
+
+        x = self.conv_4(x)
+        x = self.bn_4(x)
+        x = self.activ(x)
+        x = self.layer_2(x)
+
+        x = self.conv_5(x)
+        x = self.bn_5(x)
+        x = self.activ(x)
+        x = self.layer_3(x)
+
+        x = self.conv_6(x)
+        x = self.bn_6(x)
+        x = self.activ(x)
+        x = self.layer_4(x)
+
+        print("output shape", x.shape)
+
         if flatten:
             x = self.flattener(x)
             assert x.shape[1] == self.flat_output_size, \
