@@ -78,7 +78,6 @@ class MaxEntropyActor(nn.Module):
         state_dim: StateShape,
         action_dim: int,
         hidden_dims: str,
-        big_neighborhood: bool ,
     ):
         """
         Parameters:
@@ -92,13 +91,14 @@ class MaxEntropyActor(nn.Module):
 
         """
         super(MaxEntropyActor, self).__init__()
-        
-        self.big_neighborhood = big_neighborhood
 
         # Setup the encoding part of the actor if required.
         # e.g. when we are requiring a large neighborhood
         # that requires convolutions.
-        if self.big_neighborhood:
+        self.state_is_flat = state_dim.is_flat
+        if self.state_is_flat:
+            flat_neigh_size = state_dim.neighborhood_common_shape[0]
+        else:
             # Large neighborhood will be encoded by some CNN layers.
             conv_state_shape = (state_dim.nb_sh_coefs, state_dim.depth,
                                 state_dim.height, state_dim.width)
@@ -107,8 +107,6 @@ class MaxEntropyActor(nn.Module):
             self.encoder = FodfEncoder(
                 conv_state_shape[0])
             flat_neigh_size = self.encoder.flat_output_size
-        else:
-            flat_neigh_size = state_dim.neighborhood_common_shape[0]
 
         self.action_dim = action_dim
         self.hidden_layers = format_widths(hidden_dims)
@@ -138,10 +136,10 @@ class MaxEntropyActor(nn.Module):
             0 means a deterministic policy, 1 means a fully stochastic.
         """
         # Encode the state if needed.
-        if self.big_neighborhood:
-            flat_neighborhood = self.encoder(state.neighborhood, flatten=True)
-        else:
+        if self.state_is_flat:
             flat_neighborhood = state.neighborhood
+        else:
+            flat_neighborhood = self.encoder(state.neighborhood, flatten=True)
 
         # Concatenate the encoded neighborhood with the previous directions")
         state = torch.cat([flat_neighborhood, state.prev_dirs], dim=1)
@@ -238,7 +236,6 @@ class DoubleCritic(Critic):
         state_dim: StateShape,
         action_dim: int,
         hidden_dims: str,
-        big_neighborhood: bool,
         critic_size_factor=1,
     ):
         """
@@ -255,27 +252,19 @@ class DoubleCritic(Critic):
         super(DoubleCritic, self).__init__(
             state_dim, action_dim, hidden_dims)
 
-        self.big_neighborhood = big_neighborhood
+        self.state_is_flat = state_dim.is_flat
         
-        if self.big_neighborhood:
-
+        if self.state_is_flat:
+            flat_neigh_size = state_dim.neighborhood_common_shape[0]
+        else:
             conv_state_shape = (state_dim.nb_sh_coefs, state_dim.depth,
                         state_dim.height, state_dim.width)
-            # flat_neigh_size = 256
-
-            # self.q1_neighbor_encoder = make_conv_network(
-            #     input_size=conv_state_shape, output_size=flat_neigh_size)
-            # self.q2_neighbor_encoder = make_conv_network(
-            #     input_size=conv_state_shape, output_size=flat_neigh_size)
-
             self.q1_neighbor_encoder = FodfEncoder(
                 conv_state_shape[0])
             self.q2_neighbor_encoder = FodfEncoder(
                 conv_state_shape[0])
             
             flat_neigh_size = self.q1_neighbor_encoder.flat_output_size
-        else:
-            flat_neigh_size = state_dim.neighborhood_common_shape[0]
         
         full_fc_state_dim = flat_neigh_size + state_dim.prev_dirs_size
         self.hidden_layers = format_widths(
@@ -292,12 +281,12 @@ class DoubleCritic(Critic):
         """
         # assert isinstance(state.neighborhood, torch.Tensor), "state.neighborhood must be a tensor"
         # assert state.neighborhood.requires_grad, "state.neighborhood must have requires_grad=True"
-        if self.big_neighborhood:
-            encoded_neighborhood_1 = self.q1_neighbor_encoder(state.neighborhood, flatten=True)
-            encoded_neighborhood_2 = self.q2_neighbor_encoder(state.neighborhood, flatten=True)
-        else:
+        if self.state_is_flat:
             encoded_neighborhood_1 = state.neighborhood
             encoded_neighborhood_2 = state.neighborhood
+        else:
+            encoded_neighborhood_1 = self.q1_neighbor_encoder(state.neighborhood, flatten=True)
+            encoded_neighborhood_2 = self.q2_neighbor_encoder(state.neighborhood, flatten=True)
 
         q1_input = torch.cat([encoded_neighborhood_1, state.prev_dirs, action], -1)
         q2_input = torch.cat([encoded_neighborhood_2, state.prev_dirs, action], -1)
@@ -508,7 +497,6 @@ class SACActorCritic(ActorCritic):
         state_dim: StateShape,
         action_dim: int,
         hidden_dims: str,
-        big_neighborhood: bool,
         device: torch.device,
     ):
         """
@@ -525,11 +513,11 @@ class SACActorCritic(ActorCritic):
         """
         self.device = device
         self.actor = MaxEntropyActor(
-            state_dim, action_dim, hidden_dims, big_neighborhood
+            state_dim, action_dim, hidden_dims
         ).to(device)
 
         self.critic = DoubleCritic(
-            state_dim, action_dim, hidden_dims, big_neighborhood
+            state_dim, action_dim, hidden_dims
         ).to(device)
 
     def act(self, state: State, probabilistic=1.0) -> torch.Tensor:

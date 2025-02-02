@@ -56,7 +56,6 @@ class CrossQ(SACAuto):
         input_shape: StateShape,
         action_size: int,
         hidden_dims: int,
-        big_neighborhood: bool,
         neighborhood_manager: NeighborhoodManager,
         hparams: CrossQHParams = CrossQHParams(),
         rng: np.random.RandomState = None,
@@ -95,7 +94,6 @@ class CrossQ(SACAuto):
         self.alpha = hparams.alpha
         self.n_actors = hparams.n_actors
         self.replay_size = hparams.replay_size
-        self.big_neighborhood = big_neighborhood
 
         self.max_action = 1.
         self.t = 1
@@ -108,7 +106,7 @@ class CrossQ(SACAuto):
 
         # Initialize main agent
         self.agent = CrossQActorCritic(
-            input_shape, action_size, hidden_dims, big_neighborhood, device,
+            input_shape, action_size, hidden_dims, device,
         )
 
         # Auto-temperature adjustment
@@ -145,7 +143,7 @@ class CrossQ(SACAuto):
         self.agent_freq = 1
 
         # Replay buffer
-        rb_type = 'semi_lazy' if big_neighborhood else 'normal'
+        rb_type = 'normal' if input_shape.is_flat else 'semi_lazy'
         if rb_type == 'normal':
             self.replay_buffer = OffPolicyReplayBuffer(
                 input_shape, action_size, max_size=self.hparams.replay_size)

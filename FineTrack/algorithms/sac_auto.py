@@ -56,7 +56,6 @@ class SACAuto(SAC):
         input_shape: StateShape,
         action_size: int,
         hidden_dims: int,
-        big_neighborhood: bool,
         hparams: SACAutoHParams = SACAutoHParams(),
         rng: np.random.RandomState = None,
         device: torch.device = get_device,
@@ -95,7 +94,6 @@ class SACAuto(SAC):
         self.alpha = hparams.alpha
         self.n_actors = hparams.n_actors
         self.replay_size = hparams.replay_size
-        self.big_neighborhood = big_neighborhood
 
         self.max_action = 1.
         self.t = 1

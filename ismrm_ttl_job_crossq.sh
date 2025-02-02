@@ -14,10 +14,10 @@ USECOMET=0
 EXPNAME="TrackToLearn-CrossQ"
 COMETPROJECT="TrackToLearn-CrossQ"
 NB_STREAMLINES_POINTS=32
-EXPID="CrossQ-wFODFEncoder-"_$(date +"%F-%H_%M_%S")
+EXPID="CrossQ-test"_$(date +"%F-%H_%M_%S")
 MAXEP=1000
-BATCHSIZE=2048
-N_ACTORS=2048
+BATCHSIZE=4096
+N_ACTORS=4096
 SEEDS=(1111)
 NPV=20
 GAMMA=0.95
@@ -139,9 +139,12 @@ do
         --binary_stopping_threshold 0.1 \
         --n_dirs=100 \
         --alignment_weighting=1.0 \
+        --neighborhood_type "axes" \
+        --neighborhood_radius 1 \
+        --flatten_state \
         "${additionnal_args[@]}"
-        # --fodf_encoder="fodf_ae/best_encoder_small_good.pth" \
-        # --big_neighborhood \
+        # --fodf_encoder_ckpt="fodf_ae/best_encoder_small_good.pth" \
+        
 
     # POST-PROCESSING
     bash scripts/tractogram_post_processing.sh ${DEST_FOLDER} ${DATASETDIR}

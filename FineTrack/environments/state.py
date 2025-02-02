@@ -18,6 +18,10 @@ class StateShape(object):
 
         assert self.prev_dirs_size >= 0, "Number of previous directions must be positive."
 
+    @property
+    def is_flat(self):
+        return True
+
     def to_dict(self):
         return {
             'nb_streamlines': self.nb_streamlines,
@@ -209,6 +213,10 @@ class ConvStateShape(StateShape):
         self.depth = neighborhood_common_shape[1]
         self.height = neighborhood_common_shape[2]
         self.width = neighborhood_common_shape[3]
+
+    @property
+    def is_flat(self):
+        return False
 
     def to_dict(self):
         super_dict = super().to_dict()

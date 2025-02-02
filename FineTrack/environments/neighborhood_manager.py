@@ -45,7 +45,7 @@ class NeighborhoodManager(object):
         return self._manager.radius
 
 class EfficientNeighborhoodManager(object):
-    def __init__(self, data_volume, radius, add_neighborhood_vox, flatten, device=get_device()):
+    def __init__(self, data_volume, radius, add_neighborhood_vox, flatten, device=get_device(), **kwargs):
         self.device = device
         self.add_neighborhood_vox = add_neighborhood_vox
 
@@ -132,7 +132,7 @@ class EfficientNeighborhoodManager(object):
 
 
 class DwiMlNeighborhoodManager(object):
-    def __init__(self, data_volume, radius, add_neighborhood_vox, flatten, neighborhood_type, device=get_device()):
+    def __init__(self, data_volume, radius, add_neighborhood_vox, flatten, neighborhood_type, device=get_device(), **kwargs):
         self.device = device
         self.radius = radius
         self.neighborhood_type = neighborhood_type

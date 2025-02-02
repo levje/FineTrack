@@ -150,18 +150,24 @@ class BaseEnv(object):
         self.reward_with_gt = env_dto['reward_with_gt']
         self.rollout_env = None
 
-        self.big_neighborhood = env_dto['big_neighborhood']
+        # ==========================================
+        # State parameters
+        # ==========================================
+        self.neighborhood_radius = env_dto['neighborhood_radius']
+        self.neighborhood_type = env_dto['neighborhood_type']
+        self.flatten_state = env_dto['flatten_state']
+        self.fodf_encoder_ckpt = env_dto['fodf_encoder_ckpt']
+        self.interpolation = env_dto['interpolation']
 
         # ==========================================
         # FODF Encoder
         # ==========================================
-        self.fodf_encoder_ckpt = env_dto['fodf_encoder_ckpt']
         self.fodf_encoder = None
         if self.fodf_encoder_ckpt is not None:
             self.fodf_encoder = FodfEncoder(n_coeffs=28)
-            # self.fodf_encoder.load_state_dict(torch.load(self.fodf_encoder_ckpt,
-            #                                              map_location=self.device,
-            #                                              weights_only=False))
+            self.fodf_encoder.load_state_dict(torch.load(self.fodf_encoder_ckpt,
+                                                         map_location=self.device,
+                                                         weights_only=False))
 
             # Make sure that we never calculate gradients for this model
             self.fodf_encoder.eval()
@@ -178,7 +184,16 @@ class BaseEnv(object):
                 self.fodf_encoder.compile()
             print(f"Compilation done in {t.interval:.2f}s")
 
-        self.use_custom_interpolation = False # TODO: This implementation wasn't tested
+        # Print a summary of the state we are about to use for the model
+        print("=========================================")
+        print("State parameters")
+        print("=========================================")
+        print(f"Neighborhood radius: {self.neighborhood_radius}")
+        print(f"Neighborhood type: {self.neighborhood_type}")
+        print(f"Flatten state: {self.flatten_state}")
+        print(f"FODF encoder checkpoint: {self.fodf_encoder_ckpt}")
+        print(f"Interpolation method: {self.interpolation}")
+        print("=========================================")
 
         # Load one subject as an example
         self.load_subject()
@@ -250,48 +265,13 @@ class BaseEnv(object):
         self.add_neighborhood_vox = convert_length_mm2vox(
             self.step_size_mm,
             self.affine_vox2rasmm)
-        
-        if self.big_neighborhood or self.fodf_encoder is not None:
-            # Capture the surrounding voxels.
-            self.neighborhood_type = 'grid'
-            self.neighborhood_radius = 9  # e.g. a radius of 4 voxels will produce
-                                          # a 9x9x9 neighborhood (4 + 1 + 4 for
-                                          # each dimension).
-        else:
-            # Just capture the immediate neighbors.
-            self.neighborhood_type = 'axes'
-            self.neighborhood_radius = 1
 
-        # if self.use_custom_interpolation and (self.big_neighborhood or self.fodf_encoder):
-        #     print("Using custom interpolation")
-        #     self.neighborhood_directions = \
-        #         calc_neighborhood_grid(
-        #             self.neighborhood_radius, self.device,
-        #             resolution=self.add_neighborhood_vox)
-        # else:
-        #     print("Using dwi_ml's interpolation")
-        #     self.neighborhood_directions = prepare_neighborhood_vectors(
-        #         self.neighborhood_type,
-        #         self.neighborhood_radius,
-        #         self.add_neighborhood_vox).to(
-        #             self.device)
-
-        needs_to_flatten = not self.big_neighborhood and self.fodf_encoder is None
-        print("Needs to flatten: ", needs_to_flatten)
-        if self.use_custom_interpolation:
-            self.neigh_manager = NeighborhoodManager(self.data_volume,
-                                                     self.neighborhood_radius,
-                                                     self.add_neighborhood_vox,
-                                                     needs_to_flatten,
-                                                     method='efficient')
-        else:
-            # TODO: Change this!
-            self.neigh_manager = NeighborhoodManager(self.data_volume,
-                                                        self.neighborhood_radius,
-                                                        self.add_neighborhood_vox,
-                                                        needs_to_flatten,
-                                                        self.neighborhood_type,
-                                                        method='dwi_ml')
+        self.neigh_manager = NeighborhoodManager(self.data_volume,
+                                                    self.neighborhood_radius,
+                                                    self.add_neighborhood_vox,
+                                                    self.flatten_state,
+                                                    neighborhood_type=self.neighborhood_type,
+                                                    method=self.interpolation)
 
         # Tracking seeds
         self.seeds = track_utils.random_seeds_from_mask(
@@ -712,7 +692,7 @@ class BaseEnv(object):
 
             # Return them separately so we can run convolutions on unflattened
             # but not dir_inputs.
-            if self.big_neighborhood:
+            if not self.flatten_state:
                 state = ConvState(signal, dir_inputs, coords, device=self.device)
             else:
                 state = State(signal, dir_inputs, coords, device=self.device)

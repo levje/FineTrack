@@ -65,7 +65,6 @@ class CrossQFineTrackTraining(FineTrackTraining):
              'alpha': self.alpha,
              'batch_size': self.batch_size,
              'replay_size': self.replay_size,
-             'big_neighborhood': self.big_neighborhood,
              'fodf_encoder_ckpt': self.fodf_encoder_ckpt})
 
         super().save_hyperparameters()
@@ -75,7 +74,6 @@ class CrossQFineTrackTraining(FineTrackTraining):
             self.input_size,
             self.action_size,
             self.hidden_dims,
-            self.big_neighborhood,
             neighborhood_manager,
             self.cross_q_hparams,
             self.rng,
@@ -91,10 +89,6 @@ def add_cross_q_auto_args(parser):
                         'buffer.')
     parser.add_argument('--replay_size', default=1e6, type=int,
                         help='How many tuples to store in the replay buffer.')
-    parser.add_argument('--big_neighborhood', action='store_true',
-                        help='Whether to use a bigger neighborhood or just the regular neighborhood without convolutions.')
-    parser.add_argument('--fodf_encoder_ckpt', type=str, default=None,
-                        help='Path to the encoder checkpoint to use for FODF input.')
 
 
 def parse_args():

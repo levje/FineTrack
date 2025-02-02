@@ -131,8 +131,11 @@ class Experiment(object):
             'device': self.device,
             'target_sh_order': self.target_sh_order if hasattr(self, 'target_sh_order') else None,
             'reward_with_gt': self.reward_with_gt,
-            'big_neighborhood': self.big_neighborhood,
+            'neighborhood_radius': self.neighborhood_radius,
+            'neighborhood_type': self.neighborhood_type,
+            'flatten_state': self.flatten_state,
             'fodf_encoder_ckpt': self.fodf_encoder_ckpt,
+            'interpolation': self.interpolation,
         }
 
         if noisy:
@@ -470,6 +473,23 @@ def add_model_args(parser: ArgumentParser):
                         help='Number of learners')
     parser.add_argument('--hidden_dims', default='1024-1024-1024', type=str,
                         help='Hidden layers of the model')
+    
+    # Arguments to enlarge the agent's state.
+    parser.add_argument('--neighborhood_radius', type=int, default=1,
+                        help='Radius of the neighborhood.')
+    parser.add_argument('--neighborhood_type', type=str, choices=['axes', 'grid'],
+                        default='axes', help='Type of neighborhood to use.')
+    parser.add_argument('--interpolation', type=str, choices=['efficient', 'dwi_ml'],
+                        default='dwi_ml', help='Type of interpolation to use.')
+    
+    conv_group = parser.add_mutually_exclusive_group(required=True)
+    conv_group.add_argument('--flatten_state', action='store_true',
+                            help='Whether to flatten the state representation.')
+    conv_group.add_argument('--conv_state', action='store_true',
+                            help='Whether to use a convolutional state representation.')
+    conv_group.add_argument('--fodf_encoder_ckpt', type=str, default=None,
+                            help='Path to the encoder checkpoint to use for FODF input.'
+                            'If provided, the neighborhood will be used as a convolutional input to that encoder.')
 
 
 def add_tracking_args(parser: ArgumentParser):

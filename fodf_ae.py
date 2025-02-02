@@ -21,7 +21,7 @@ from FineTrack.environments.neighborhood_manager import NeighborhoodManager
 
 LOGGER = get_logger(__name__)
 device = get_device_str()
-USE_COMET = False
+USE_COMET = True
 
 class FodfAe(nn.Module):
     def __init__(self, input_shape, n_coeffs=28, renorm=False):
