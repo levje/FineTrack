@@ -111,3 +111,26 @@ def test_custom_interpolation_mutiple_coordinates(prepare_fodf_volume_and_target
     
     for error_ratio in differences:
         assert error_ratio < 0.04 # TODO: We need to reduce the error ratio here.
+
+def test_custom_unflattening():
+    # Unflatten the signal into (N, W, H, D, C) shape
+    other_signal = unflatten_neighborhood(
+        signal, self.neighborhood_directions, self.neighborhood_type,
+        self.radius, self.add_neighborhood_vox)
+    other_signal_flat = other_signal.view(other_signal.shape[0], -1, 28)
+    signal = self._unflatten_neighborhood(signal)
+
+    signal = signal.cpu()
+    other_signal = other_signal.cpu()
+    # Test 1 (signal of shape (N, W, H, D, C))
+    # if (torch.abs(signal - other_signal) < 1e-6).all():
+    #     raise ValueError('Found it!')
+    difference = torch.abs(signal - other_signal)
+    
+    # diff_flat = torch.abs(flat - other_signal_flat)[0] # First point only
+    # eq_zero = diff_flat == 0
+    # all_eq_zero = torch.all(eq_zero, dim=1)
+    # idx_where_zero = torch.arange(len(diff_flat))[all_eq_zero.cpu()]
+    # coords_where_good = self.neighborhood_directions[idx_where_zero]
+    
+    # raise ValueError('Unflattening is not working correctly.')

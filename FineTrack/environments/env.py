@@ -178,7 +178,7 @@ class BaseEnv(object):
                 self.fodf_encoder.compile()
             print(f"Compilation done in {t.interval:.2f}s")
 
-        self.use_custom_interpolation = True # TODO: This implementation wasn't tested
+        self.use_custom_interpolation = False # TODO: This implementation wasn't tested
 
         # Load one subject as an example
         self.load_subject()
@@ -285,6 +285,7 @@ class BaseEnv(object):
                                                      needs_to_flatten,
                                                      method='efficient')
         else:
+            # TODO: Change this!
             self.neigh_manager = NeighborhoodManager(self.data_volume,
                                                         self.neighborhood_radius,
                                                         self.add_neighborhood_vox,

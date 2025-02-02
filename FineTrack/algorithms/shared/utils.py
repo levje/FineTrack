@@ -118,7 +118,6 @@ class ResNextBlock(nn.Module):
 
     def forward(self, x):
         residue = x
-        print(f"ResNextBlock input shape {x.shape}")
         out = self.conv1x1_1(x)
         out = self.activ(out)
         out = self.conv3x3(out)
