@@ -117,6 +117,18 @@ class FodfDataset(torch.utils.data.Dataset):
         # signal = signal.squeeze(0)
         # return signal
         return coords
+    
+class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
+    def __init__(self, optimizer, n_warmup_steps, last_epoch=-1):
+        self.n_warmup_steps = n_warmup_steps
+        super().__init__(optimizer)
+    
+    def get_lr(self):
+        if self.last_epoch < self.n_warmup_steps:
+            return [base_lr * (self.last_epoch / self.n_warmup_steps) for base_lr in self.base_lrs]
+        else:
+            return self.base_lrs
+        
 
 class FodfAeTrainer(object):
     def __init__(self, input_shape, n_coeffs=28, nb_epochs=100, neighborhood_radius=9, batch_size=1, device="cpu"):
@@ -176,6 +188,7 @@ class FodfAeTrainer(object):
 
         self.lr = 0.001
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        self.warmup_scheduler = WarmupScheduler(self.optimizer, n_warmup_steps=len(self.train_loader)//10)
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=len(self.train_loader))
         self._create_comet_experiment()
 
@@ -240,7 +253,10 @@ class FodfAeTrainer(object):
                     self.optimizer.zero_grad()
                     loss.backward()
                     self.optimizer.step()
-                    self.scheduler.step()
+                    if epoch != 0: # Naive warmup here
+                        self.scheduler.step()
+                    else:
+                        self.warmup_scheduler.step()
                     # loss_item = loss.item()
                     # self.train_losses.append(loss_item)
 
@@ -403,11 +419,11 @@ def main():
         batch_size=64,
         device=device)
     
-    trainer.model.load_state_dict(torch.load("fodf_ae/best_model_big.pth"))
+    # trainer.model.load_state_dict(torch.load("fodf_ae/best_model_big.pth"))
 
-    # trainer.train()
+    trainer.train()
     
-    trainer.predict_examples(n=5)
+    # trainer.predict_examples(n=5)
 
 
 if '__main__' == __name__:
