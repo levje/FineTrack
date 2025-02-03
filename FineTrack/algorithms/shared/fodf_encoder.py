@@ -223,30 +223,34 @@ class FodfEncoder(nn.Module):
 
         self.activ = activation()
 
+        sc = 32
+
         # Layers
         self.conv1x1_1 = nn.Conv3d(n_coeffs, n_coeffs, kernel_size=1) # 28x19x19x19
-        self.conv1x1_2 = nn.Conv3d(n_coeffs, 64, kernel_size=1) # 64x19x19x19
+        self.conv1x1_2 = nn.Conv3d(n_coeffs, sc, kernel_size=1) # 64x19x19x19
         
-        self.conv3x3_3 = nn.Conv3d(64, 128, kernel_size=3, stride=1, padding=1) # 128x19x19x19
-        self.bn_3 = nn.BatchNorm3d(128) # 128x19x19x19
+        self.conv3x3_3 = nn.Conv3d(sc, sc*2, kernel_size=3, stride=1, padding=1) # 128x19x19x19
+        self.bn_3 = nn.BatchNorm3d(sc*2) # 128x19x19x19
 
-        self.conv_4 = nn.Conv3d(128, 256, kernel_size=3, stride=1, padding=1) # 128x19x19x19
-        self.bn_4 = nn.BatchNorm3d(256) # 128x19x19x19
-        self.layer_1 = self.make_layer(in_channels=256, cardinality=8, num_blocks=3, stride=1) # 128x19x19x19
+        self.conv_4 = nn.Conv3d(sc*2, sc*4, kernel_size=3, stride=1, padding=1) # 128x19x19x19
+        self.bn_4 = nn.BatchNorm3d(sc*4) # 128x19x19x19
+        self.layer_1 = self.make_layer(in_channels=sc*4, cardinality=8, num_blocks=3, stride=1) # 128x19x19x19
 
-        self.conv_5 = nn.Conv3d(256, 512, kernel_size=3, stride=2, padding=1) # 256x10x10x10
-        self.bn_5 = nn.BatchNorm3d(512) # 256x10x10x10
-        self.layer_2 = self.make_layer(in_channels=512, cardinality=16, num_blocks=3, stride=1) # 256x10x10x10
+        self.conv_5 = nn.Conv3d(sc*4, sc*8, kernel_size=3, stride=2, padding=1) # 256x10x10x10
+        self.bn_5 = nn.BatchNorm3d(sc*8) # 256x10x10x10
+        self.layer_2 = self.make_layer(in_channels=sc*8, cardinality=16, num_blocks=3, stride=1) # 256x10x10x10
 
-        self.conv_6 = nn.Conv3d(512, 1024, kernel_size=3, stride=2, padding=1) # 512x5x5x5
-        self.bn_6 = nn.BatchNorm3d(1024) # 512x5x5x5
-        self.layer_3 = self.make_layer(in_channels=1024, cardinality=32, num_blocks=3, stride=1) # 512x5x5x5
+        self.conv_6 = nn.Conv3d(sc*8, sc*16, kernel_size=3, stride=2, padding=1) # 512x5x5x5
+        self.bn_6 = nn.BatchNorm3d(sc*16) # 512x5x5x5
+        self.layer_3 = self.make_layer(in_channels=sc*16, cardinality=32, num_blocks=3, stride=1) # 512x5x5x5
 
-        self.conv_7 = nn.Conv3d(1024, 2048, kernel_size=3, stride=2, padding=1) # 1024x3x3x3
-        self.bn_7 = nn.BatchNorm3d(2048) # 1024x3x3x3
-        self.layer_4 = self.make_layer(in_channels=2048, cardinality=64, num_blocks=3, stride=1) # 1024x3x3x3
+        self.conv_7 = nn.Conv3d(sc*16, sc*32, kernel_size=3, stride=2, padding=1) # 1024x3x3x3
+        self.bn_7 = nn.BatchNorm3d(sc*32) # 1024x3x3x3
+        self.layer_4 = self.make_layer(in_channels=sc*32, cardinality=64, num_blocks=3, stride=1) # 1024x3x3x3
 
         self.flattener = nn.Flatten()
+
+        self._flat_output_size = (sc*32) * 3 * 3 * 3
 
         print(f"{self.__class__.__name__} __init__ with {count_parameters(self)} parameters")
 
@@ -258,7 +262,7 @@ class FodfEncoder(nn.Module):
 
     @property
     def flat_output_size(self):
-        return 64 * 3 * 3 * 3
+        return self._flat_output_size
     
     def forward(self, x, flatten=False, swap_channels=False):
         if swap_channels:

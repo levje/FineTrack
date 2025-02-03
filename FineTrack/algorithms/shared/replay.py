@@ -57,13 +57,16 @@ class OffPolicySemiLazyReplayBuffer(object):
 
         # Interpolate the state and next state coordinates.
         state_coords = self.state_coords.index_select(0, ind)
+        state_coords = state_coords.to(device=self.device, non_blocking=True)
+        n_state_coords = self.n_state_coords.index_select(0, ind)
+        n_state_coords = n_state_coords.to(device=self.device, non_blocking=True)
+
         s_neigh = self.neigh_manager.get(state_coords, torch_convention=True)
-        s_prev_dirs = self.state_prev_dirs.index_select(0, ind)
+        s_prev_dirs = self.state_prev_dirs.index_select(0, ind).to(device=self.device)
         s = State(s_neigh, s_prev_dirs, state_coords, device=self.device)
 
-        n_state_coords = self.n_state_coords.index_select(0, ind)
         ns = self.neigh_manager.get(n_state_coords, torch_convention=True)
-        ns_prev_dirs = self.n_state_prev_dirs.index_select(0, ind)
+        ns_prev_dirs = self.n_state_prev_dirs.index_select(0, ind).to(device=self.device)
         ns = State(ns, ns_prev_dirs, n_state_coords, device=self.device)
 
         a = self.action.index_select(0, ind)
