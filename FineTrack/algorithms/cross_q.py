@@ -121,9 +121,6 @@ class CrossQ(SACAuto):
         self.alpha_optimizer = torch.optim.Adam(
             [self.log_alpha], lr=self.hparams.lr)
 
-        # Initialize target agent to provide baseline
-        self.target_critic = copy.deepcopy(self.agent.critic)
-
         # SAC requires a different model for actors and critics
         # Optimizer for actor
         self.actor_optimizer = torch.optim.Adam(
@@ -169,7 +166,6 @@ class CrossQ(SACAuto):
         checkpoint = torch.load(checkpoint_file, weights_only=False)
 
         self.agent.load_checkpoint(checkpoint['agent'])
-        self.target_critic.load_state_dict(checkpoint['target_critic'])
         self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
         self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
         self.alpha_optimizer.load_state_dict(checkpoint['alpha_optimizer'])
@@ -189,7 +185,6 @@ class CrossQ(SACAuto):
         """
         checkpoint = {
             'agent': self.agent.state_dict(as_dict=True),
-            'target_critic': self.target_critic.state_dict(),
             'actor_optimizer': self.actor_optimizer.state_dict(),
             'critic_optimizer': self.critic_optimizer.state_dict(),
             'alpha_optimizer': self.alpha_optimizer.state_dict(),

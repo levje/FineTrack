@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+import numpy as np
 from FineTrack.algorithms.shared.utils import ResidualBlock, ResNextBlock
 from FineTrack.algorithms.shared.batch_renorm import BatchRenorm1d, BatchRenorm3d
 from FineTrack.utils.utils import count_parameters
@@ -46,7 +46,7 @@ class ExpFodfEncoder(nn.Module):
             self.make_layer(in_channels=sc*4, cardinality=16, num_blocks=3, stride=1),  # 256x19x19x19
 
             # MAXPOOL 19x19x19 -> 9x9x9
-            nn.MaxPool3d(kernel_size=2, stride=2),  # 256x9x9x9
+            nn.MaxPool3d(kernel_size=3, stride=2),  # 256x9x9x9
             nn.Conv3d(in_channels=sc*4, out_channels=sc*8, kernel_size=3, stride=1, padding=1),  # 512x9x9x9
             nn.ReLU(),
             self.make_layer(in_channels=sc*8, cardinality=16, num_blocks=2, stride=1),  # 512x9x9x9
@@ -177,6 +177,61 @@ class ExpFodfDecoder(nn.Module):
             layers.append(ResNextBlock(in_channels, in_channels//2, cardinality, stride))
         return nn.Sequential(*layers)
 
+class SimpleFodfEncoder(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        sc = 32 # Start channels
+        # self.layers = nn.Sequential(
+        #     # 28x19x19x19
+        #     nn.Conv3d(in_channels=28, out_channels=28, kernel_size=1, stride=1, padding=0),  # 28x19x19x19
+        #     nn.Tanh(),
+        #     nn.Conv3d(in_channels=28, out_channels=sc, kernel_size=1, stride=1, padding=0),  # 64x19x19x19
+        #     nn.Tanh(),
+        #     nn.Conv3d(in_channels=sc, out_channels=sc*2, kernel_size=3, stride=1, padding=1),  # 128x19x19x19
+        #     nn.Tanh(),
+
+        # )
+
+        # MLP
+        self.layers = nn.Sequential(
+            nn.Linear(28*19*19*19, 2048),
+            nn.Tanh(),
+            nn.Linear(2048, 1024),
+            nn.Tanh(),
+        )
+
+    def forward(self, x):
+        x_flat = x.reshape(x.size(0), -1)
+        out = self.layers(x_flat)
+        return out
+
+class SimpleFodfDecoder(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.layers = nn.Sequential(
+            nn.Linear(1024, 2048),
+            nn.Tanh(),
+            nn.Linear(2048, 28*19*19*19),
+        )
+
+        # sc = 32 # Start channels
+        # self.layers = nn.Sequential(
+        #     # 64x19x19x19
+        #     nn.Conv3d(in_channels=sc*2, out_channels=sc, kernel_size=1, stride=1, padding=0),  # 128x19x19x19
+        #     nn.Tanh(),
+        #     # nn.BatchNorm3d(sc),
+        #     nn.Conv3d(in_channels=sc, out_channels=28, kernel_size=1, stride=1, padding=0),  # 28x19x19x19
+        #     nn.Tanh(),
+        # )
+
+    def forward(self, x):
+        out = self.layers(x)
+        out = out.reshape(x.size(0), 28, 19, 19, 19)
+        return out
+    
+
 class FodfEncoder(nn.Module):
     def __init__(self, n_coeffs=28, renorm=False, activation=nn.ReLU):
         super().__init__()
@@ -306,4 +361,270 @@ class FodfEncoder(nn.Module):
                 "PyTorch documentation about Conv3d layers."
 
         return x
+    
+class NoDownsampleFodfEncoder(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.layers = nn.Sequential(
+            nn.Conv3d(in_channels=28, out_channels=64, kernel_size=1, stride=1, padding=0),  # 28x19x19x19
+            nn.ReLU(),
+            nn.Conv3d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=0),  # 64x17x17x17
+            nn.ReLU(),
+            nn.Conv3d(in_channels=128, out_channels=256, kernel_size=3, stride=1, padding=0), # 128x15x15x15
+            nn.ReLU(),
+            nn.Conv3d(in_channels=256, out_channels=512, kernel_size=3, stride=1, padding=0),  # 256x13x13x13
+            nn.ReLU(),
+            nn.Conv3d(in_channels=512, out_channels=1024, kernel_size=3, stride=1, padding=0),  # 512x11x11x11
+            # nn.ReLU(),
+            # nn.Conv3d(in_channels=1024, out_channels=1024, kernel_size=3, stride=1, padding=0),  # 1024x9x9x9
+            # nn.ReLU(),
+            # nn.Conv3d(in_channels=1024, out_channels=1024, kernel_size=3, stride=1, padding=0),  # 1024x7x7x7
+            # nn.ReLU(),
+            # nn.Conv3d(in_channels=1024, out_channels=1024, kernel_size=3, stride=1, padding=0),  # 1024x5x5x5
+            # nn.ReLU(),
+            # nn.Conv3d(in_channels=1024, out_channels=1024, kernel_size=3, stride=1, padding=0),  # 1024x3x3x3
+            # nn.ReLU(),
+            # nn.Conv3d(in_channels=1024, out_channels=1024, kernel_size=3, stride=1, padding=0),  # 1024x1x1x1
+        )
+
+    def forward(self, x):
+        out = self.layers(x)
+        return out
+
+class NoDownsampleFodfDecoder(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.layers = nn.Sequential(
+            # nn.ConvTranspose3d(in_channels=1024, out_channels=1024, kernel_size=3, stride=1, padding=0),  # 1024x3x3x3
+            # nn.ReLU(),
+            # nn.ConvTranspose3d(in_channels=1024, out_channels=1024, kernel_size=3, stride=1, padding=0),  # 1024x5x5x5
+            # nn.ReLU(),
+            # nn.ConvTranspose3d(in_channels=1024, out_channels=1024, kernel_size=3, stride=1, padding=0),  # 1024x7x7x7
+            # nn.ReLU(),
+            # nn.ConvTranspose3d(in_channels=1024, out_channels=1024, kernel_size=3, stride=1, padding=0),  # 1024x9x9x9
+            # nn.ReLU(),
+            # nn.ConvTranspose3d(in_channels=1024, out_channels=1024, kernel_size=3, stride=1, padding=0),  # 1024x11x11x11
+            # nn.ReLU(),
+            nn.ConvTranspose3d(in_channels=1024, out_channels=512, kernel_size=3, stride=1, padding=0),  # 512x13x13x13
+            nn.ReLU(),
+            nn.ConvTranspose3d(in_channels=512, out_channels=256, kernel_size=3, stride=1, padding=0),  # 256x15x15x15
+            nn.ReLU(),
+            nn.ConvTranspose3d(in_channels=256, out_channels=128, kernel_size=3, stride=1, padding=0),  # 128x17x17x17
+            nn.ReLU(),
+            nn.ConvTranspose3d(in_channels=128, out_channels=64, kernel_size=3, stride=1, padding=0),  # 64x19x19x19
+            nn.ReLU(),
+            nn.ConvTranspose3d(in_channels=64, out_channels=28, kernel_size=1, stride=1, padding=0),  # 28x19x19x19
+        )
+
+    def forward(self, x):
+        out = self.layers(x)
+        return out
+
+class LinLatentEncoder(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.input_size = (28, 19, 19, 19)
+        self.sc = 64
+        self.convs = nn.Sequential(
+            nn.Conv3d(in_channels=28, out_channels=self.sc, kernel_size=3, stride=1, padding=1),  # 64x19x19x19
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv3d(in_channels=self.sc, out_channels=self.sc*2, kernel_size=3, stride=2, padding=0),  # 128x9x9x9
+            nn.BatchNorm3d(self.sc*2),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv3d(in_channels=self.sc*2, out_channels=self.sc*4, kernel_size=3, stride=2, padding=0),  # 256x4x4x4
+            nn.BatchNorm3d(self.sc*4),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv3d(in_channels=self.sc*4, out_channels=self.sc*8, kernel_size=3, stride=1, padding=0), # 512x2x2x2
+            nn.BatchNorm3d(self.sc*8),
+            nn.LeakyReLU(0.2, inplace=True),
+        )
+
+        self.flat_fts = self.get_flat_fts(self.convs)
+        self.linear = nn.Sequential(
+            nn.Linear(self.flat_fts, 1024),
+            nn.BatchNorm1d(1024),
+            nn.LeakyReLU(0.2)
+        )
+
+    def get_flat_fts(self, fts):
+        f = fts(torch.ones(1, *self.input_size))
+        return int(np.prod(f.size()[1:]))
+
+    def forward(self, x):
+        x = self.convs(x.view(-1, *self.input_size))
+        x = x.reshape(-1, self.flat_fts)
+        x = self.linear(x)
+        return x
+
+class LinLatentDecoder(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.fc_in_dim = 1024
+        self.fc_out_dim = 4096
+        self.sc = 64
+
+        self.linear = nn.Sequential(
+            nn.Linear(1024, 512*2*2*2),
+            nn.ReLU(),
+            nn.BatchNorm1d(512*2*2*2),
+        )
+
+        self.convs = nn.Sequential(
+            nn.ConvTranspose3d(in_channels=self.sc*8, out_channels=self.sc*4, kernel_size=3, stride=1, padding=0),  # 256x4x4x4
+            nn.BatchNorm3d(self.sc*4),
+            nn.ReLU(),
+            nn.ConvTranspose3d(in_channels=self.sc*4, out_channels=self.sc*2, kernel_size=3, stride=2, padding=0),  # 128x9x9x9
+            nn.BatchNorm3d(self.sc*2),
+            nn.ReLU(),
+            nn.ConvTranspose3d(in_channels=self.sc*2, out_channels=self.sc, kernel_size=3, stride=2, padding=0),  # 64x19x19x19
+            nn.BatchNorm3d(self.sc),
+            nn.ReLU(),
+            nn.ConvTranspose3d(in_channels=self.sc, out_channels=28, kernel_size=3, stride=1, padding=1),  # 28x19x19x19
+            nn.Tanh(),
+        )
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = x.view(-1, self.sc*8, 2, 2, 2)
+        x = self.convs(x)
+        return x
+
+class ResidualBlockV2(nn.Module):
+    def __init__(self, in_channels, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.block = nn.Sequential(
+            nn.Conv3d(in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm3d(in_channels),
+            nn.ReLU(),
+            nn.Conv3d(in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm3d(in_channels),
+            # nn.ReLU()
+        )
+
+    def forward(self, x):
+        residue = x
+        out = self.block(x)
+        out += residue
+        return out
+    
+def downsampling_block(in_channels, out_channels):
+    return nn.Sequential(
+        nn.Conv3d(in_channels=in_channels, out_channels=out_channels, kernel_size=2, stride=2, padding=1),
+        nn.ReLU(),
+        nn.Conv3d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
+        nn.ReLU(),
+    )
+
+class LinLatentEncoderV2(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.input_size = (1, 31, 31, 31)
+        self.sc = 64
+        self.convs = nn.Sequential(
+            nn.ConstantPad3d(padding=(1, 0, 1, 0, 1, 0), value=0.0), # 28x32x32x32
+            nn.Conv3d(in_channels=1, out_channels=28, kernel_size=3, stride=1, padding=0), # 28x32x32x32
+            nn.ReLU(),
+
+            ResidualBlockV2(in_channels=28), # 28x32x32x32
+            ResidualBlockV2(in_channels=28), # 28x32x32x32
+            ResidualBlockV2(in_channels=28), # 28x32x32x32
+            ResidualBlockV2(in_channels=28), # 28x32x32x32
+
+            downsampling_block(in_channels=28, out_channels=32), # 32x16x16x16
+
+            ResidualBlockV2(in_channels=32), # 32x16x16x16
+            ResidualBlockV2(in_channels=32), # 32x16x16x16
+            ResidualBlockV2(in_channels=32), # 32x16x16x16
+            ResidualBlockV2(in_channels=32), # 32x16x16x16
+
+            downsampling_block(in_channels=32, out_channels=48), # 48x8x8x8
+
+            ResidualBlockV2(in_channels=48), # 48x8x8x8
+            ResidualBlockV2(in_channels=48), # 48x8x8x8
+            ResidualBlockV2(in_channels=48), # 48x8x8x8
+            ResidualBlockV2(in_channels=48), # 48x8x8x8
+
+            downsampling_block(in_channels=48, out_channels=96), # 128x4x4x4
+
+            ResidualBlockV2(in_channels=96), # 96x4x4x4
+            ResidualBlockV2(in_channels=96), # 96x4x4x4
+            ResidualBlockV2(in_channels=96), # 96x4x4x4
+            ResidualBlockV2(in_channels=96), # 96x4x4x4
+        )
+
+        self.flat_fts = self.get_flat_fts(self.convs)
+        print("Flat fts: ", self.flat_fts)
+        self.lin = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(self.flat_fts, 16384)
+        )
+
+    def get_flat_fts(self, fts):
+        f = fts(torch.ones(1, *self.input_size))
+        return int(np.prod(f.size()[1:]))
+
+    def forward(self, x):
+        x = self.convs(x)
+        x = self.lin(x)
+        return x
+
+def upsampling_block(in_channels, out_channels):
+    return nn.Sequential(
+        nn.ConvTranspose3d(in_channels=in_channels, out_channels=out_channels, kernel_size=2, stride=2, padding=0),
+        nn.ReLU(),
+        nn.Conv3d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
+        nn.ReLU(),
+    )
+
+class LinLatentDecoderV2(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.fc_in_dim = 16384
+        self.fc_out_dim = 96*4*4*4
+        self.sc = 64
+
+        self.linear = nn.Sequential(
+            nn.Linear(self.fc_in_dim, self.fc_out_dim),
+            nn.ReLU(),
+            nn.BatchNorm1d(self.fc_out_dim),
+        )
+
+        self.convs = nn.Sequential(
+            nn.Unflatten(1, (96, 4, 4, 4)),
+            
+            ResidualBlockV2(in_channels=96), # 96x4x4x4
+            ResidualBlockV2(in_channels=96), # 96x4x4x4
+
+            upsampling_block(in_channels=96, out_channels=64), # 64x8x8x8
+
+            ResidualBlockV2(in_channels=64), # 64x8x8x8
+            ResidualBlockV2(in_channels=64), # 64x8x8x8
+
+            upsampling_block(in_channels=64, out_channels=48), # 48x16x16x16
+
+            ResidualBlockV2(in_channels=48), # 48x16x16x16
+            ResidualBlockV2(in_channels=48), # 48x16x16x16
+            ResidualBlockV2(in_channels=48), # 48x16x16x16
+            ResidualBlockV2(in_channels=48), # 48x16x16x16
+
+            upsampling_block(in_channels=48, out_channels=32), # 32x32x32x32
+
+            ResidualBlockV2(in_channels=32), # 32x32x32x32
+            ResidualBlockV2(in_channels=32), # 32x32x32x32
+            ResidualBlockV2(in_channels=32), # 32x32x32x32
+            ResidualBlockV2(in_channels=32), # 32x32x32x32
+
+            nn.Conv3d(in_channels=32, out_channels=1, kernel_size=3, stride=1, padding=1), # 28x32x32x32
+            nn.Tanh(),
+        )
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = self.convs(x)
+        return x[..., :-1, :-1, :-1]
     

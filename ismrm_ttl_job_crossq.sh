@@ -94,7 +94,7 @@ do
     DEST_FOLDER="${EXPDIR}/${EXPNAME}/${EXPID}/${RNGSEED}"
 
     # Append the current seed to the EXPID
-    EXPID="${RNGSEED}-${EXPID}"
+    EXPID_W_SEED="${RNGSEED}-${EXPID}"
 
     additionnal_args=()
 
@@ -111,10 +111,10 @@ do
     python -O $SOURCEDIR/FineTrack/trainers/cross_q_train.py \
         ${DEST_FOLDER} \
         "${COMETPROJECT}" \
-        "${EXPID}" \
+        "${EXPID_W_SEED}" \
         "${DATASETDIR}/ismrm2015.hdf5" \
         --max_ep ${MAXEP} \
-        --hidden_dims "2048-1024-1024" \
+        --hidden_dims "1024-1024-1024" \
         --oracle_reward_checkpoint ${ORACLE_REWARD_CHECKPOINT} \
         --oracle_crit_checkpoint ${ORACLE_CRIT_CHECKPOINT} \
         --oracle_validator \
