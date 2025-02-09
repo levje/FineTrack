@@ -8,8 +8,12 @@ from torch.utils.data.sampler import SubsetRandomSampler
 import nibabel as nib
 import itertools as it
 from tqdm import tqdm
-
+import argparse
+import matplotlib.pyplot as plt
+from pathlib import Path
 from FineTrack.utils.utils import count_parameters
+from FineTrack.environments.neighborhood_manager import NeighborhoodManager
+from FineTrack.algorithms.shared.fodf_encoder import WorkingFodfEncoder, WorkingFodfDecoder
 
 VOLUME_PATH = '/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz'
 WM_MASK_PATH = '/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_2mm/masks/ismrm2015_wm_mask.nii.gz'
@@ -35,6 +39,20 @@ class NeighborhoodDataset(torch.utils.data.Dataset):
         self.n_coefs = n_coefs
         self.torch_convention = torch_convention
 
+        if method == 'interpolate':
+            print("Using DWI_ML interpolation method...")
+            self.neigh_manager = NeighborhoodManager(
+                self.volume_data,
+                self.neighborhood_size,
+                1,
+                False,
+                'grid',
+                method='dwi_ml',
+                device='cpu')
+            
+            self.coords = torch.from_numpy(np.array(self.coords)).float()
+
+
     def __len__(self):
         return len(self.coords)
 
@@ -42,7 +60,8 @@ class NeighborhoodDataset(torch.utils.data.Dataset):
         if self.method == 'crop':
             return self._crop_at_coordinate(self.coords[idx])
         elif self.method == 'interpolate':
-            return self._interpolate_at_coordinate(self.coords[idx])
+            return self.coords[idx]
+            # return self._interpolate_at_coordinate(self.coords[idx])
         else:
             raise ValueError('Invalid method: {}'.format(self.method))
     
@@ -86,12 +105,22 @@ class NeighborhoodDataset(torch.utils.data.Dataset):
             placeholder = np.transpose(placeholder, (3, 0, 1, 2))
 
         if dim_2d:
-            return placeholder[:, 0, :, :] # 3D image
+            return placeholder[:, 0, :, :] # 2D image
         else:
-            return placeholder[:, :, :, :] # 2D image
+            return placeholder[:, :, :, :] # 3D image
 
     def _interpolate_at_coordinate(self, coord):
-        pass
+        interp = self.neigh_manager.get(coord, torch_convention=self.torch_convention)
+        
+        # Crop it to be evenly sized
+        interp = interp[:, :, :-1, :-1, :-1]
+
+        # The result is of an odd size, we need to crop the last dim
+        if dim_2d:
+            return interp[:, 0, :, :]
+        else:
+            return interp[:, :, :, :]
+
 
     def _get_coordinates(self):
         all_x = np.arange(0, self.volume_data.shape[0])[self.volume_data.shape[0]//2-20:self.volume_data.shape[0]//2+20]
@@ -111,111 +140,132 @@ class NeighborhoodDataset(torch.utils.data.Dataset):
 
 def setup_neighborhood_datasets(neighborhood_size=3, method='crop'):
     trainset = NeighborhoodDataset(train=True, neighborhood_size=neighborhood_size, method=method, torch_convention=True)
-    trainloader = DataLoader(trainset, batch_size=128, shuffle=True, num_workers=10)
+    trainloader = DataLoader(trainset, batch_size=64, shuffle=True, num_workers=10)
 
-    testset = NeighborhoodDataset(train=True, neighborhood_size=neighborhood_size, method=method, torch_convention=True)
-    testloader = DataLoader(testset, batch_size=128, shuffle=True, num_workers=10)
+    testset = NeighborhoodDataset(train=False, neighborhood_size=neighborhood_size, method=method, torch_convention=True)
+    testloader = DataLoader(testset, batch_size=64, shuffle=True, num_workers=10)
 
     return trainloader, testloader
 
-class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+# class ResidualBlock(nn.Module):
+#     def __init__(self, in_channels, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
 
-        self.block = nn.Sequential(
-            conv_layer(in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=1, padding=1),
-            bn_layer(in_channels),
-            nn.ReLU(),
-            conv_layer(in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=1, padding=1),
-            bn_layer(in_channels),
-            # nn.ReLU()
-        )
+#         self.block = nn.Sequential(
+#             conv_layer(in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=1, padding=1),
+#             bn_layer(in_channels),
+#             nn.ReLU(),
+#             conv_layer(in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=1, padding=1),
+#             bn_layer(in_channels),
+#             # nn.ReLU()
+#         )
 
-    def forward(self, x):
-        residue = x
-        out = self.block(x)
-        out += residue
-        return out
+#     def forward(self, x):
+#         residue = x
+#         out = self.block(x)
+#         out += residue
+#         return out
+
+# class Model(nn.Module):
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+
+#         self.latent_space_size = 4096
+
+#         self.encoder = nn.Sequential(
+#             # 32x32x3
+#             ResidualBlock(in_channels=28), # 32x32x32
+#             ResidualBlock(in_channels=28), # 32x32x32
+#             ResidualBlock(in_channels=28), # 32x32x32
+#             ResidualBlock(in_channels=28), # 32x32x32
+
+#             self.downsampling_block(in_channels=28, out_channels=48), # 16x16x48
+#             ResidualBlock(in_channels=48),
+#             ResidualBlock(in_channels=48),
+#             ResidualBlock(in_channels=48),
+#             ResidualBlock(in_channels=48),
+
+#             self.downsampling_block(in_channels=48, out_channels=96), # 8x8x96
+#             ResidualBlock(in_channels=96),
+#             ResidualBlock(in_channels=96),
+#             ResidualBlock(in_channels=96),
+#             ResidualBlock(in_channels=96),
+#             # self.downsampling_block(in_channels=96, out_channels=192), # 4x4x192
+#             # self.downsampling_block(in_channels=192, out_channels=96), # 2x2x96
+
+#             # nn.Flatten(),
+#             # nn.Linear(get_flat_size(8)*96, self.latent_space_size),
+#             self.downsampling_block(in_channels=96, out_channels=32), # 4x4x64
+#             ResidualBlock(in_channels=32),
+#             ResidualBlock(in_channels=32),
+#             ResidualBlock(in_channels=32),
+#             ResidualBlock(in_channels=32),
+#         )
+
+#         self.decoder = nn.Sequential(
+#             # nn.Linear(self.latent_space_size, get_flat_size(8)*96),
+#             # nn.Unflatten(1, (96, *get_flat_shape(8))),
+#             ResidualBlock(in_channels=32),
+#             ResidualBlock(in_channels=32),
+#             ResidualBlock(in_channels=32),
+#             ResidualBlock(in_channels=32),
+#             self.upsampling_block(in_channels=32, out_channels=96), # 8x8x96
+#             ResidualBlock(in_channels=96),
+#             ResidualBlock(in_channels=96),
+#             ResidualBlock(in_channels=96),
+#             ResidualBlock(in_channels=96),
+#             # self.upsampling_block(in_channels=96, out_channels=192), # 4x4x192
+#             # self.upsampling_block(in_channels=192, out_channels=96), # 8x8x96
+#             self.upsampling_block(in_channels=96, out_channels=48), # 16x16x48
+#             ResidualBlock(in_channels=48),
+#             ResidualBlock(in_channels=48),
+#             ResidualBlock(in_channels=48),
+#             ResidualBlock(in_channels=48),
+
+#             conv_t_layer(in_channels=48, out_channels=48, kernel_size=2, stride=2), # 32x32x48
+#             nn.ReLU(),
+#             conv_layer(in_channels=48, out_channels=28, kernel_size=3, stride=1, padding=1),
+#         )
+
+#         print('Encoder: {} params'.format(count_parameters(self.encoder)))
+#         print('Decoder: {} params'.format(count_parameters(self.decoder)))
+
+#     def downsampling_block(self, in_channels, out_channels):
+#         return nn.Sequential(
+#             conv_layer(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=2, padding=1),
+#             nn.ReLU(),
+#             conv_layer(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
+#             nn.ReLU()
+#         )
+
+#     def upsampling_block(self, in_channels, out_channels):
+#         return nn.Sequential(
+#             conv_t_layer(in_channels=in_channels, out_channels=out_channels, kernel_size=2, stride=2, padding=0),
+#             nn.ReLU(),
+#             conv_layer(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
+#             nn.ReLU(),
+#         )
+
+#     def forward(self, x):
+#         latent = self.encoder(x)
+#         out = self.decoder(latent)
+#         return out
 
 class Model(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.latent_space_size = 4096
-
-        self.encoder = nn.Sequential(
-            # 32x32x3
-            ResidualBlock(in_channels=28), # 32x32x32
-            ResidualBlock(in_channels=28), # 32x32x32
-            ResidualBlock(in_channels=28), # 32x32x32
-            ResidualBlock(in_channels=28), # 32x32x32
-
-            self.downsampling_block(in_channels=28, out_channels=48), # 16x16x48
-            ResidualBlock(in_channels=48),
-            ResidualBlock(in_channels=48),
-            ResidualBlock(in_channels=48),
-            ResidualBlock(in_channels=48),
-
-            self.downsampling_block(in_channels=48, out_channels=96), # 8x8x96
-            ResidualBlock(in_channels=96),
-            ResidualBlock(in_channels=96),
-            ResidualBlock(in_channels=96),
-            ResidualBlock(in_channels=96),
-            # self.downsampling_block(in_channels=96, out_channels=192), # 4x4x192
-            # self.downsampling_block(in_channels=192, out_channels=96), # 2x2x96
-
-            nn.Flatten(),
-            nn.Linear(get_flat_size(8)*96, self.latent_space_size),
-        )
-
-        self.decoder = nn.Sequential(
-            nn.Linear(self.latent_space_size, get_flat_size(8)*96),
-            nn.Unflatten(1, (96, *get_flat_shape(8))),
-            ResidualBlock(in_channels=96),
-            ResidualBlock(in_channels=96),
-            ResidualBlock(in_channels=96),
-            ResidualBlock(in_channels=96),
-            # self.upsampling_block(in_channels=96, out_channels=192), # 4x4x192
-            # self.upsampling_block(in_channels=192, out_channels=96), # 8x8x96
-            self.upsampling_block(in_channels=96, out_channels=48), # 16x16x48
-            ResidualBlock(in_channels=48),
-            ResidualBlock(in_channels=48),
-            ResidualBlock(in_channels=48),
-            ResidualBlock(in_channels=48),
-
-            conv_t_layer(in_channels=48, out_channels=48, kernel_size=2, stride=2), # 32x32x48
-            nn.ReLU(),
-            conv_layer(in_channels=48, out_channels=28, kernel_size=3, stride=1, padding=1),
-        )
-
-        print('Encoder: {} params'.format(count_parameters(self.encoder)))
-        print('Decoder: {} params'.format(count_parameters(self.decoder)))
-
-    def downsampling_block(self, in_channels, out_channels):
-        return nn.Sequential(
-            conv_layer(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(),
-            conv_layer(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
-            nn.ReLU()
-        )
-
-    def upsampling_block(self, in_channels, out_channels):
-        return nn.Sequential(
-            conv_t_layer(in_channels=in_channels, out_channels=out_channels, kernel_size=2, stride=2, padding=0),
-            nn.ReLU(),
-            conv_layer(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-        )
-
+        self.encoder = WorkingFodfEncoder()
+        self.decoder = WorkingFodfDecoder()
+    
     def forward(self, x):
         latent = self.encoder(x)
         out = self.decoder(latent)
         return out
 
 
-def main():
-    trainloader, testloader = setup_neighborhood_datasets(neighborhood_size=16, method='crop')
-    model = Model()
+def train(model, interp='crop'):
+    trainloader, testloader = setup_neighborhood_datasets(neighborhood_size=16, method=interp)
     model.train()
     model = model.to(device='cuda')
     criterion = nn.MSELoss()
@@ -264,13 +314,104 @@ def main():
         break
 
     if dim_2d:
-        plt.savefig('reconstructions_2d.png')
+        test(model, 'reconstructions_2d.png')
     else:
-        plt.savefig('reconstructions_3d.png')
+        test(model, 'reconstructions_3d.png')
     # plt.show()
 
+def test(model, out_file=None, interp='crop'):
+    _, testloader = setup_neighborhood_datasets(neighborhood_size=16, method=interp)
+    neigh_manager = NeighborhoodManager(
+        data_volume=nib.load(VOLUME_PATH).get_fdata(),
+        radius=16,
+        add_neighborhood_vox=1, #0.375,
+        neighborhood_type='grid',
+        flatten=False,
+        device='cuda',
+        method='dwi_ml')
+    model.eval()
+    model = model.to(device='cuda')
+    criterion = nn.MSELoss()
+    n = 20 # number of reconstructions to vizualize
+    fig, axes = plt.subplots(4, n//2, figsize=(20, 5))
+    for i, inputs in enumerate(testloader):
+        inputs = inputs.to(device='cuda')
+        if interp=='interpolate':
+            inputs = neigh_manager.get(inputs, torch_convention=True)
+            inputs = inputs[:, :, :-1, :-1, :-1]
+        outputs = model(inputs)
+
+        print('Loss: {}'.format(criterion(outputs, inputs)))
+        for j in range(n):
+            if dim_2d:
+                target = inputs[j, 0][None, ...].permute(1, 2, 0).cpu().detach().numpy()
+                recons = outputs[j, 0][None, ...].permute(1, 2, 0).cpu().detach().numpy()
+                target_slice = target
+                recons_slice = recons
+            else:
+                target = inputs[j, 0][None].permute(1, 2, 3, 0).cpu().detach().numpy()
+                recons = outputs[j, 0][None].permute(1, 2, 3, 0).cpu().detach().numpy()
+                target_slice = target[:, 0]
+                recons_slice = recons[:, 0]
+            print("loss ({}): {}".format(j, criterion(outputs[j], inputs[j])))
+            
+            if j < n//2:
+                axes[0, j].imshow(target_slice)
+                axes[1, j].imshow(recons_slice)
+            else:
+                axes[2, j-n//2].imshow(target_slice)
+                axes[3, j-n//2].imshow(recons_slice)
+
+            # Save the images to disk as nifti images
+            ex_dir = Path('examples')
+            target_nib = nib.Nifti1Image(target, affine=np.eye(4))
+            recons_nib = nib.Nifti1Image(recons, affine=np.eye(4))
+            nib.save(target_nib, ex_dir / 'target_{}.nii.gz'.format(j))
+            nib.save(recons_nib, ex_dir / 'recons_{}.nii.gz'.format(j))
+
+    # for i, inputs in enumerate(tqdm(testloader)):
+    #     inputs = inputs.to(device='cuda')
+    #     outputs = model(inputs)
+    #     for j in range(n):
+    #         print("j: {} n: {}".format(j, n))
+    #         if dim_2d:
+    #             target = inputs[j, 0][None, ...].permute(1, 2, 0).cpu().detach().numpy()
+    #             recons = outputs[j, 0][None, ...].permute(1, 2, 0).cpu().detach().numpy()
+    #         else:
+    #             target = inputs[j, 0][None, 0].permute(1, 2, 0).cpu().detach().numpy()
+    #             recons = outputs[j, 0][None, 0].permute(1, 2, 0).cpu().detach().numpy()
+    #         print("loss ({}): {}".format(j, criterion(outputs[j], inputs[j])))
+            
+    #         if j < n//2:
+    #             axes[0, j].imshow(target)
+    #             axes[1, j].imshow(recons)
+    #         else:
+    #             axes[2, j-n//2].imshow(target)
+    #             axes[3, j-n//2].imshow(recons)
+        break
+
+    if out_file is not None:
+        plt.savefig(out_file)
+    else:
+        plt.show()
 
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--test', action='store_true')
+    parser.add_argument('--ckpt', type=str, default=None)
+    parser.add_argument('--out_file', type=str, default=None)
+    parser.add_argument('--interp', choices=['crop', 'interpolate'], default='crop')
+    args = parser.parse_args()
+
+    model = Model()
+    if args.ckpt is not None:
+        print('Loading model from checkpoint...')
+        model.load_state_dict(torch.load(args.ckpt))
+
+    if args.test:
+        print('Testing...')
+        test(model, args.out_file, args.interp)
+    else:
+        train(model, args.interp)
