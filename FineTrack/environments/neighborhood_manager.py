@@ -156,14 +156,15 @@ class DwiMlNeighborhoodManager(object):
         sorted_coords = sorted_coords[sorted_indices]
         self.neighborhood_directions = sorted_coords
 
-    def get(self, coords, torch_convention=False):
-        signal, _ = interpolate_volume_in_neighborhood(
-            self.data_volume,
-            coords,
-            self.neighborhood_directions, clear_cache=False)
+    def get(self, coords, torch_convention=False, crop_last=False):
+        with torch.no_grad():
+            signal, _ = interpolate_volume_in_neighborhood(
+                self.data_volume,
+                coords,
+                self.neighborhood_directions, clear_cache=False)
 
-        if not self.flatten and self.neighborhood_type == 'grid':
-            signal = self._unflatten_neighborhood(signal)
+            if not self.flatten and self.neighborhood_type == 'grid':
+                signal = self._unflatten_neighborhood(signal)
 
             if torch_convention:
                 # Permute axes to fit PyTorch's convention of (N, C, D, H, W)
@@ -176,7 +177,7 @@ class DwiMlNeighborhoodManager(object):
         assert self.neighborhood_type == 'grid'
 
         nb_points = signal.shape[0]
-        nb_neighb = len(self.neighborhood_directions) 
+        nb_neighb = len(self.neighborhood_directions)
         out_size = int(self.radius * 2 + 1)
         nb_features = int(signal.shape[1] / nb_neighb) # Nb of features per neighbor
 

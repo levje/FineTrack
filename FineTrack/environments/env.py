@@ -37,7 +37,7 @@ from FineTrack.environments.utils import (  # is_looping,
 from FineTrack.utils.utils import normalize_vectors, SimpleTimer
 from FineTrack.environments.rollout_env import RolloutEnvironment
 from FineTrack.environments.state import ConvState, State
-from FineTrack.algorithms.shared.fodf_encoder import FodfEncoder, DummyFodfEncoder
+from FineTrack.algorithms.shared.fodf_encoder import WorkingFodfEncoder, DummyFodfEncoder
 from FineTrack.utils.interpolation import calc_neighborhood_grid, neighborhood_interpolation
 
 LOGGER = get_logger(__name__)
@@ -155,7 +155,7 @@ class BaseEnv(object):
         # ==========================================
         self.neighborhood_radius = env_dto['neighborhood_radius']
         self.neighborhood_type = env_dto['neighborhood_type']
-        self.flatten_state = env_dto['flatten_state']
+        self.flatten_state = env_dto['flatten_state'] or env_dto['fodf_encoder_ckpt'] is not None
         self.fodf_encoder_ckpt = env_dto['fodf_encoder_ckpt']
         self.interpolation = env_dto['interpolation']
 
@@ -164,10 +164,9 @@ class BaseEnv(object):
         # ==========================================
         self.fodf_encoder = None
         if self.fodf_encoder_ckpt is not None:
-            self.fodf_encoder = FodfEncoder(n_coeffs=28)
+            self.fodf_encoder = WorkingFodfEncoder()
             self.fodf_encoder.load_state_dict(torch.load(self.fodf_encoder_ckpt,
-                                                         map_location=self.device,
-                                                         weights_only=False))
+                                                         map_location=self.device))
 
             # Make sure that we never calculate gradients for this model
             self.fodf_encoder.eval()
@@ -266,12 +265,23 @@ class BaseEnv(object):
             self.step_size_mm,
             self.affine_vox2rasmm)
 
+        # With this manager, we interpolate a bigger neighborhood grid around the current position
+        # to provide to the FODF autoencoder. Since the neighborhood is bigger than the step size
+        # of the agent, we use a fixed resolution of 1 in voxel space.
         self.neigh_manager = NeighborhoodManager(self.data_volume,
                                                     self.neighborhood_radius,
-                                                    self.add_neighborhood_vox,
-                                                    self.flatten_state,
+                                                    1, # We just want a crop of the neighborhood around him.
+                                                    False,
                                                     neighborhood_type=self.neighborhood_type,
                                                     method=self.interpolation)
+        # This is just to interpolate the direct neighbors
+        self.direct_neigh_manager = NeighborhoodManager(self.data_volume,
+                                            1,
+                                            self.add_neighborhood_vox,
+                                            True,
+                                            neighborhood_type='axes',
+                                            method='dwi_ml')
+                                                        
 
         # Tracking seeds
         self.seeds = track_utils.random_seeds_from_mask(
@@ -666,12 +676,13 @@ class BaseEnv(object):
             #         # display_image(nib.Nifti1Image(signal[0].cpu().numpy(), self.affine_vox2rasmm), default_slice=self.neighborhood_radius, save_to="test_neighborhood_dwi.png")
             #         # raise NotImplementedError("This implementation wasn't tested")
 
-            signal = self.neigh_manager.get(coords, torch_convention=True)
+            signal = self.direct_neigh_manager.get(coords)
 
             if self.fodf_encoder is not None:
-                # Encode the FODF signal
-                signal = self.fodf_encoder(signal, flatten=True)
+                encoded_neighborhood = self._get_neighborhood_grid_encodings(coords)
 
+                # Concatenate the encoded neighborhood to the direct neighbors
+                signal = torch.cat([signal, encoded_neighborhood], dim=1)
 
             # Flatten the signal as this will be fed to a MLP
             # signal = signal.reshape(N, -1)
@@ -697,6 +708,42 @@ class BaseEnv(object):
             else:
                 state = State(signal, dir_inputs, coords, device=self.device)
         return state
+
+    def _get_neighborhood_grid_encodings(self, coords):
+        """
+        This method interpolates the neighborhood grid around the current
+        position and encodes it using the FODF encoder.
+
+        However, since we are interpolating a big neighborhood grid, we need
+        to interpolate the grid in chunks and then concatenate the results
+        to avoid running out of GPU memory.
+        """
+        N = coords.shape[0]
+
+        # Ideally, the method aims to reproduce the following code
+        # (whilst avoiding running out of memory):
+        #
+        # interpolated_neighborhood = self.neigh_manager.get(coords, torch_convention=True)
+        # interpolated_neighborhood = interpolated_neighborhood[:, :, :-1, :-1, :-1]
+        # encoded_neighborhood = self.fodf_encoder(interpolated_neighborhood)
+        # encoded_neighborhood = encoded_neighborhood.reshape(N, -1)
+
+        batch_size = 256 # TODO: Parametrize
+        placeholder = torch.zeros((N, self.fodf_encoder.output_size), device=self.device)
+
+        for start in range(0, N, batch_size):
+            end = min(start + batch_size, N)
+            chunk_coords = coords[start:end]
+
+            interpolated_neighborhood = self.neigh_manager.get(chunk_coords, torch_convention=True)
+            
+            # We crop the interpolated neighborhood to get a evenly-sized grid.
+            interpolated_neighborhood = interpolated_neighborhood[:, :, :-1, :-1, :-1]
+
+            encoded_neighborhood = self.fodf_encoder(interpolated_neighborhood)
+            placeholder[start:end] = encoded_neighborhood.reshape(end - start, -1)
+
+        return placeholder
 
     def _compute_stopping_flags(
         self,
