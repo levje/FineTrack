@@ -4,10 +4,10 @@ import torch
 import torch.nn as nn
 
 import torch.nn.functional as F
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Tuple
 
-from FineTrack.algorithms.sac_auto import SACAuto
+from FineTrack.algorithms.sac_auto import SACAuto, SACAutoHParams
 from FineTrack.algorithms.shared.offpolicy_crossq import CrossQActorCritic
 from FineTrack.algorithms.shared.replay import OffPolicyReplayBuffer, OffPolicyLazyReplayBuffer, OffPolicySemiLazyReplayBuffer
 from FineTrack.environments.neighborhood_manager import NeighborhoodManager
@@ -18,19 +18,9 @@ LOG_STD_MAX = 2
 LOG_STD_MIN = -20
 
 @dataclass
-class CrossQHParams:
-    lr: float = 3e-4
-    gamma: float = 0.99
-    n_actors: int = 4096
-
-    alpha: float = 0.2
-    batch_size: int = 2**12
-    replay_size: int = 1e6
-
-    adaptive_kl: bool = False
-    kl_penalty_coeff: float = 0.02
-    kl_target: float = 0.005
-    kl_horizon: int = 1000
+class CrossQHParams(SACAutoHParams):
+    # So far, the hyperparameters for CrossQ are the same as SACAuto
+    algorithm: str = field(default="CrossQ", init=False, repr=False)
 
 class CrossQ(SACAuto):
     """
@@ -55,9 +45,8 @@ class CrossQ(SACAuto):
         self,
         input_shape: StateShape,
         action_size: int,
-        hidden_dims: int,
         neighborhood_manager: NeighborhoodManager,
-        hparams: CrossQHParams = CrossQHParams(),
+        hparams: CrossQHParams,
         rng: np.random.RandomState = None,
         device: torch.device = get_device,
     ):
@@ -92,12 +81,11 @@ class CrossQ(SACAuto):
         self.batch_size = hparams.batch_size
         self.gamma = hparams.gamma
         self.alpha = hparams.alpha
-        self.n_actors = hparams.n_actors
+        self.n_actors = hparams.n_actor
         self.replay_size = hparams.replay_size
 
         self.max_action = 1.
         self.t = 1
-        self.nb_updates_per_sample = 5
 
         self.action_size = action_size
         self.device = device
@@ -106,7 +94,7 @@ class CrossQ(SACAuto):
 
         # Initialize main agent
         self.agent = CrossQActorCritic(
-            input_shape, action_size, hidden_dims, device,
+            input_shape, action_size, self.hparams.hidden_dims, device,
         )
 
         # Auto-temperature adjustment
@@ -136,7 +124,6 @@ class CrossQ(SACAuto):
 
         self.start_timesteps = 80000
         self.total_it = 0
-        self.tau = 0.005
         self.agent_freq = 1
 
         # Replay buffer

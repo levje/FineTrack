@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 import torch.nn.functional as F
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Tuple
 
 from FineTrack.algorithms.sac import SAC
@@ -13,24 +13,17 @@ from FineTrack.algorithms.shared.replay import OffPolicyReplayBuffer, OffPolicyL
 from FineTrack.utils.torch_utils import get_device, gradients_norm
 from FineTrack.algorithms.shared.kl import AdaptiveKLController, FixedKLController
 from FineTrack.environments.state import StateShape
+from FineTrack.algorithms.shared.hyperparameters import HParams
 
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
 
 @dataclass
-class SACAutoHParams:
-    lr: float = 3e-4
-    gamma: float = 0.99
-    n_actors: int = 4096
-
-    alpha: float = 0.2
-    batch_size: int = 2**12
-    replay_size: int = 1e6
-
-    adaptive_kl: bool = False
-    kl_penalty_coeff: float = 0.02
-    kl_target: float = 0.005
-    kl_horizon: int = 1000
+class SACAutoHParams(HParams):
+    algorithm: str = field(default="SACAuto", init=False, repr=False)
+    alpha: float
+    batch_size: int
+    replay_size: int
 
 class SACAuto(SAC):
     """
@@ -56,7 +49,7 @@ class SACAuto(SAC):
         input_shape: StateShape,
         action_size: int,
         hidden_dims: int,
-        hparams: SACAutoHParams = SACAutoHParams(),
+        hparams: SACAutoHParams,
         rng: np.random.RandomState = None,
         device: torch.device = get_device,
     ):
@@ -164,12 +157,6 @@ class SACAuto(SAC):
             input_shape, action_size, max_size=self.hparams.replay_size)
 
         self.rng = rng
-
-        if self.hparams.adaptive_kl:
-            self.kl_penalty_ctrler = AdaptiveKLController(
-                self.hparams.kl_penalty_coeff, self.hparams.kl_target, self.hparams.kl_horizon)
-        else:
-            self.kl_penalty_ctrler = FixedKLController(self.hparams.kl_penalty_coeff)
 
     def load_checkpoint(self, checkpoint_file: str):
         """

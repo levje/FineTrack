@@ -157,7 +157,7 @@ class RlhfTraining(FineTrackTraining):
         # Update the hyperparameters
         self.hyperparameters.update(
             {'algorithm': 'RLHF',
-             'RL_algorithm': 'SACAuto',
+             'RL_algorithm': self.agent_trainer.hp.algorithm,
              'ref_model_dir': self.ref_model_dir,
              'pretrain_max_ep': self.pretrain_max_ep,
              'agent_checkpoint_dir': self.agent_checkpoint_dir,

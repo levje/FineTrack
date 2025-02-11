@@ -40,55 +40,15 @@ class SACAutoFineTrackTraining(FineTrackTraining):
             comet_experiment,
         )
 
-        # SACAuto-specific parameters
-        self.alpha = sac_auto_train_dto['alpha']
-        self.batch_size = sac_auto_train_dto['batch_size']
-        self.replay_size = sac_auto_train_dto['replay_size']
-        self.big_neighborhood = sac_auto_train_dto['big_neighborhood']
-        self.adaptive_kl = sac_auto_train_dto.get('adaptive_kl', None)
-        self.kl_penalty_coeff = sac_auto_train_dto.get('kl_penalty_coeff', None)
-        self.kl_target = sac_auto_train_dto.get('kl_target', None)
-        self.kl_horizon = sac_auto_train_dto.get('kl_horizon', None)
-
-        kl_kwargs = {}
-        if self.adaptive_kl:
-            kl_kwargs = {
-                'adaptive_kl': self.adaptive_kl,
-                'kl_penalty_coeff': self.kl_penalty_coeff,
-                'kl_target': self.kl_target,
-                'kl_horizon': self.kl_horizon
-            }
-
-        self.sac_auto_hparams = SACAutoHParams(
-            self.lr,
-            self.gamma,
-            self.n_actor,
-            self.alpha,
-            self.batch_size,
-            self.replay_size,
-            **kl_kwargs
-        )
-
-    def save_hyperparameters(self):
-        """ Add SACAuto-specific hyperparameters to self.hyperparameters
-        then save to file.
-        """
-
-        self.hyperparameters.update(
-            {'algorithm': 'SACAuto',
-             'alpha': self.alpha,
-             'batch_size': self.batch_size,
-             'replay_size': self.replay_size,
-             'big_neighborhood': self.big_neighborhood,})
-
-        super().save_hyperparameters()
+    @property
+    def hparams_class(self):
+        return SACAutoHParams
 
     def get_alg(self, max_nb_steps: int):
         alg = SACAuto(
             self.input_size,
             self.action_size,
             self.hidden_dims,
-            self.big_neighborhood,
             self.sac_auto_hparams,
             self.rng,
             device)
@@ -103,8 +63,6 @@ def add_sac_auto_args(parser):
                         'buffer.')
     parser.add_argument('--replay_size', default=1e6, type=int,
                         help='How many tuples to store in the replay buffer.')
-    parser.add_argument('--big_neighborhood', default=False, type=bool,
-                        help="Whether to use a big neighborhood with convs.")
 
 
 def parse_args():
@@ -123,21 +81,10 @@ def main():
     """ Main tracking script """
     args = parse_args()
     print(args)
-
-    offline = args.comet_offline_dir is not None
-
-    # Create comet-ml experiment
-    if offline:
-        experiment = CometOfflineExperiment(project_name=args.experiment,
-                                    workspace=args.workspace, parse_args=False,
-                                    auto_metric_logging=False,
-                                    disabled=not args.use_comet,
-                                    offline_directory=args.comet_offline_dir)
-    else:
-        experiment = CometExperiment(project_name=args.experiment,
-                                    workspace=args.workspace, parse_args=False,
-                                    auto_metric_logging=False,
-                                    disabled=not args.use_comet)
+    experiment = CometExperiment(project_name=args.experiment,
+                                workspace=args.workspace, parse_args=False,
+                                auto_metric_logging=False,
+                                disabled=not args.use_comet)
 
     experiment.set_name(args.id)
 

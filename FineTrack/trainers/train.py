@@ -27,6 +27,7 @@ from FineTrack.utils.torch_utils import get_device, assert_accelerator
 from FineTrack.utils.hooks import HooksManager, RlHookEvent
 from FineTrack.utils.backuper import Backuper
 from FineTrack.utils.utils import TTLProfiler
+from FineTrack.algorithms.shared.hyperparameters import HParams
 
 
 class FineTrackTraining(Experiment):
@@ -36,188 +37,79 @@ class FineTrackTraining(Experiment):
 
     def __init__(
         self,
-        train_dto: dict,
+        config: dict,
         comet_experiment=None,
     ):
         """
         Parameters
         ----------
-        train_dto: dict
+        config: dict
             Dictionnary containing the training parameters.
             Put into a dictionnary to prevent parameter errors if modified.
         """
-        self.init_hyperparameters(train_dto)
+        self.init_hyperparameters(config)
 
         self.comet_experiment = comet_experiment
+        self.comet_experiment.set_name(self.hp.experiment_id)
         self.best_epoch_vc = -np.inf
         self._hooks_manager = HooksManager(RlHookEvent)
 
         # Setup validators, which will handle validation and scoring
         # of the generated streamlines
         self.validators = []
-        if self.tractometer_validator:
+        if self.hp.tractometer_validator:
             tractometer_validator = TractometerValidator(
-                self.scoring_data, self.tractometer_reference,
-                dilate_endpoints=self.tractometer_dilate,
-                min_length=self.min_length, max_length=self.max_length)
+                self.hp.scoring_data, self.hp.tractometer_reference,
+                dilate_endpoints=self.hp.tractometer_dilate,
+                min_length=self.hp.min_length, max_length=self.hp.max_length)
             self.validators.append(tractometer_validator)
-        if self.oracle_validator:  # TODO: This is problematic if we call rl_train multiple times
+        if self.hp.oracle_validator:  # TODO: This is problematic if we call rl_train multiple times
             self.validators.append(OracleValidator(
-                self.oracle_crit_checkpoint, self.device))
+                self.hp.oracle_crit_checkpoint, self.device))
 
-    def init_hyperparameters(self, train_dto: dict):
-        # TODO: Find a better way to pass parameters around
-        self.target_sh_order = train_dto['target_sh_order']
+    @property
+    def hparams_class(self):
+        return HParams
 
-        # Experiment parameters
-        self.experiment_path = train_dto['path']
-        self.experiment = train_dto['experiment']
-        self.name = train_dto['id']
+    def init_hyperparameters(self, config: dict):
+        # Load hyperparameters
+        self.hp = self.hparams_class.from_dict(config)
+
+        self.comet_monitor_was_setup = False
+        self.compute_reward = True  # Always compute reward during training
+        self.fa_map = None
+        self.last_episode = 0
+        self.device = get_device()
 
         # Directories
-        self.model_dir = os.path.join(self.experiment_path, "model")
+        self.model_dir = os.path.join(self.hp.experiment_path, "model")
         self.model_saving_dirs = [self.model_dir]
 
         if not os.path.exists(self.model_dir):
             os.makedirs(self.model_dir)
 
-        # RL parameters
-        self.max_ep = train_dto['max_ep']
-        self.log_interval = train_dto['log_interval']
-        self.noise = train_dto['noise']
-
-        # Training parameters
-        self.lr = train_dto['lr']
-        self.gamma = train_dto['gamma']
-
-        #  Tracking parameters
-        self.step_size = train_dto['step_size']
-        self.dataset_file = train_dto['dataset_file']
-        self.rng_seed = train_dto['rng_seed']
-        self.npv = train_dto['npv']
-
-        # Angular thresholds
-        self.theta = train_dto['theta']
-
-        # More tracking parameters
-        self.min_length = train_dto['min_length']
-        self.max_length = train_dto['max_length']
-        self.binary_stopping_threshold = train_dto['binary_stopping_threshold']
-
-        # Reward parameters
-        self.alignment_weighting = train_dto['alignment_weighting']
-
-        # Model parameters
-        self.hidden_dims = train_dto['hidden_dims']
-
-        # Environment parameters
-        self.n_actor = train_dto['n_actor']
-        self.n_dirs = train_dto['n_dirs']
-
-        # Oracle parameters
-        self.oracle_crit_checkpoint = train_dto['oracle_crit_checkpoint']
-        self.oracle_reward_checkpoint = train_dto['oracle_reward_checkpoint']
-        self.oracle_bonus = train_dto['oracle_bonus']
-        self.oracle_validator = train_dto['oracle_validator']
-        self.oracle_stopping_criterion = train_dto['oracle_stopping_criterion']
-
-        # Tractometer parameters
-        self.tractometer_validator = train_dto['tractometer_validator']
-        self.tractometer_dilate = train_dto['tractometer_dilate']
-        self.tractometer_reference = train_dto['tractometer_reference']
-        self.scoring_data = train_dto['scoring_data']
-
-        self.compute_reward = True  # Always compute reward during training
-        self.use_classic_reward = train_dto['use_classic_reward']
-        self.fa_map = None
-
-        # Various parameters
-        self.last_episode = 0
-
-        self.device = get_device()
-        self.use_comet = train_dto['use_comet']
-        self.comet_offline_dir = train_dto['comet_offline_dir']
-
-        self.comet_monitor_was_setup = False
-        self.reward_with_gt = train_dto['reward_with_gt']
-        self.default_model_dir = 'model'
-
         # RNG
-        torch.manual_seed(self.rng_seed)
-        np.random.seed(self.rng_seed)
-        self.rng = np.random.RandomState(seed=self.rng_seed)
-        random.seed(self.rng_seed)
+        torch.manual_seed(self.hp.rng_seed)
+        np.random.seed(self.hp.rng_seed)
+        self.rng = np.random.RandomState(seed=self.hp.rng_seed)
+        random.seed(self.hp.rng_seed)
 
-        backup_dir = train_dto['backup_dir']
-        self.backuper = Backuper(self.experiment_path, self.experiment,
-                                    self.name, backup_dir)
+        # Setup Backuper
+        self.backuper = Backuper(self.hp.experiment_path, self.hp.experiment,
+                                    self.hp.experiment_id, self.hp.backup_dir)
         
-        # State parameters
-        self.neighborhood_radius = train_dto['neighborhood_radius']
-        self.neighborhood_type = train_dto['neighborhood_type']
-        
-        self.flatten_state = train_dto['flatten_state']
-        self.fodf_encoder_ckpt = train_dto['fodf_encoder_ckpt']
-        self.interpolation = train_dto['interpolation']
-
-        self.hyperparameters = {
-            # RL parameters
-            'name': self.name,
-            'experiment': self.experiment,
-            'max_ep': self.max_ep,
-            'log_interval': self.log_interval,
-            'lr': self.lr,
-            'gamma': self.gamma,
-            'backup_dir': backup_dir,
-            # Data parameters
-            'step_size': self.step_size,
-            'random_seed': self.rng_seed,
-            'dataset_file': self.dataset_file,
-            'n_seeds_per_voxel': self.npv,
-            'max_angle': self.theta,
-            'min_length': self.min_length,
-            'max_length': self.max_length,
-            'binary_stopping_threshold': self.binary_stopping_threshold,
-            # Model parameters
-            'experiment_path': self.experiment_path,
-            'hidden_dims': self.hidden_dims,
-            'last_episode': self.last_episode,
-            'n_actor': self.n_actor,
-            'n_dirs': self.n_dirs,
-            'noise': self.noise,
-            # Reward parameters
-            'alignment_weighting': self.alignment_weighting,
-            'use_classic_reward': self.use_classic_reward,
-            # Oracle parameters
-            'oracle': {
-                'oracle_bonus': self.oracle_bonus,
-                'oracle_crit_checkpoint': self.oracle_crit_checkpoint,
-                'oracle_reward_checkpoint': self.oracle_reward_checkpoint,
-                'oracle_stopping_criterion': self.oracle_stopping_criterion,
-            },
-
-            # State parameters
-            'state': {
-                'neighborhood_radius': self.neighborhood_radius,
-                'neighborhood_type': self.neighborhood_type,
-                'flatten_state': self.flatten_state,
-                'fodf_encoder_ckpt': self.fodf_encoder_ckpt,
-                'interpolation': self.interpolation,
-            },
-
-            # Backuper parameters
-            'backuper': self.backuper.to_dict(),
-        }
 
     def save_hyperparameters(self, filename: str = "hyperparameters.json"):
         """ Save hyperparameters to json file
         """
         # Add input and action size to hyperparameters
         # These are added here because they are not known before
-        self.hyperparameters.update({'input_size': self.input_size.to_dict(),
-                                     'action_size': self.action_size,
-                                     'voxel_size': str(self.voxel_size),
-                                     'target_sh_order': self.target_sh_order})
+        hparams_dict = self.hp.to_dict()
+        hparams_dict.update(self.backuper.to_dict())
+        hparams_dict.update({
+            'input_size': self.input_size.to_dict(),
+            'action_size': self.action_size,
+            'voxel_size': str(self.voxel_size)})
 
         for saving_dir in self.model_saving_dirs:
             with open(
@@ -226,7 +118,7 @@ class FineTrackTraining(Experiment):
             ) as json_file:
                 json_file.write(
                     json.dumps(
-                        self.hyperparameters,
+                        hparams_dict,
                         indent=4,
                         separators=(',', ': ')))
 
@@ -284,10 +176,10 @@ class FineTrackTraining(Experiment):
         # Initialize Trackers, which will handle streamline generation and
         # trainnig
         train_tracker = Tracker(
-            alg, self.n_actor, prob=0.0, compress=0.0)
+            alg, self.hp.n_actor, prob=0.0, compress=0.0)
 
         valid_tracker = Tracker(
-            alg, self.n_actor,
+            alg, self.hp.n_actor,
             prob=1.0, compress=0.0)
 
         # Run tracking before training to see what an untrained network does
@@ -316,7 +208,7 @@ class FineTrackTraining(Experiment):
                 valid_tractogram, valid_reward, i_episode)
 
         # Main training loop
-        with TTLProfiler(out_file="profiling.prof", enabled=False) as profiler:
+        with TTLProfiler(out_file="profiling.prof", enabled=True) as profiler:
             while i_episode < upper_bound:
                 # Train for an episode
                 self._train_iter(env, train_tracker, i_episode, t)
@@ -324,7 +216,7 @@ class FineTrackTraining(Experiment):
                 i_episode += 1
 
                 # Time to do a valid run and display stats
-                if i_episode % self.log_interval == 0:
+                if i_episode % self.hp.log_interval == 0:
                     self._valid_iter(valid_env, valid_tracker, alg, i_episode, save_model_dir)
                 
                 # Backup to that directory after each validation run.
@@ -394,7 +286,7 @@ class FineTrackTraining(Experiment):
 
         # Compute average reward per streamline
         # Should I use the mean or the sum ?
-        avg_reward = reward / self.n_actor
+        avg_reward = reward / self.hp.n_actor
 
         print(
             f"Episode Num: {i_episode+1} "
@@ -511,8 +403,9 @@ class FineTrackTraining(Experiment):
 
         # Voxel size
         self.voxel_size = env.get_voxel_size()
+
         # SH Order (used for tracking afterwards)
-        self.target_sh_order = env.target_sh_order
+        self.hp.target_sh_order = env.target_sh_order
 
         return env
 
@@ -535,7 +428,7 @@ class FineTrackTraining(Experiment):
         self.setup_logging()
 
         # Start training !
-        self.rl_train(alg, env, valid_env, self.max_ep, test_before_training=False)
+        self.rl_train(alg, env, valid_env, self.hp.max_ep, test_before_training=False)
 
 
 def add_rl_args(parser):
