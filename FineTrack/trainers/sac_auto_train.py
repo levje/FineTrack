@@ -10,6 +10,7 @@ from comet_ml import Experiment as CometExperiment
 from comet_ml import OfflineExperiment as CometOfflineExperiment
 
 from FineTrack.algorithms.sac_auto import SACAuto, SACAutoHParams
+from FineTrack.trainers.sac_train import add_sac_args
 from FineTrack.trainers.train import (FineTrackTraining,
                                          add_training_args)
 from FineTrack.utils.torch_utils import get_device
@@ -44,26 +45,18 @@ class SACAutoFineTrackTraining(FineTrackTraining):
     def hparams_class(self):
         return SACAutoHParams
 
-    def get_alg(self, max_nb_steps: int):
+    def get_alg(self, max_nb_steps: int, neighborhood_manager):
         alg = SACAuto(
             self.input_size,
             self.action_size,
-            self.hidden_dims,
-            self.sac_auto_hparams,
+            self.hp,
             self.rng,
             device)
         return alg
 
 
 def add_sac_auto_args(parser):
-    parser.add_argument('--alpha', default=0.2, type=float,
-                        help='Initial temperature parameter')
-    parser.add_argument('--batch_size', default=2**12, type=int,
-                        help='How many tuples to sample from the replay '
-                        'buffer.')
-    parser.add_argument('--replay_size', default=1e6, type=int,
-                        help='How many tuples to store in the replay buffer.')
-
+    add_sac_args(parser) # For now, we have the same arguments as SAC.
 
 def parse_args():
     """ Generate a tractogram from a trained model. """
@@ -86,11 +79,8 @@ def main():
                                 auto_metric_logging=False,
                                 disabled=not args.use_comet)
 
-    experiment.set_name(args.id)
-
     # Create and run experiment
     sac_auto_experiment = SACAutoFineTrackTraining(
-        # Dataset params
         vars(args),
         experiment
     )

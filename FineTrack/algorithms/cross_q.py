@@ -76,13 +76,13 @@ class CrossQ(SACAuto):
         device: torch.device
             Device to use for the algorithm. Should be either "cuda:0"
         """
-        self.hparams = hparams
+        self.hp = hparams
         
-        self.batch_size = hparams.batch_size
-        self.gamma = hparams.gamma
-        self.alpha = hparams.alpha
-        self.n_actors = hparams.n_actor
-        self.replay_size = hparams.replay_size
+        self.batch_size = self.hp.batch_size
+        self.gamma = self.hp.gamma
+        self.alpha = self.hp.alpha
+        self.n_actors = self.hp.n_actor
+        self.replay_size = self.hp.replay_size
 
         self.max_action = 1.
         self.t = 1
@@ -94,29 +94,29 @@ class CrossQ(SACAuto):
 
         # Initialize main agent
         self.agent = CrossQActorCritic(
-            input_shape, action_size, self.hparams.hidden_dims, device,
+            input_shape, action_size, self.hp.hidden_dims, device,
         )
 
         # Auto-temperature adjustment
         # SAC automatically adjusts the temperature to maximize entropy and
         # thus exploration, but reduces it over time to converge to a
         # somewhat deterministic policy.
-        starting_temperature = np.log(self.hparams.alpha)  # Found empirically
+        starting_temperature = np.log(self.hp.alpha)  # Found empirically
         self.target_entropy = -np.prod(action_size).item()
         self.log_alpha = torch.full(
             (1,), starting_temperature, requires_grad=True, device=device)
         # Optimizer for alpha
         self.alpha_optimizer = torch.optim.Adam(
-            [self.log_alpha], lr=self.hparams.lr)
+            [self.log_alpha], lr=self.hp.lr)
 
         # SAC requires a different model for actors and critics
         # Optimizer for actor
         self.actor_optimizer = torch.optim.Adam(
-            self.agent.actor.parameters(), lr=self.hparams.lr)
+            self.agent.actor.parameters(), lr=self.hp.lr)
 
         # Optimizer for critic
         self.critic_optimizer = torch.optim.Adam(
-            self.agent.critic.parameters(), lr=self.hparams.lr)
+            self.agent.critic.parameters(), lr=self.hp.lr)
 
         # SAC-specific parameters
         self.max_action = 1.
@@ -130,13 +130,13 @@ class CrossQ(SACAuto):
         rb_type = 'normal' if input_shape.is_flat else 'semi_lazy'
         if rb_type == 'normal':
             self.replay_buffer = OffPolicyReplayBuffer(
-                input_shape, action_size, max_size=self.hparams.replay_size)
+                input_shape, action_size, max_size=self.hp.replay_size)
         elif rb_type == 'lazy':
             self.replay_buffer = OffPolicyLazyReplayBuffer(
-                input_shape, action_size, max_size=self.hparams.replay_size)
+                input_shape, action_size, max_size=self.hp.replay_size)
         elif rb_type == 'semi_lazy':
             self.replay_buffer = OffPolicySemiLazyReplayBuffer(
-                input_shape, action_size, neighborhood_manager, max_size=self.hparams.replay_size)
+                input_shape, action_size, neighborhood_manager, max_size=self.hp.replay_size)
 
         self.rng = rng
         self.start_update_log_was_printed = False

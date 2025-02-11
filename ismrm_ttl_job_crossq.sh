@@ -143,6 +143,7 @@ do
         --neighborhood_type "axes" \
         --neighborhood_radius 1 \
         --log_interval 100 \
+        --utd 1 \
         "${additionnal_args[@]}"
         # --fodf_encoder_ckpt="test_ae/best_model_convs_2048_encoder_only.pth" \
         # --flatten_state \
