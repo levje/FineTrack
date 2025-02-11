@@ -86,7 +86,7 @@ class Backuper(object):
     
     def disable(self):
         self.backup_dir = None
-        LOGGER.info("Backups disabled.")
+        LOGGER.debug("Backups disabled.")
         
     def _archive_experiment(self, out_file):
         LOGGER.info("Archiving new backup.")

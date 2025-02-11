@@ -13,6 +13,7 @@ from FineTrack.algorithms.sac_auto import SACAuto, SACAutoHParams
 from FineTrack.trainers.sac_train import add_sac_args
 from FineTrack.trainers.train import (FineTrackTraining,
                                          add_training_args)
+from FineTrack.utils.logging import setup_logging, add_logging_args
 from FineTrack.utils.torch_utils import get_device
 device = get_device()
 
@@ -65,6 +66,7 @@ def parse_args():
         formatter_class=RawTextHelpFormatter)
     add_training_args(parser)
     add_sac_auto_args(parser)
+    add_logging_args(parser)
 
     arguments = parser.parse_args()
     return arguments
@@ -73,6 +75,7 @@ def parse_args():
 def main():
     """ Main tracking script """
     args = parse_args()
+    setup_logging(args)
     print(args)
     experiment = CometExperiment(project_name=args.experiment,
                                 workspace=args.workspace, parse_args=False,

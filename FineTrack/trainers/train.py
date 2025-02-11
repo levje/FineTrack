@@ -208,7 +208,7 @@ class FineTrackTraining(Experiment):
                 valid_tractogram, valid_reward, i_episode)
 
         # Main training loop
-        with TTLProfiler(out_file="profiling.prof", enabled=True) as profiler:
+        with TTLProfiler(out_file="profiling.prof", enabled=False) as profiler:
             while i_episode < upper_bound:
                 # Train for an episode
                 self._train_iter(env, train_tracker, i_episode, t)
