@@ -10,14 +10,14 @@
 set -e
 
 # Expriment parameters
-USECOMET=1
+USECOMET=0
 EXPNAME="TrackToLearn-CrossQ"
 COMETPROJECT="TrackToLearn-CrossQ"
 NB_STREAMLINES_POINTS=32
-EXPID="CrossQ-5x5x5-flat"_$(date +"%F-%H_%M_%S")
+EXPID="test_configs"_$(date +"%F-%H_%M_%S")
 MAXEP=1000
-BATCHSIZE=2048
-N_ACTORS=2048
+BATCHSIZE=4096 #2048
+N_ACTORS=4096
 SEEDS=(1111)
 NPV=20
 GAMMA=0.95
@@ -139,12 +139,13 @@ do
         --binary_stopping_threshold 0.1 \
         --n_dirs=100 \
         --alignment_weighting=1.0 \
-        --neighborhood_type "grid" \
-        --neighborhood_radius 2 \
         --flatten_state \
+        --neighborhood_type "axes" \
+        --neighborhood_radius 1 \
         --log_interval 100 \
         "${additionnal_args[@]}"
-        # --fodf_encoder_ckpt="fodf_ae/best_encoder_small_good.pth" \
+        # --fodf_encoder_ckpt="test_ae/best_model_convs_2048_encoder_only.pth" \
+        # --flatten_state \
         
 
     # POST-PROCESSING
