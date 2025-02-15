@@ -51,7 +51,7 @@ class FineTrackTraining(Experiment):
 
         self.comet_experiment = comet_experiment
         self.comet_experiment.set_name(self.hp.experiment_id)
-        self.best_epoch_vc = -np.inf
+        self.best_epoch_metric = -np.inf
         self._hooks_manager = HooksManager(RlHookEvent)
 
         # Setup validators, which will handle validation and scoring
@@ -61,7 +61,8 @@ class FineTrackTraining(Experiment):
             tractometer_validator = TractometerValidator(
                 self.hp.scoring_data, self.hp.tractometer_reference,
                 dilate_endpoints=self.hp.tractometer_dilate,
-                min_length=self.hp.min_length, max_length=self.hp.max_length)
+                min_length=self.hp.min_length, max_length=self.hp.max_length,
+                oracle_model=self.hp.oracle_crit_checkpoint)
             self.validators.append(tractometer_validator)
         if self.hp.oracle_validator:  # TODO: This is problematic if we call rl_train multiple times
             self.validators.append(OracleValidator(
@@ -216,48 +217,16 @@ class FineTrackTraining(Experiment):
                 i_episode += 1
 
                 # Time to do a valid run and display stats
-                if i_episode % self.hp.log_interval == 0:
+                if i_episode % self.hp.log_interval == 0 \
+                    or i_episode == upper_bound:
                     self._valid_iter(valid_env, valid_tracker, alg, i_episode, save_model_dir)
                 
                 # Backup to that directory after each validation run.
                 # This can take a while.
                 self.backuper.backup(step=i_episode)
 
-        # End of training, save the model and hyperparameters and track
-        valid_env.load_subject()
-        valid_tractogram, valid_reward = valid_tracker.track_and_validate(
-            valid_env)
-        stopping_stats = self.stopping_stats(valid_tractogram)
-        print(stopping_stats)
-
-        self.comet_monitor.log_losses(stopping_stats, i_episode)
-
-        filename = self.save_rasmm_tractogram(valid_tractogram,
-                                              valid_env.subject_id,
-                                              valid_env.affine_vox2rasmm,
-                                              valid_env.reference)
-        scores = self.score_tractogram(filename, valid_env)
-        print(scores)
-
-        # Display what the network is capable-of "now"
-        self.log(
-            valid_tractogram, valid_reward, i_episode)
-
-        self.comet_monitor.log_losses(scores, i_episode)
-
-        self.save_model(alg, save_model_dir=save_model_dir)
-        is_best_agent = scores["VC"] > self.best_epoch_vc
-        if is_best_agent:
-            self.best_epoch_vc = scores["VC"]
-            self._hooks_manager.trigger_hooks(
-                RlHookEvent.ON_RL_BEST_VC)
-
-            self.save_model(alg, save_model_dir=save_model_dir,
-                            is_best_model=True)
-
         # Trigger end hooks
         self._hooks_manager.trigger_hooks(RlHookEvent.ON_RL_TRAIN_END)
-        self.backuper.backup(step=i_episode)
 
     def _train_iter(
         self,
@@ -325,8 +294,9 @@ class FineTrackTraining(Experiment):
         print(f" in {time.time() - start} seconds")
 
         start = time.time()
+        print("Tracking and validating...", end="")
         valid_tractogram, valid_reward = \
-            valid_tracker.track_and_validate(valid_env)
+            valid_tracker.track_and_validate(valid_env, enable_pbar=True)
         print(f" in {time.time() - start} seconds")
 
         print("Computing stopping stats...", end="")
@@ -364,9 +334,11 @@ class FineTrackTraining(Experiment):
         ckpt_path = self.save_model(alg, save_model_dir=save_model_dir)
 
         # Save best_epoch separately
-        is_best_agent = scores["VC"] > self.best_epoch_vc
+
+        metric = scores["VC"] if "VC" in scores else valid_reward
+        is_best_agent = metric > self.best_epoch_metric
         if is_best_agent:
-            self.best_epoch_vc = scores["VC"]
+            self.best_epoch_metric = metric
             self._hooks_manager.trigger_hooks(
                 RlHookEvent.ON_RL_BEST_VC)
 

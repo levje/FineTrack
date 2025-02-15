@@ -156,7 +156,7 @@ class TransformerOracle(LightningLikeModule):
             optimizer=optimizer, T_max=self.trainer.max_epochs
         )
 
-        scaler = torch.cuda.amp.GradScaler(enabled=self.enable_amp)
+        scaler = torch.amp.GradScaler('cuda', enabled=self.enable_amp)
 
         if checkpoint is not None:
             optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

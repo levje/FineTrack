@@ -283,7 +283,7 @@ class RlhfTraining(FineTrackTraining):
                 ################################################
                 # Train the Oracles
                 ################################################
-                if not self.disable_oracle_training:
+                if not self.hp.disable_oracle_training:
                     self.train_reward()
                     self.train_stopping_criterion()
 
@@ -414,7 +414,7 @@ class RlhfTraining(FineTrackTraining):
         print(">>> Training stopping criterion model <<<")
         dm = StreamlineDataModule(self.dataset_manager.dataset_file_path,
                                   batch_size=self.hp.oracle_batch_size,
-                                  num_workers=self.num_workers,
+                                  num_workers=self.hp.num_workers,
                                   nb_points=self.oracle_crit.nb_points)
         
         # Test the performance of the actual model BEFORE fine-tuning.
@@ -502,17 +502,6 @@ def add_rlhf_training_args(parser: argparse.ArgumentParser):
                             help="Maximum number of streamlines to keep in the dataset.")
     rlhf_group.add_argument("--warmup_agent_steps", type=int,
                             help="Minimum number of steps to warm up the agent before starting the training of the oracle")
-
-    # The following arguments are usually used for PPO, but we are also testing it for other algorithms.
-    parser.add_argument('--adaptive_kl', action='store_true',
-                        help='This flag enables the adaptive kl penalty.\n'
-                        'Otherwise, the penalty coefficient is fixed.')
-    parser.add_argument('--kl_penalty_coeff', default=0.02, type=float,
-                        help='Initial KL penalty coefficient.')
-    parser.add_argument('--kl_target', default=0.005, type=float,
-                        help='KL target value.')
-    parser.add_argument('--kl_horizon', default=1000, type=int,
-                        help='KL penalty horizon.')
 
     # Agent training RLHF arguments
     agent_group = rlhf_group.add_argument_group("Agent Training Arguments")

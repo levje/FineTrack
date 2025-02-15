@@ -15,8 +15,10 @@ from scilpy.tractanalysis.streamlines_metrics import compute_tract_counts_map
 from scilpy.utils.filenames import split_name_with_nii
 from scilpy.tractograms.streamline_operations import \
     filter_streamlines_by_length
+from dipy.io.stateful_tractogram import StatefulTractogram
 
 from FineTrack.utils.logging import get_logger
+from FineTrack.utils.torch_utils import get_device
 from FineTrack.experiment.validators import Validator
 
 def_len = [0, np.inf]
@@ -340,7 +342,8 @@ class TractometerValidator(Validator):
         reference,
         dilate_endpoints=1,
         min_length=20,
-        max_length=200
+        max_length=200,
+        oracle_model=None
     ):
         self.name = 'Tractometer'
 
@@ -351,6 +354,11 @@ class TractometerValidator(Validator):
         self.dilation_factor = dilate_endpoints
         self.min_length = min_length
         self.max_length = max_length
+
+        self.oracle_model = None
+        if oracle_model is not None:
+            from FineTrack.oracles.oracle import OracleSingleton
+            self.oracle_model = OracleSingleton(oracle_model, get_device())
 
         # Load
         (self.gt_tails, self.gt_heads, self.bundle_names, self.list_rois,
@@ -396,6 +404,7 @@ class TractometerValidator(Validator):
         final_results = compute_tractometry(
             vb_sft_list, wpc_sft_list, ib_sft_list, nc_sft,
             args, self.bundle_names, self.gt_masks, dimensions, ib_names)
+        
 
         relevant_results = {'VC': final_results['VS_ratio'],
                             'IC': final_results.get('IC_ratio', 0),
@@ -439,4 +448,50 @@ class TractometerValidator(Validator):
         
         relevant_results["VC_postproc"] = postproc_results['VS_ratio']
 
-        return relevant_results
+        # If an oracle is provided, we evaluate its accuracy of predicting
+        # the validity of streamlines. 
+        if self.oracle_model is not None:
+            LOGGER.info("Evaluating the oracle model's accuracy...")
+            # Predict on the valid bundles
+            sft = self._combine_to_scored_sft(vb_sft_list, nc_sft)
+            sft.to_vox()
+            sft.to_corner()
+            
+            streamlines = sft.streamlines
+            target_scores = sft.data_per_streamline['scores']
+
+            batch_size = 4096
+            N = len(streamlines)
+            scores = np.zeros((N))
+            for i in range(0, N, batch_size):
+                j = min(i + batch_size, N)
+                batch_scores = self.oracle_model.predict(streamlines[i:j])
+                scores[i:j] = batch_scores
+            preds = (scores > 0.5).astype(float)
+
+            accuracy = (target_scores == preds).mean()
+            relevant_results["Oracle_Accuracy"] = accuracy
+            return relevant_results
+    
+    def _combine_to_scored_sft(self, vb_sft_list, nc_sft):
+        """
+        Combine the different types of streamlines into a single StatefulTractogram.
+        """
+
+        # Combine all the streamlines
+        full_sft = nc_sft
+        full_sft.data_per_streamline['scores'] = np.zeros(len(full_sft))
+        
+        full_sft.to_corner() # Why is this required...?
+
+        for sft in vb_sft_list:
+            nb_streamlines = len(sft)
+
+            if nb_streamlines == 0:
+                continue
+
+            scores = np.ones(nb_streamlines)
+            sft.data_per_streamline['scores'] = scores
+            full_sft += sft
+
+        return full_sft

@@ -10,17 +10,17 @@
 set -e
 
 # Experiment parameters
-USECOMET=0
-EXPNAME="RLHF-fromStart"
-COMETPROJECT="RLHF-fromStart"
+USECOMET=1
+EXPNAME="RLHF-CrossQ"
+COMETPROJECT="RLHF-CrossQ"
 NB_STREAMLINES_POINTS=32
-EXPID="test-"_$(date +"%F-%H_%M_%S")
+EXPID="test-logging-"_$(date +"%F-%H_%M_%S")
 
-MAXEP=100               # Number of RLHF iterations
-PRETRAINSTEPS=0         # Number of steps for pretraining if no agent checkpoint is provided.
-WARMUPSTEPS=0           # Number of steps to warmup the agent before generating new streamlines.
-AGENTNBSTEPS=10         # Number of steps for the agent
-ORACLENBSTEPS=2         # Number of steps for the oracle
+MAXEP=16               # Number of RLHF iterations
+PRETRAINSTEPS=0        # Number of steps for pretraining if no agent checkpoint is provided.
+WARMUPSTEPS=200        # Number of steps to warmup the agent before generating new streamlines.
+AGENTNBSTEPS=50        # Number of steps for the agent
+ORACLENBSTEPS=4        # Number of steps for the oracle
 ALG="CrossQ"
 
 NPV=20 # Number of points per tractogram for training
@@ -29,7 +29,7 @@ SEEDS=(1111)
 BATCHSIZE=4096
 N_ACTORS=4096
 GAMMA=0.95 # Reward discounting (could also be 0.95)
-LR=0.00005 # 1e-5
+LR=0.0005 # 1e-5
 THETA=30
 
 # Oracle training params
@@ -152,7 +152,7 @@ do
         "${DATASETDIR}/ismrm2015.hdf5" \
         --alg ${ALG} \
         --max_ep ${MAXEP} \
-        --warmup_agent_steps 20 \
+        --warmup_agent_steps ${WARMUPSTEPS} \
         --agent_train_steps ${AGENTNBSTEPS} \
         --oracle_train_steps ${ORACLENBSTEPS} \
         --workspace "mrzarfir" \
@@ -183,12 +183,12 @@ do
         --flatten_state \
         --neighborhood_type "axes" \
         --neighborhood_radius 1 \
-        --log_interval 50 \
+        --log_interval 100 \
         --utd 1 \
         --oracle_batch_size ${ORACLE_MICRO_BATCH_SIZE} \
         --grad_accumulation_steps ${GRAD_ACCUM_STEPS} \
         --max_dataset_size 5000000 \
-        --nb_new_streamlines_per_iter 50000 \
+        --nb_new_streamlines_per_iter 500 \
         "${additionnal_args[@]}"
 
     # POST-PROCESSING
