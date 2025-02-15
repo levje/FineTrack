@@ -49,6 +49,9 @@ def get_prepare_dataset_command(dataset_name, data_config):
 ######################################################
 already_created_exp_ids = []
 for i, exp in enumerate(experiments):
+    exp_config = {**global_config}
+    exp_config.update(exp)
+
     exp_name = exp["exp_name"]
     exp_id = f"{exp_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
 
@@ -58,36 +61,36 @@ for i, exp in enumerate(experiments):
     already_created_exp_ids.append(exp_id)
 
     # Also, make sure that the dataset exist for every experiment
-    dataset_name = exp["dataset"]
-    dataset_path = data_config[dataset_name].get("location", None)
+    dataset_name = exp_config["dataset"]
+    dataset_path = os.path.join(PROJECTS_DIR, data_config[dataset_name].get("location", None))
     if not dataset_path:
         raise ValueError(f"Dataset '{dataset_name}' not found in configuration.")
     if not os.path.exists(dataset_path):
         raise FileNotFoundError(f"Dataset '{dataset_name}' not found at location '{dataset_path}'.")
     
     # Make sure the oracle checkpoints exist
-    if not os.path.exists(os.path.join(PROJECTS_DIR, exp["reward_ckpt"])):
-        raise FileNotFoundError(f"Oracle reward checkpoint '{exp['reward_ckpt']}' not found.")
-    if not os.path.exists(os.path.join(PROJECTS_DIR, exp["crit_ckpt"])):
-        raise FileNotFoundError(f"Oracle critic checkpoint '{exp['crit_ckpt']}' not found.")
+    if not os.path.exists(os.path.join(PROJECTS_DIR, exp_config["reward_ckpt"])):
+        raise FileNotFoundError(f"Oracle reward checkpoint '{exp_config['reward_ckpt']}' not found.")
+    if not os.path.exists(os.path.join(PROJECTS_DIR, exp_config["crit_ckpt"])):
+        raise FileNotFoundError(f"Oracle critic checkpoint '{exp_config['crit_ckpt']}' not found.")
     
     # Make sure the launch script exists
-    if not os.path.exists(os.path.join(SOURCEDIR, exp["launch_script"])):
-        raise FileNotFoundError(f"Launch script '{exp['launch_script']}' not found.")
+    if not os.path.exists(os.path.join(SOURCEDIR, exp_config["launch_script"])):
+        raise FileNotFoundError(f"Launch script '{exp_config['launch_script']}' not found.")
     
     # If there's a FODF encoder checkpoint, make sure it exists
-    if exp.get("fodf_encoder_ckpt", None) is not None:
-        if not os.path.exists(os.path.join(PROJECTS_DIR, exp["fodf_encoder_ckpt"])):
-            raise FileNotFoundError(f"FODF encoder checkpoint '{exp['fodf_encoder_ckpt']}' not found.")
+    if exp_config.get("fodf_encoder_ckpt", None) is not None:
+        if not os.path.exists(os.path.join(PROJECTS_DIR, exp_config["fodf_encoder_ckpt"])):
+            raise FileNotFoundError(f"FODF encoder checkpoint '{exp_config['fodf_encoder_ckpt']}' not found.")
         
     # Check the mutually exclusive flags
     state_state_specified = False
-    if exp.get("flatten_state", False):
+    if exp_config.get("flatten_state", False):
         state_state_specified = True
-    if exp.get("fodf_encoder_ckpt", None) is not None:
+    if exp_config.get("fodf_encoder_ckpt", None) is not None:
         assert not state_state_specified, f"Can only specify one of flatten_state, fodf_encoder_ckpt or conv_state for experiment {i}"
         state_state_specified = True
-    if exp.get("conv_state", False):
+    if exp_config.get("conv_state", False):
         assert not state_state_specified, f"Can only specify one of flatten_state, fodf_encoder_ckpt or conv_state for experiment {i}"
         state_state_specified = True
     if not state_state_specified:
