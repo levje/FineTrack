@@ -7,16 +7,16 @@ data:
 
   # Data paths relative to the PROJECTS_DIR
   ismrm2015:
-    - name: "ismrm2015"
-      location: "datasets/ismrm2015_2mm_ttl.tar.gz"
-      tractometer_reference: "scoring_data/t1.nii.gz" # Path within the dataset directory
-      scoring_data: "scoring_data/" # Path within the dataset directory
+    name: "ismrm2015"
+    location: "datasets/ismrm2015_2mm_ttl.tar.gz"
+    tractometer_reference: "scoring_data/t1.nii.gz" # Path within the dataset directory
+    scoring_data: "scoring_data/" # Path within the dataset directory
   tractoinferno: 
-    - name: "tractoinferno"
-      location: "datasets/tractoinferno.tar.gz"
+    name: "tractoinferno"
+    location: "datasets/tractoinferno.tar.gz"
   hcp: 
-    - name: "hcp"
-      location: "datasets/hcp.tar.gz"
+    name: "hcp"
+    location: "datasets/hcp.tar.gz"
 
 global:
   project_name: "TrackToLearn-CrossQ"

@@ -23,13 +23,6 @@ experiments = config["experiments"]
 SOURCEDIR = os.path.expanduser(data_config["SOURCEDIR"])
 PROJECTS_DIR = os.path.expanduser(data_config["PROJECTS_DIR"])
 
-# Prepare dataset mapping
-dataset_map = {}
-for key in ["ismrm2015", "tractoinferno", "hcp"]:
-    if key in data_config:
-        for dataset_entry in data_config[key]:
-            dataset_map[dataset_entry["name"]] = os.path.join(PROJECTS_DIR, dataset_entry["location"])
-
 # Iterate over experiments and generate SLURM jobs
 for i, exp in enumerate(experiments):
     # Merge the global and experiment-specific configurations
@@ -39,7 +32,7 @@ for i, exp in enumerate(experiments):
 
     exp_name = exp_config["exp_name"]
     dataset_name = exp_config["dataset"]
-    dataset_path = dataset_map.get(dataset_name, "")
+    dataset_path = data_config[dataset_name].get("location", None)
 
     if not dataset_path:
         raise ValueError(f"Dataset '{dataset_name}' not found in configuration.")
@@ -69,10 +62,10 @@ for i, exp in enumerate(experiments):
 
     # If the dataset has a field "tractometer_reference", add it to the extra flags
     if data_config[dataset_name].get("tractometer_reference", None) is not None:
-        extra_flags += f"--tractometer_reference $DATASETDIR/{exp_config['tractometer_reference']} "
-        extra_flags += "--tractometer_validator"
+        extra_flags += f"--tractometer_reference $DATASETDIR/{data_config[dataset_name]['tractometer_reference']} "
+        extra_flags += "--tractometer_validator "
     if data_config[dataset_name].get("scoring_data", None) is not None:
-        extra_flags += f"--scoring_data $DATASETDIR/{exp_config['scoring_data']} "
+        extra_flags += f"--scoring_data $DATASETDIR/{data_config[dataset_name]['scoring_data']} "
 
 
     # SLURM script content
