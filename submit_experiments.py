@@ -34,7 +34,7 @@ def get_dataset_type(dataset_path):
         raise ValueError(f"Unknown dataset format: {dataset_path}")
     
 def get_prepare_dataset_command(dataset_name, data_config):
-    dataset_path = data_config[dataset_name].get("location", None)
+    dataset_path = os.path.join(PROJECTS_DIR, data_config[dataset_name].get("location", None))
     dataset_type = get_dataset_type(dataset_path)
     if dataset_type == "tar":
         return f"tar xf {dataset_path} -C $SLURM_TMPDIR/data"
