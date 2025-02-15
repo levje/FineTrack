@@ -22,8 +22,81 @@ experiments = config["experiments"]
 # Extract paths
 SOURCEDIR = os.path.expanduser(data_config["SOURCEDIR"])
 PROJECTS_DIR = os.path.expanduser(data_config["PROJECTS_DIR"])
+EXPDIR = os.path.expanduser(data_config["EXPDIR"])
 
-# Iterate over experiments and generate SLURM jobs
+def get_dataset_type(dataset_path):
+    """Determine dataset type based on file extension."""
+    if dataset_path.endswith(".tar.gz") or dataset_path.endswith(".tar"):
+        return "tar"
+    elif dataset_path.endswith(".hdf5"):
+        return "hdf5"
+    else:
+        raise ValueError(f"Unknown dataset format: {dataset_path}")
+    
+def get_prepare_dataset_command(dataset_name, data_config):
+    dataset_path = data_config[dataset_name].get("location", None)
+    dataset_type = get_dataset_type(dataset_path)
+    if dataset_type == "tar":
+        return f"tar xf {dataset_path} -C $SLURM_TMPDIR/data"
+    elif dataset_type == "hdf5":
+        return f"cp {dataset_path} $SLURM_TMPDIR/data"
+    else:
+        raise ValueError(f"Unknown dataset format: {dataset_path}")
+
+######################################################
+# Make sure everything is in order with each experiment
+# before generating the SLURM jobs.
+######################################################
+already_created_exp_ids = []
+for i, exp in enumerate(experiments):
+    exp_name = exp["exp_name"]
+    exp_id = f"{exp_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+
+    if exp_id in already_created_exp_ids:
+        raise ValueError(f"Experiment ID {exp_id} already exists.")
+    
+    already_created_exp_ids.append(exp_id)
+
+    # Also, make sure that the dataset exist for every experiment
+    dataset_name = exp["dataset"]
+    dataset_path = data_config[dataset_name].get("location", None)
+    if not dataset_path:
+        raise ValueError(f"Dataset '{dataset_name}' not found in configuration.")
+    if not os.path.exists(dataset_path):
+        raise FileNotFoundError(f"Dataset '{dataset_name}' not found at location '{dataset_path}'.")
+    
+    # Make sure the oracle checkpoints exist
+    if not os.path.exists(os.path.join(PROJECTS_DIR, exp["reward_ckpt"])):
+        raise FileNotFoundError(f"Oracle reward checkpoint '{exp['reward_ckpt']}' not found.")
+    if not os.path.exists(os.path.join(PROJECTS_DIR, exp["crit_ckpt"])):
+        raise FileNotFoundError(f"Oracle critic checkpoint '{exp['crit_ckpt']}' not found.")
+    
+    # Make sure the launch script exists
+    if not os.path.exists(os.path.join(SOURCEDIR, exp["launch_script"])):
+        raise FileNotFoundError(f"Launch script '{exp['launch_script']}' not found.")
+    
+    # If there's a FODF encoder checkpoint, make sure it exists
+    if exp.get("fodf_encoder_ckpt", None) is not None:
+        if not os.path.exists(os.path.join(PROJECTS_DIR, exp["fodf_encoder_ckpt"])):
+            raise FileNotFoundError(f"FODF encoder checkpoint '{exp['fodf_encoder_ckpt']}' not found.")
+        
+    # Check the mutually exclusive flags
+    state_state_specified = False
+    if exp.get("flatten_state", False):
+        state_state_specified = True
+    if exp.get("fodf_encoder_ckpt", None) is not None:
+        assert not state_state_specified, f"Can only specify one of flatten_state, fodf_encoder_ckpt or conv_state for experiment {i}"
+        state_state_specified = True
+    if exp.get("conv_state", False):
+        assert not state_state_specified, f"Can only specify one of flatten_state, fodf_encoder_ckpt or conv_state for experiment {i}"
+        state_state_specified = True
+    if not state_state_specified:
+        assert False, f"Must specify one of flatten_state, fodf_encoder_ckpt or conv_state for experiment {i}"
+    
+######################################################
+# Generate SLURM Jobs for each experiment.
+######################################################
+all_jobs = []
 for i, exp in enumerate(experiments):
     # Merge the global and experiment-specific configurations
     # NB: The experiment-specific configuration takes precedence
@@ -34,9 +107,7 @@ for i, exp in enumerate(experiments):
     dataset_name = exp_config["dataset"]
     dataset_path = data_config[dataset_name].get("location", None)
 
-    if not dataset_path:
-        raise ValueError(f"Dataset '{dataset_name}' not found in configuration.")
-
+    # Generate a experiment ID
     exp_id = f"{exp_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
 
     # Prepare extra flags
@@ -91,8 +162,8 @@ mkdir -p $SLURM_TMPDIR/data
 mkdir -p $SLURM_TMPDIR/experiments
 
 # Extract dataset
-echo "Unpacking dataset {dataset_name}..."
-tar xf {dataset_path} -C $SLURM_TMPDIR/data
+echo "Preparing {dataset_name} dataset..."
+{get_prepare_dataset_command(dataset_name, data_config)}
 
 # Define paths
 DATASETDIR=$SLURM_TMPDIR/data/{dataset_name}
@@ -102,6 +173,8 @@ ORACLE_CRIT_CHECKPOINT=$SLURM_TMPDIR/data/oracle_crit.ckpt
 # Copy oracle checkpoints
 cp {os.path.join(PROJECTS_DIR, exp_config["reward_ckpt"])} $ORACLE_REWARD_CHECKPOINT
 cp {os.path.join(PROJECTS_DIR, exp_config["crit_ckpt"])} $ORACLE_CRIT_CHECKPOINT
+
+DEST_FOLDER="{EXPDIR}/{exp_name}/{exp_id}/{exp_config['seed']}"
 
 # Run training script
 python -O {SOURCEDIR}/{exp_config["launch_script"]} \\
@@ -135,6 +208,13 @@ python -O {SOURCEDIR}/{exp_config["launch_script"]} \\
     --log_interval {exp_config["log_interval"]} \\
     --utd {exp_config["utd"]} {extra_flags}
     
+# Archive and save everything
+OUTNAME={exp_id}$(date -d "today" +"%Y%m%d%H%M").tar
+
+echo "Archiving experiment..."
+tar -cvf $SLURM_TMPDIR/data/$OUTNAME {EXPDIR}
+echo "Copying archive to scratch..."
+cp $SLURM_TMPDIR/data/$OUTNAME ~/scratch/$OUTNAME
 """
 
     slurm_script_path = f"{SOURCEDIR}/slurm_scripts/{exp_id}.sh"
@@ -144,12 +224,16 @@ python -O {SOURCEDIR}/{exp_config["launch_script"]} \\
     with open(slurm_script_path, "w") as f:
         f.write(slurm_script)
 
-    print("args dry_run", args.dry_run)
-    if args.dry_run:
-        print(f"Generated SLURM script for experiment {exp_name}: {slurm_script_path}")
-    elif args.local:
+    all_jobs.append((exp_name, exp_id, slurm_script_path))
+    print(f"Generated SLURM script for experiment {exp_name}: {slurm_script_path}")
+
+######################################################
+# Submit the jobs to SLURM.
+######################################################
+if not args.dry_run:
+    if args.local:
         print(f"Running experiment {exp_name} locally with job script: {slurm_script_path}")
-        subprocess.run(["qc bash", slurm_script_path], check=True)
+        subprocess.run(["qc", "bash", slurm_script_path], check=True)
     else:
         print(f"Submitted experiment {exp_name} with job script: {slurm_script_path}")
         subprocess.run(["sbatch", slurm_script_path], check=True)
