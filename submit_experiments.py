@@ -70,18 +70,19 @@ for i, exp in enumerate(experiments):
     
     # Make sure the oracle checkpoints exist
     if not os.path.exists(os.path.join(PROJECTS_DIR, exp_config["reward_ckpt"])):
-        raise FileNotFoundError(f"Oracle reward checkpoint '{exp_config['reward_ckpt']}' not found.")
+        raise FileNotFoundError(f"Oracle reward checkpoint '{os.path.join(PROJECTS_DIR, exp_config['reward_ckpt'])}' not found.")
     if not os.path.exists(os.path.join(PROJECTS_DIR, exp_config["crit_ckpt"])):
-        raise FileNotFoundError(f"Oracle critic checkpoint '{exp_config['crit_ckpt']}' not found.")
+        raise FileNotFoundError(f"Oracle critic checkpoint '{os.path.join(PROJECTS_DIR, exp_config['crit_ckpt'])}' not found.")
     
     # Make sure the launch script exists
-    if not os.path.exists(os.path.join(SOURCEDIR, exp_config["launch_script"])):
-        raise FileNotFoundError(f"Launch script '{exp_config['launch_script']}' not found.")
+    launch_script_path = os.path.join(SOURCEDIR, exp_config["launch_script"])
+    if not os.path.exists(launch_script_path):
+        raise FileNotFoundError(f"Launch script '{launch_script_path}' not found.")
     
     # If there's a FODF encoder checkpoint, make sure it exists
     if exp_config.get("fodf_encoder_ckpt", None) is not None:
         if not os.path.exists(os.path.join(PROJECTS_DIR, exp_config["fodf_encoder_ckpt"])):
-            raise FileNotFoundError(f"FODF encoder checkpoint '{exp_config['fodf_encoder_ckpt']}' not found.")
+            raise FileNotFoundError(f"FODF encoder checkpoint '{os.path.join(PROJECTS_DIR, exp_config['fodf_encoder_ckpt'])}' not found.")
         
     # Check the mutually exclusive flags
     state_state_specified = False
