@@ -706,7 +706,7 @@ class WorkingFodfEncoder(nn.Module):
             ResidualBlock(in_channels=32),
         )
 
-        self.output_size = get_flat_size(4)*32 # 4x4x4x32 = 2048
+        self.output_size = get_flat_size(8)*32 # 4x4x4x32 = 2048
 
         print(f'{self.__class__.__name__}: {count_parameters(self)} params')
 
