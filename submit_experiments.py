@@ -37,9 +37,9 @@ def get_prepare_dataset_command(dataset_name, data_config):
     dataset_path = os.path.join(PROJECTS_DIR, data_config[dataset_name].get("location", None))
     dataset_type = get_dataset_type(dataset_path)
     if dataset_type == "tar":
-        return f"tar xf {dataset_path} -C $SLURM_TMPDIR/data"
+        return f"tar xf {dataset_path} -C $SLURM_TMPDIR/data", "$SLURM_TMPDIR/data/ismrm2015_2mm/"
     elif dataset_type == "hdf5":
-        return f"cp {dataset_path} $SLURM_TMPDIR/data/{dataset_name}.hdf5"
+        return f"cp {dataset_path} $SLURM_TMPDIR/data/{dataset_name}.hdf5", "$SLURM_TMPDIR/data/"
     else:
         raise ValueError(f"Unknown dataset format: {dataset_path}")
 
@@ -142,6 +142,8 @@ for i, exp in enumerate(experiments):
     if data_config[dataset_name].get("scoring_data", None) is not None:
         extra_flags += f"--scoring_data $DATASETDIR/{data_config[dataset_name]['scoring_data']} "
 
+    # Paths to the dataset
+    prepare_ds_cmd, slurm_ds_dir = get_prepare_dataset_command(dataset_name, data_config)
 
     # SLURM script content
     slurm_script = f"""#!/bin/bash
@@ -168,10 +170,9 @@ mkdir -p $SLURM_TMPDIR/experiments
 
 # Extract dataset
 echo "Preparing {dataset_name} dataset..."
-{get_prepare_dataset_command(dataset_name, data_config)}
+{prepare_ds_cmd}
 
 # Define paths
-DATASETDIR=$SLURM_TMPDIR/data/{dataset_name}
 ORACLE_REWARD_CHECKPOINT=$SLURM_TMPDIR/data/oracle_reward.ckpt
 ORACLE_CRIT_CHECKPOINT=$SLURM_TMPDIR/data/oracle_crit.ckpt
 
@@ -188,7 +189,7 @@ python -O {SOURCEDIR}/{exp_config["launch_script"]} \\
     {exp_name} \\
     "{exp_config['project_name']}" \\
     "{exp_id}" \\
-    "$DATASETDIR/{dataset_name}.hdf5" \\
+    "{slurm_ds_dir}/{dataset_name}.hdf5" \\
     --max_ep {exp_config["max_ep"]} \\
     --hidden_dims "{exp_config['hidden_dims']}" \\
     --oracle_reward_checkpoint $ORACLE_REWARD_CHECKPOINT \\
