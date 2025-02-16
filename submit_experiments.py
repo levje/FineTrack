@@ -149,7 +149,7 @@ for i, exp in enumerate(experiments):
     # SLURM script content
     slurm_script = f"""#!/bin/bash
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=6
+#SBATCH --cpus-per-task=2
 #SBATCH --mem={exp_config["mem"]}
 #SBATCH --time={exp_config["time"]}
 #SBATCH --job-name={exp_name}
