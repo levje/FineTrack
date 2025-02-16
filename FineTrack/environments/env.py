@@ -724,7 +724,7 @@ class BaseEnv(object):
         # encoded_neighborhood = self.fodf_encoder(interpolated_neighborhood)
         # encoded_neighborhood = encoded_neighborhood.reshape(N, -1)
 
-        batch_size = 2048 # TODO: Parametrize
+        batch_size = 128 # TODO: Parametrize
         placeholder = torch.zeros((N, self.fodf_encoder.output_size), device=self.device)
 
         for start in range(0, N, batch_size):
