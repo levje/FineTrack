@@ -135,15 +135,16 @@ for i, exp in enumerate(experiments):
     if not state_state_specified:
         assert False, f"Must specify one of flatten_state, fodf_encoder_ckpt or conv_state for experiment {i}"
 
-    # If the dataset has a field "tractometer_reference", add it to the extra flags
-    if data_config[dataset_name].get("tractometer_reference", None) is not None:
-        extra_flags += f"--tractometer_reference $DATASETDIR/{data_config[dataset_name]['tractometer_reference']} "
-        extra_flags += "--tractometer_validator "
-    if data_config[dataset_name].get("scoring_data", None) is not None:
-        extra_flags += f"--scoring_data $DATASETDIR/{data_config[dataset_name]['scoring_data']} "
-
     # Paths to the dataset
     prepare_ds_cmd, slurm_ds_dir = get_prepare_dataset_command(dataset_name, data_config)
+
+    # If the dataset has a field "tractometer_reference", add it to the extra flags
+    if data_config[dataset_name].get("tractometer_reference", None) is not None:
+        extra_flags += f"--tractometer_reference {slurm_ds_dir}/{data_config[dataset_name]['tractometer_reference']} "
+        extra_flags += "--tractometer_validator "
+    if data_config[dataset_name].get("scoring_data", None) is not None:
+        extra_flags += f"--scoring_data {slurm_ds_dir}/{data_config[dataset_name]['scoring_data']} "
+
 
     # SLURM script content
     slurm_script = f"""#!/bin/bash
