@@ -175,11 +175,11 @@ class BaseEnv(object):
             for param in self.fodf_encoder.parameters():
                 param.requires_grad = False
 
-            print("Compiling the fodf encoder")
-            with SimpleTimer() as t:
-                self.fodf_encoder.compile()
-            print(f"Compilation done in {t.interval:.2f}s")
-            
+            # print("Compiling the fodf encoder")
+            # with SimpleTimer() as t:
+            #     self.fodf_encoder.compile()
+            # print(f"Compilation done in {t.interval:.2f}s")
+
             self.fodf_encoder = self.fodf_encoder.to(self.device)
             print("Sending the encoder to the device: ", self.device)
 
