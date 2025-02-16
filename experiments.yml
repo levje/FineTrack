@@ -1,5 +1,5 @@
 data: 
-  SOURCEDIR: "~/Documents/FineTrack"
+  SOURCEDIR: "~/FineTrack"
   DATADIR: "$SLURM_TMPDIR/data"
   EXPDIR: "$SLURM_TMPDIR/experiments"
   LOGSDIR: "$SLURM_TMPDIR/logs"

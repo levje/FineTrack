@@ -126,7 +126,7 @@ for i, exp in enumerate(experiments):
         state_state_specified = True
     if exp_config.get("fodf_encoder_ckpt", None) is not None:
         assert not state_state_specified, f"Can only specify one of flatten_state, fodf_encoder_ckpt or conv_state for experiment {i}"
-        extra_flags += f"--fodf_encoder_ckpt {os.path.join(PROJECTS_DIR, exp_config['fodf_encoder_ckpt'])}"
+        extra_flags += f"--fodf_encoder_ckpt {os.path.join(PROJECTS_DIR, exp_config['fodf_encoder_ckpt'])} "
         state_state_specified = True
     if exp_config.get("conv_state", False):
         assert not state_state_specified, f"Can only specify one of flatten_state, fodf_encoder_ckpt or conv_state for experiment {i}"
