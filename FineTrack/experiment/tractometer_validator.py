@@ -460,7 +460,7 @@ class TractometerValidator(Validator):
             streamlines = sft.streamlines
             target_scores = sft.data_per_streamline['scores']
 
-            batch_size = 4096
+            batch_size = 256
             N = len(streamlines)
             scores = np.zeros((N))
             for i in range(0, N, batch_size):
