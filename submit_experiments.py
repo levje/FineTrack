@@ -39,7 +39,7 @@ def get_prepare_dataset_command(dataset_name, data_config):
     if dataset_type == "tar":
         return f"tar xf {dataset_path} -C $SLURM_TMPDIR/data"
     elif dataset_type == "hdf5":
-        return f"cp {dataset_path} $SLURM_TMPDIR/data"
+        return f"cp {dataset_path} $SLURM_TMPDIR/data/{dataset_name}.hdf5"
     else:
         raise ValueError(f"Unknown dataset format: {dataset_path}")
 
@@ -158,6 +158,7 @@ for i, exp in enumerate(experiments):
 
 set -e
 
+echo "Loading modules and virtual env..."
 module load python/3.10 cuda cudnn httpproxy
 source ~/FineTrack/venv/bin/activate
 
@@ -174,18 +175,20 @@ DATASETDIR=$SLURM_TMPDIR/data/{dataset_name}
 ORACLE_REWARD_CHECKPOINT=$SLURM_TMPDIR/data/oracle_reward.ckpt
 ORACLE_CRIT_CHECKPOINT=$SLURM_TMPDIR/data/oracle_crit.ckpt
 
-# Copy oracle checkpoints
+# Prepare oracle checkpoints
+echo "Preparing oracle checkpoints..."
 cp {os.path.join(PROJECTS_DIR, exp_config["reward_ckpt"])} $ORACLE_REWARD_CHECKPOINT
 cp {os.path.join(PROJECTS_DIR, exp_config["crit_ckpt"])} $ORACLE_CRIT_CHECKPOINT
 
 DEST_FOLDER="{EXPDIR}/{exp_name}/{exp_id}/{exp_config['seed']}"
 
 # Run training script
+echo "Running experiment..."
 python -O {SOURCEDIR}/{exp_config["launch_script"]} \\
     {exp_name} \\
     "{exp_config['project_name']}" \\
     "{exp_id}" \\
-    "$DATASETDIR/ismrm2015.hdf5" \\
+    "$DATASETDIR/{dataset_name}.hdf5" \\
     --max_ep {exp_config["max_ep"]} \\
     --hidden_dims "{exp_config['hidden_dims']}" \\
     --oracle_reward_checkpoint $ORACLE_REWARD_CHECKPOINT \\
