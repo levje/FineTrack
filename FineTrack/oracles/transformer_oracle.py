@@ -5,6 +5,7 @@ from torch import nn, Tensor
 from torchmetrics.regression import (MeanSquaredError, MeanAbsoluteError)
 from torchmetrics.classification import (BinaryRecall, BinaryPrecision, BinaryAccuracy, BinaryROC,
                                          BinarySpecificity, BinaryF1Score)
+from FineTrack.utils.torch_utils import get_device_str
 from dipy.tracking.utils import length
 import numpy as np
 from collections import defaultdict
@@ -33,7 +34,7 @@ class LightningLikeModule(nn.Module):
     def configure_optimizers(self):
         raise NotImplementedError()
 
-    @torch.autocast(device_type='cuda')
+    @torch.autocast(device_type=get_device_str())
     def forward():
         raise NotImplementedError()
 
@@ -155,7 +156,7 @@ class TransformerOracle(LightningLikeModule):
             optimizer=optimizer, T_max=self.trainer.max_epochs
         )
 
-        scaler = torch.cuda.amp.GradScaler(enabled=self.enable_amp)
+        scaler = torch.amp.GradScaler('cuda', enabled=self.enable_amp)
 
         if checkpoint is not None:
             optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

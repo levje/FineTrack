@@ -73,7 +73,8 @@ class RlhfTraining(FineTrackTraining):
         self.num_workers = rlhf_train_dto['num_workers']
         self.rlhf_inter_npv = rlhf_train_dto['rlhf_inter_npv']
         
-        self.disable_oracle_training = rlhf_train_dto.get('disable_oracle_training', False)
+        self.disable_oracle_training = rlhf_train_dto.get(
+            'disable_oracle_training', False)
         if self.disable_oracle_training:
             LOGGER.warning("Oracle training is disabled. The dataset will "
                            "be augmented to evaluate the oracles during the "
@@ -81,9 +82,12 @@ class RlhfTraining(FineTrackTraining):
 
         self.batch_size = rlhf_train_dto['batch_size']
         self.oracle_batch_size = rlhf_train_dto['oracle_batch_size']
-        grad_accumulation_steps = rlhf_train_dto.get('grad_accumulation_steps', 1)
-        self.nb_new_streamlines_per_iter = rlhf_train_dto.get('nb_new_streamlines_per_iter', 500000)
-        self.max_dataset_size = rlhf_train_dto.get('max_dataset_size', 5000000)
+        grad_accumulation_steps = rlhf_train_dto.get(
+            'grad_accumulation_steps', 1)
+        self.nb_new_streamlines_per_iter = rlhf_train_dto.get(
+            'nb_new_streamlines_per_iter', 500000)
+        self.max_dataset_size = rlhf_train_dto.get(
+            'max_dataset_size', 5000000)
         self.warmup_agent_steps = rlhf_train_dto.get('warmup_agent_steps', None)
 
         # As FineTrackTraining implements the Backuper too, disable it so
@@ -101,7 +105,7 @@ class RlhfTraining(FineTrackTraining):
         comet_experiment.set_name(self.name)
 
         self.agent_trainer: FineTrackTraining = trainer_cls(rlhf_train_dto, comet_experiment)
-        _ = self.agent_trainer.setup_environment_and_info() # TODO: Remove this?
+        _ = self.agent_trainer.setup_environment_and_info()
         self.get_alg = self.agent_trainer.get_alg
 
         # Since backuping is implemented in FineTrackTraining, we disable
@@ -148,7 +152,7 @@ class RlhfTraining(FineTrackTraining):
         def _save_oracles_on_best_vc():
             self.oracle_crit_trainer.save_model_checkpoint(is_best=True)
             self.oracle_reward_trainer.save_model_checkpoint(is_best=True)
-
+            
         self.agent_trainer._hooks_manager.register_hook(
             RlHookEvent.ON_RL_BEST_VC,
             _save_oracles_on_best_vc
@@ -157,7 +161,7 @@ class RlhfTraining(FineTrackTraining):
         # Update the hyperparameters
         self.hyperparameters.update(
             {'algorithm': 'RLHF',
-             'RL_algorithm': self.agent_trainer.hp.algorithm,
+             'RL_algorithm': 'SACAuto',
              'ref_model_dir': self.ref_model_dir,
              'pretrain_max_ep': self.pretrain_max_ep,
              'agent_checkpoint_dir': self.agent_checkpoint_dir,
@@ -245,9 +249,7 @@ class RlhfTraining(FineTrackTraining):
                                            lr=self.oracle_lr)
         self.oracle_crit_trainer.setup_model_training(self.oracle_crit.model)
 
-        ################################################
         # Setup environment
-        ################################################
         self.tracker_env = self.get_rlhf_env(npv=self.rlhf_inter_npv)
         self.tracker = Tracker(
             alg, self.n_actor, prob=1.0, compress=0.0)
@@ -263,115 +265,96 @@ class RlhfTraining(FineTrackTraining):
 
         do_warmup = self.warmup_agent_steps and current_ep < self.warmup_agent_steps - 1
 
-        ################################################
-        # RLHF loop to fine-tune the oracle to the RL
-        # agent and vice-versa.
-        ################################################
+        # RLHF loop to fine-tune the oracle to the RL agent and vice-versa.
         i = 0
         while i < max_ep: 
             self.start_finetuning_epoch(i, do_warmup)
 
             if not do_warmup:
-                ################################################
-                # Add new streamlines to the dataset
-                ################################################
-                self._add_streamlines_to_dataset()
+                total_added = 0
+                
+                with tqdm(total=self.nb_new_streamlines_per_iter,
+                                desc="Adding new streamlines to the dataset",
+                                mininterval=5.0) as sub_pbar:
+                    with tempfile.TemporaryDirectory() as tmpdir:
+                        # Those will hold the streamlines we are collecting
+                        # to add to the dataset once we have enough.
+                        sft_valid = None
+                        sft_invalid = None
 
-                ################################################
-                # Train the Oracles
-                ################################################
+                        while total_added < self.nb_new_streamlines_per_iter:
+                            # Generate a tractogram
+                            tractograms_path = os.path.join(tmpdir, "tractograms")
+                            if not os.path.exists(tractograms_path):
+                                os.makedirs(tractograms_path)
+                            LOGGER.info(
+                                "Generating tractograms for RLHF training...")
+                            tractograms = self.generate_and_save_tractograms(
+                                self.tracker, self.tracker_env, tractograms_path)
+
+                            # Filter the tractogram
+                            filtered_path = os.path.join(tmpdir, "filtered")
+                            if not os.path.exists(filtered_path):
+                                os.makedirs(filtered_path)
+
+                            LOGGER.info(
+                                "Filtering tractograms for RLHF training...")
+                            # Need to filter for each filterer and keep the same order.
+                            filtered_tractograms = self.filter_tractograms(
+                                tractograms, filtered_path)
+                            
+                            # Merge the valid and invalid tractograms
+                            for valid, invalid in filtered_tractograms:
+                                if sft_valid is None:
+                                    sft_valid = valid
+                                    sft_invalid = invalid
+                                else:
+                                    sft_valid += valid
+                                    sft_invalid += invalid
+
+                                nb_new_streamlines = len(valid) + len(invalid)
+
+                            total_added += nb_new_streamlines
+                            sub_pbar.update(nb_new_streamlines)
+
+                        LOGGER.info(
+                            "Adding filtered tractograms to the dataset...")
+                        self.dataset_manager.add_tractograms_to_dataset(
+                            [(sft_valid, sft_invalid)])
+
+                data_stats = self.dataset_manager.fetch_dataset_stats()
+                LOGGER.info(
+                    prettier_dict(data_stats, title="Dataset stats (iter {})".format(i)))
+
+                # Train reward model
                 if not self.disable_oracle_training:
                     self.train_reward()
                     self.train_stopping_criterion()
 
-            ################################################
             # Train the RL agent
-            ################################################
             agent_nb_steps = self.agent_train_steps if not do_warmup else self.warmup_agent_steps
             if do_warmup:
                 LOGGER.info(
-                    "Waming up agent for {} steps.".format(agent_nb_steps))
+                    "Warmup agent for {} steps.".format(agent_nb_steps))
 
-            self.agent_trainer.rl_train(
-                alg,
-                env,
-                valid_env,
-                max_ep=agent_nb_steps,
-                starting_ep=current_ep,
-                save_model_dir=self.model_dir,
-                test_before_training=do_warmup or i == 0)
+            self.agent_trainer.rl_train(alg,
+                                        env,
+                                        valid_env,
+                                        max_ep=agent_nb_steps,
+                                        starting_ep=current_ep,
+                                        save_model_dir=self.model_dir,
+                                        test_before_training=do_warmup or i == 0
+                                        )
 
             self.end_finetuning_epoch(i, do_warmup)
 
             if do_warmup:
                 current_ep += self.warmup_agent_steps
             else:
-                # Backup the model after each loop of the RLHF loop.
-                # This is very time consuming.
-                self.backuper.backup(step=i) 
-
+                self.backuper.backup(step=i)
                 current_ep += self.agent_train_steps
                 i += 1
             do_warmup = False
-
-    def _add_streamlines_to_dataset(self, iter_num: int):
-        """
-        """
-        total_added = 0
-        with tqdm(total=self.nb_new_streamlines_per_iter,
-                        desc="Adding new streamlines to the dataset",
-                        mininterval=5.0) as sub_pbar:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                # Those will hold the streamlines we are collecting
-                # to add to the dataset once we have enough.
-                sft_valid = None
-                sft_invalid = None
-
-                while total_added < self.nb_new_streamlines_per_iter:
-                    # Generate a tractogram
-                    tractograms_path = os.path.join(tmpdir, "tractograms")
-                    if not os.path.exists(tractograms_path):
-                        os.makedirs(tractograms_path)
-                    LOGGER.info(
-                        "Generating tractograms for RLHF training...")
-                    tractograms = self.generate_and_save_tractograms(
-                        self.tracker, self.tracker_env, tractograms_path)
-
-                    # Filter the tractogram
-                    filtered_path = os.path.join(tmpdir, "filtered")
-                    if not os.path.exists(filtered_path):
-                        os.makedirs(filtered_path)
-
-                    LOGGER.info(
-                        "Filtering tractograms for RLHF training...")
-                    # Need to filter for each filterer and keep the same order.
-                    filtered_tractograms = self.filter_tractograms(
-                        tractograms, filtered_path)
-                    
-                    # Merge the valid and invalid tractograms
-                    for valid, invalid in filtered_tractograms:
-                        if sft_valid is None:
-                            sft_valid = valid
-                            sft_invalid = invalid
-                        else:
-                            sft_valid += valid
-                            sft_invalid += invalid
-
-                        nb_new_streamlines = len(valid) + len(invalid)
-
-                    total_added += nb_new_streamlines
-                    sub_pbar.update(nb_new_streamlines)
-
-                LOGGER.info(
-                    "Adding filtered tractograms to the dataset...")
-                self.dataset_manager.add_tractograms_to_dataset(
-                    [(sft_valid, sft_invalid)])
-            
-        # Print dataset stats
-        data_stats = self.dataset_manager.fetch_dataset_stats()
-        LOGGER.info(
-            prettier_dict(data_stats, title="Dataset stats (iter {})".format(
-                iter_num)))
 
     def train_reward(self):
         """
@@ -434,35 +417,42 @@ class RlhfTraining(FineTrackTraining):
         print(prettier_metrics(metrics_after, title="Test metrics after fine-tuning"))
         print(">>> Finished stopping criterion model training <<<")
 
-    def generate_and_save_tractograms(self, tracker: Tracker, env: BaseEnv, save_dir: str):
-        """
-        """
-        # TODO: Change to only track().
-        tractogram, _ = tracker.track_and_validate(self.tracker_env)
-        filename = self.save_rasmm_tractogram(
-            tractogram,
-            env.subject_id,
-            env.affine_vox2rasmm,
-            env.reference,
-            save_dir,
-            extension='tck')
-        return [filename]
-
-    def filter_tractograms(self, tractograms: str, out_dir: str):
-        """
-        """
-        filterer = self.filterers[0]
-
-        filtered_tractograms = []
-        for tractogram in tractograms:
-            # TODO: Implement for more than one filterer
-            valid_tractogram, invalid_tractogram = filterer(
-                tractogram, out_dir, scored_extension="trk")
-            filtered_tractograms.append((valid_tractogram, invalid_tractogram))
-
-        return filtered_tractograms
-    
     def _load_agent_checkpoint(self, alg: RLAlgorithm):
+        """
+        Load the agent checkpoint from which to start the RLHF fine-tuning process.
+        This function handles loading the hyperparameters dictionnary and loading the
+        model weights for the policy and/or the critic depending on the case.
+
+        Several technicalities are handled here to ease the experimentation process. Different
+        initialization strategies can be used depending on the algorithm used to pretrain and the
+        algorithm to fine-tune the agent here. If the pretrained agent is a SACAuto agent and the
+        fine-tuning algorithm is PPO, there's a difference between the architecture of the policy
+        and the critic. The SAC policy maximizes entropy and predicts it's own standard deviation
+        distribution while the PPO policy only predicts means (with independent std parameter).
+
+        Here are the cases that are handled:
+
+        1. Pretrain with SAC and fine-tune with SAC.
+        2. Pretrain with SAC and fine-tune with PPO.
+            2.1 MaxEntropyActor policy + random critic initialization.
+                    In this case, the critic is randomly initialized and the PPO policy
+                    is a MaxEntropyActor which is loaded from the checkpoint. Although,
+                    having a MaxEntropyActor for PPO is not recommended, PPO usually has
+                    an independent standard deviation parameter.
+            2.2 MaxEntropyActor policy + critic initialized from reward model (with same architecture as reward model).
+                    In this case, the critic's architecture is different from what is used
+                    normally in our PPO implementation. The input of the critic is modified
+                    to match the reward model's input, meaning that the state inputted to the
+                    model is the current streamline (in other cases, the input state has the
+                    information about the N previous directions and the voxels neighboring the 
+                    tip of the streamline). Similarily to the previous case, having a MaxEntropyActor
+                    might not be the best choice to optimize with PPO. However, here the policy
+                    and the critic do not have the same input, which could be problematic.
+                    NB: This approach was suggested in the InstructGPT paper:
+                        (https://arxiv.org/abs/2203.02155)
+        3. Pretrain with PPO and fine-tune with PPO.
+
+        """
         def load_hyperparameters(hparams_path):
             with open(hparams_path, 'r') as f:
                 hparams = json.load(f)
@@ -486,10 +476,60 @@ class RlhfTraining(FineTrackTraining):
             checkpoint_dir, 'hyperparameters.json'))
         ckpt_algo = get_algorithm_cls(hparams['algorithm'])
 
-        alg.load_checkpoint(self.agent_checkpoint)
+        if isinstance(alg, ckpt_algo):  # Same algorithm, same architecture.
+            if self.agent_checkpoint_dir:
+                # Use the legacy method that loads the two files of weights
+                # for the policy and the critic.
+                alg.agent.load(self.agent_checkpoint_dir, 'last_model_state')
+            elif self.agent_checkpoint:
+                # Load the bundled checkpoint file.
+                alg.load_checkpoint(self.agent_checkpoint)
+            else:
+                raise ValueError(
+                    "Must specify either agent_checkpoint_dir or agent_checkpoint.")
+
+        elif ckpt_algo == SACAuto and isinstance(alg, PPO):
+            # This is needed, because PPO doesn't have the same critic as SAC.
+            # This means that we start the PPO training with a randomly initialized critic.
+
+            # Only load the policy.
+            # The critic will be initialized either:
+            # 1. Loaded from the checkpoint. This is done in the constructor of PPOActorCritic.
+            # 2. Randomly initialized.
+            alg.agent.load_policy(
+                self.agent_checkpoint_dir, 'last_model_state')
+        else:
+            raise ValueError("Invalid combination of algorithms for RLHF training. Got {} and {}."
+                             .format(ckpt_algo.__name__, alg.__class__.__name__))
+
         self.save_model(alg, save_model_dir=self.ref_model_dir)
 
+    def generate_and_save_tractograms(self, tracker: Tracker, env: BaseEnv, save_dir: str):
+        # TODO: Change to only track().
+        tractogram, _ = tracker.track_and_validate(self.tracker_env)
+        filename = self.save_rasmm_tractogram(
+            tractogram,
+            env.subject_id,
+            env.affine_vox2rasmm,
+            env.reference,
+            save_dir,
+            extension='tck')
+        return [filename]
+
+    def filter_tractograms(self, tractograms: str, out_dir: str):
+        filterer = self.filterers[0]
+
+        filtered_tractograms = []
+        for tractogram in tractograms:
+            # TODO: Implement for more than one filterer
+            valid_tractogram, invalid_tractogram = filterer(
+                tractogram, out_dir, scored_extension="trk")
+            filtered_tractograms.append((valid_tractogram, invalid_tractogram))
+
+        return filtered_tractograms
+
     def save_hyperparameters(self):
+        # self.hyperparameters.update({})
         super().save_hyperparameters(filename='rlhf_hyperparameters.json')
 
     def start_finetuning_epoch(self, epoch: int, warmup: bool = False):
@@ -598,7 +638,7 @@ def get_algorithm_cls(alg_name: str):
 
 
 def parse_args():
-    """ Train an agent whilst training oracles in the loop. """
+    """ Train a RL tracking agent using RLHF with PPO. """
     parser = argparse.ArgumentParser(
         description=parse_args.__doc__,
         formatter_class=argparse.RawTextHelpFormatter,

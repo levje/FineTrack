@@ -3,20 +3,20 @@ import argparse
 import tempfile
 import comet_ml
 import json
+import shutil
+from pathlib import Path
 
 from comet_ml import Experiment as CometExperiment
 
 from FineTrack.utils.logging import get_logger
 from FineTrack.trainers.cross_q_train import CrossQFineTrackTraining
 from FineTrack.trainers.sac_auto_train import FineTrackTraining, add_sac_auto_args, SACAutoFineTrackTraining
-from FineTrack.trainers.ppo_train import PPOFineTrackTraining, add_ppo_args
 from FineTrack.trainers.tractoraclenet_train import add_oracle_train_args
 from FineTrack.trainers.train import add_training_args
 from FineTrack.utils.logging import setup_logging, add_logging_args
 from FineTrack.algorithms.rl import RLAlgorithm
-from FineTrack.algorithms.sac_auto import SACAuto
-from FineTrack.algorithms.ppo import PPO
-from FineTrack.algorithms.cross_q import CrossQ
+from FineTrack.algorithms.sac_auto import SACAuto, SACAutoHParams
+from FineTrack.algorithms.cross_q import CrossQ, CrossQHParams
 from FineTrack.environments.env import BaseEnv
 from FineTrack.tracking.tracker import Tracker
 from FineTrack.filterers.tractometer_filterer import TractometerFilterer
@@ -29,79 +29,88 @@ from FineTrack.utils.utils import prettier_metrics, prettier_dict
 from FineTrack.filterers.streamlines_sampler import StreamlinesSampler
 from FineTrack.utils.hooks import RlHookEvent
 from tqdm import tqdm
-
+from dataclasses import dataclass
 assert_accelerator()
 
 LOGGER = get_logger(__name__)
+
+# TODO:
+# Inheriting directly from the CrossQHParams isn't the best way to do it.
+# Ideally, the config file would be split between the general experiment
+# parameters, the agent parameters, the oracle parameters and the rlhf parameters.
+@dataclass
+class RlhfHParams(CrossQHParams):
+    pretrain_max_ep: int
+    agent_checkpoint: str
+
+    oracle_lr: float
+    oracle_train_steps: int
+    agent_train_steps: int
+    num_workers: int
+    rlhf_inter_npv: int
+    disable_oracle_training: bool
+    batch_size: int
+    oracle_batch_size: int
+    grad_accumulation_steps: int
+    nb_new_streamlines_per_iter: int
+    max_dataset_size: int
+    warmup_agent_steps: int
+
+    dataset_to_augment: str = None
+
+    def __post_init__(self):
+        assert self.pretrain_max_ep is not None \
+            or (self.agent_checkpoint_dir is not None \
+                or self.agent_checkpoint is not None), \
+            "Either pretrain_max_ep or (agent_checkpoint | agent_checkpoint_dir) must be provided for RLHF training."
+        
+        if self.agent_checkpoint:
+            assert os.path.isfile(
+                self.agent_checkpoint), "Agent checkpoint must be an checkpoint file."
 
 class RlhfTraining(FineTrackTraining):
 
     def __init__(
         self,
-        rlhf_train_dto: dict,
+        config: dict,
         trainer_cls: FineTrackTraining,
         comet_experiment: CometExperiment = None
     ):
         # Only load the parameters from the parent instead of calling
         # the full constructor twice. (As we call it for the agent_trainer
         # below).
-        self.init_hyperparameters(rlhf_train_dto)
+        self.init_hyperparameters(config)
 
         # General RLHF parameters.
-        self.pretrain_max_ep = rlhf_train_dto.get('pretrain_max_ep', None)
-        self.agent_checkpoint_dir = rlhf_train_dto.get('agent_checkpoint_dir', None)
-        self.agent_checkpoint = rlhf_train_dto.get('agent_checkpoint', None)
-        if self.agent_checkpoint:
-            assert os.path.isfile(
-                self.agent_checkpoint), "Agent checkpoint must be an checkpoint file."
-
-        self.ref_model_dir = os.path.join(self.experiment_path, "ref_model")
+        self.ref_model_dir = os.path.join(self.hp.experiment_path, "ref_model")
         self.model_saving_dirs.append(self.ref_model_dir)
         if not os.path.exists(self.ref_model_dir):
             os.makedirs(self.ref_model_dir)
 
-        self.oracle_training_dir = os.path.join(self.experiment_path, "oracle")
+        self.oracle_training_dir = os.path.join(self.hp.experiment_path, "oracle")
         if not os.path.exists(self.oracle_training_dir):
             os.makedirs(self.oracle_training_dir)
 
-        assert self.pretrain_max_ep is not None or (self.agent_checkpoint_dir is not None or self.agent_checkpoint is not None), \
-            "Either pretrain_max_ep or (agent_checkpoint | agent_checkpoint_dir) must be provided for RLHF training."
-
-        self.oracle_lr = rlhf_train_dto.get('oracle_lr', None)
-        self.oracle_train_steps = rlhf_train_dto['oracle_train_steps']
-        self.agent_train_steps = rlhf_train_dto['agent_train_steps']
-        self.num_workers = rlhf_train_dto['num_workers']
-        self.rlhf_inter_npv = rlhf_train_dto['rlhf_inter_npv']
-        
-        self.disable_oracle_training = rlhf_train_dto.get('disable_oracle_training', False)
-        if self.disable_oracle_training:
+        if self.hp.disable_oracle_training:
             LOGGER.warning("Oracle training is disabled. The dataset will "
                            "be augmented to evaluate the oracles during the "
                            "agent's training.")
 
-        self.batch_size = rlhf_train_dto['batch_size']
-        self.oracle_batch_size = rlhf_train_dto['oracle_batch_size']
-        grad_accumulation_steps = rlhf_train_dto.get('grad_accumulation_steps', 1)
-        self.nb_new_streamlines_per_iter = rlhf_train_dto.get('nb_new_streamlines_per_iter', 500000)
-        self.max_dataset_size = rlhf_train_dto.get('max_dataset_size', 5000000)
-        self.warmup_agent_steps = rlhf_train_dto.get('warmup_agent_steps', None)
-
-        # As FineTrackTraining implements the Backuper too, disable it so
-        # it doesn't archive twice the same files.
-        rlhf_train_dto['backup_dir'] = None 
-
         ################################################
         # Start by initializing the agent trainer.     #
         if comet_experiment is None:
-            comet_experiment = CometExperiment(project_name=self.experiment,
-                                               workspace=rlhf_train_dto['workspace'], parse_args=False,
+            comet_experiment = CometExperiment(project_name=self.hp.experiment,
+                                               workspace=self.hp.workspace, parse_args=False,
                                                auto_metric_logging=False,
-                                               disabled=not self.use_comet)
+                                               disabled=not self.hp.use_comet)
 
-        comet_experiment.set_name(self.name)
+        comet_experiment.set_name(self.hp.experiment_id)
 
-        self.agent_trainer: FineTrackTraining = trainer_cls(rlhf_train_dto, comet_experiment)
+        self.agent_trainer: FineTrackTraining = trainer_cls(config, comet_experiment)
         _ = self.agent_trainer.setup_environment_and_info() # TODO: Remove this?
+        
+        # Replace the get_alg method by the one from the agent trainer.
+        # This way, if we have a CrossQ trainer, we have the CrossQ alg.
         self.get_alg = self.agent_trainer.get_alg
 
         # Since backuping is implemented in FineTrackTraining, we disable
@@ -111,10 +120,9 @@ class RlhfTraining(FineTrackTraining):
 
         ################################################
         # Continue by initializing the oracle trainer. #
-        dataset_to_augment = rlhf_train_dto.get('dataset_to_augment', None)
         self.dataset_manager = StreamlineDatasetManager(saving_path=self.oracle_training_dir,
-                                                        dataset_to_augment_path=dataset_to_augment,
-                                                        max_dataset_size=self.max_dataset_size)
+                                                        dataset_to_augment_path=self.hp.dataset_to_augment,
+                                                        max_dataset_size=self.hp.max_dataset_size)
 
         # Note: for the two oracle trainers, we disable the automatic checkpointing
         # because we will want to save the checkpoints only when we improve the 
@@ -122,24 +130,24 @@ class RlhfTraining(FineTrackTraining):
         self.oracle_reward_trainer = OracleTrainer(
             comet_experiment,
             self.oracle_training_dir,
-            self.oracle_train_steps,
+            self.hp.oracle_train_steps,
             enable_auto_checkpointing=False,
             checkpoint_prefix='reward',
             val_interval=1,
             device=self.device,
-            grad_accumulation_steps=grad_accumulation_steps,
+            grad_accumulation_steps=self.hp.grad_accumulation_steps,
             metrics_prefix='reward'
         )
 
         self.oracle_crit_trainer = OracleTrainer(
             comet_experiment,
             self.oracle_training_dir,
-            self.oracle_train_steps,
+            self.hp.oracle_train_steps,
             enable_auto_checkpointing=False,
             checkpoint_prefix='crit',
             val_interval=1,
             device=self.device,
-            grad_accumulation_steps=grad_accumulation_steps,
+            grad_accumulation_steps=self.hp.grad_accumulation_steps,
             metrics_prefix='crit'
         )
 
@@ -154,30 +162,13 @@ class RlhfTraining(FineTrackTraining):
             _save_oracles_on_best_vc
         )
 
-        # Update the hyperparameters
-        self.hyperparameters.update(
-            {'algorithm': 'RLHF',
-             'RL_algorithm': self.agent_trainer.hp.algorithm,
-             'ref_model_dir': self.ref_model_dir,
-             'pretrain_max_ep': self.pretrain_max_ep,
-             'agent_checkpoint_dir': self.agent_checkpoint_dir,
-             'oracle_train_steps': self.oracle_train_steps,
-             'agent_train_steps': self.agent_train_steps,
-             'rlhf_inter_npv': self.rlhf_inter_npv,
-             'oracle_training_enabled': self.disable_oracle_training,
-             'original_dataset': dataset_to_augment,
-             'augmented_dataset': self.dataset_manager.dataset_file_path,
-             })
+    @property
+    def hparams_class(self):
+        return RlhfHParams
 
     def setup_logging(self):
         """ Override the setup_logging method to avoid creating a new experiment. """
         self.save_hyperparameters()
-
-    def run(self):
-        """ Prepare the environment, algorithm and trackers and run the
-        training loop
-        """
-        super().run()
 
     def rl_train(
         self,
@@ -209,7 +200,8 @@ class RlhfTraining(FineTrackTraining):
         ################################################
         self.agent_trainer.setup_logging()
 
-        if self.agent_checkpoint_dir is None and self.agent_checkpoint is None:
+        if self.hp.pretrain_max_ep is not None \
+            and self.hp.pretrain_max_ep > 0:
             self.agent_trainer.rl_train(alg,
                                         env,
                                         valid_env,
@@ -217,11 +209,22 @@ class RlhfTraining(FineTrackTraining):
                                         starting_ep=0,
                                         save_model_dir=self.ref_model_dir)
             current_ep += self.pretrain_max_ep
-        else:
+        elif self.hp.agent_checkpoint is not None:
             # The agent is already pretrained, just need to fine-tune it.
             LOGGER.info(
                 "Skipping pretraining procedure: loading agent from checkpoint...")
-            self._load_agent_checkpoint(alg)
+            alg.load_checkpoint(self.hp.agent_checkpoint)
+            
+            # Instead of having to pack and serialize the model again,
+            # as this takes time, just copy the file.
+            # This aims to do the following:
+            # self.save_model(alg, save_model_dir=self.ref_model_dir)
+            #
+            # We keep a copy of the initial model state just as a reference.
+            # This has no real use in the training process.
+            ckpt_path = Path(self.ref_model_dir) / "init_model_state.ckpt"
+            shutil.copyfile(self.agent_checkpoint, ckpt_path)
+
             LOGGER.info("Done.")
 
         self.agent_trainer.comet_monitor.e.add_tag(
@@ -232,36 +235,36 @@ class RlhfTraining(FineTrackTraining):
         ################################################
 
         # Load reward oracle
-        self.oracle_reward = OracleSingleton(self.oracle_reward_checkpoint,
+        self.oracle_reward = OracleSingleton(self.hp.oracle_reward_checkpoint,
                                       device=self.device,
-                                      batch_size=self.oracle_batch_size,
-                                      lr=self.oracle_lr)
+                                      batch_size=self.hp.oracle_batch_size,
+                                      lr=self.hp.oracle_lr)
         self.oracle_reward_trainer.setup_model_training(self.oracle_reward.model)
 
         # Load stopping criterion oracle
-        self.oracle_crit = OracleSingleton(self.oracle_crit_checkpoint,
+        self.oracle_crit = OracleSingleton(self.hp.oracle_crit_checkpoint,
                                            device=self.device,
-                                           batch_size=self.oracle_batch_size,
-                                           lr=self.oracle_lr)
+                                           batch_size=self.hp.oracle_batch_size,
+                                           lr=self.hp.oracle_lr)
         self.oracle_crit_trainer.setup_model_training(self.oracle_crit.model)
 
         ################################################
         # Setup environment
         ################################################
-        self.tracker_env = self.get_rlhf_env(npv=self.rlhf_inter_npv)
+        self.tracker_env = self.get_rlhf_env(npv=self.hp.rlhf_inter_npv)
         self.tracker = Tracker(
-            alg, self.n_actor, prob=1.0, compress=0.0)
+            alg, self.hp.n_actor, prob=1.0, compress=0.0)
 
         # Setup filterers which will be used to filter tractograms
         # for the RLHF pipeline.
         sampler = StreamlinesSampler()
         self.filterers = [
-            TractometerFilterer(self.scoring_data, self.tractometer_reference,
-                                dilate_endpoints=self.tractometer_dilate,
+            TractometerFilterer(self.hp.scoring_data, self.hp.tractometer_reference,
+                                dilate_endpoints=self.hp.tractometer_dilate,
                                 sampler=sampler)
         ]
 
-        do_warmup = self.warmup_agent_steps and current_ep < self.warmup_agent_steps - 1
+        do_warmup = self.hp.warmup_agent_steps and current_ep < self.hp.warmup_agent_steps - 1
 
         ################################################
         # RLHF loop to fine-tune the oracle to the RL
@@ -275,22 +278,22 @@ class RlhfTraining(FineTrackTraining):
                 ################################################
                 # Add new streamlines to the dataset
                 ################################################
-                self._add_streamlines_to_dataset()
+                self._add_streamlines_to_dataset(i)
 
                 ################################################
                 # Train the Oracles
                 ################################################
-                if not self.disable_oracle_training:
+                if not self.hp.disable_oracle_training:
                     self.train_reward()
                     self.train_stopping_criterion()
 
             ################################################
             # Train the RL agent
             ################################################
-            agent_nb_steps = self.agent_train_steps if not do_warmup else self.warmup_agent_steps
+            agent_nb_steps = self.hp.agent_train_steps if not do_warmup else self.hp.warmup_agent_steps
             if do_warmup:
                 LOGGER.info(
-                    "Waming up agent for {} steps.".format(agent_nb_steps))
+                    "Warming up agent for {} steps.".format(agent_nb_steps))
 
             self.agent_trainer.rl_train(
                 alg,
@@ -304,21 +307,22 @@ class RlhfTraining(FineTrackTraining):
             self.end_finetuning_epoch(i, do_warmup)
 
             if do_warmup:
-                current_ep += self.warmup_agent_steps
+                current_ep += self.hp.warmup_agent_steps
             else:
                 # Backup the model after each loop of the RLHF loop.
                 # This is very time consuming.
                 self.backuper.backup(step=i) 
 
-                current_ep += self.agent_train_steps
+                current_ep += self.hp.agent_train_steps
                 i += 1
             do_warmup = False
 
     def _add_streamlines_to_dataset(self, iter_num: int):
         """
+        Add new streamlines to the dataset from generated tractograms.
         """
         total_added = 0
-        with tqdm(total=self.nb_new_streamlines_per_iter,
+        with tqdm(total=self.hp.nb_new_streamlines_per_iter,
                         desc="Adding new streamlines to the dataset",
                         mininterval=5.0) as sub_pbar:
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -327,7 +331,7 @@ class RlhfTraining(FineTrackTraining):
                 sft_valid = None
                 sft_invalid = None
 
-                while total_added < self.nb_new_streamlines_per_iter:
+                while total_added < self.hp.nb_new_streamlines_per_iter:
                     # Generate a tractogram
                     tractograms_path = os.path.join(tmpdir, "tractograms")
                     if not os.path.exists(tractograms_path):
@@ -381,8 +385,8 @@ class RlhfTraining(FineTrackTraining):
         """
         print(">>> Training reward model <<<")
         dm = StreamlineDataModule(self.dataset_manager.dataset_file_path,
-                                  batch_size=self.oracle_batch_size,
-                                  num_workers=self.num_workers,
+                                  batch_size=self.hp.oracle_batch_size,
+                                  num_workers=self.hp.num_workers,
                                   nb_points=self.oracle_reward.nb_points)
         
 
@@ -409,8 +413,8 @@ class RlhfTraining(FineTrackTraining):
         """
         print(">>> Training stopping criterion model <<<")
         dm = StreamlineDataModule(self.dataset_manager.dataset_file_path,
-                                  batch_size=self.oracle_batch_size,
-                                  num_workers=self.num_workers,
+                                  batch_size=self.hp.oracle_batch_size,
+                                  num_workers=self.hp.num_workers,
                                   nb_points=self.oracle_crit.nb_points)
         
         # Test the performance of the actual model BEFORE fine-tuning.
@@ -461,33 +465,6 @@ class RlhfTraining(FineTrackTraining):
             filtered_tractograms.append((valid_tractogram, invalid_tractogram))
 
         return filtered_tractograms
-    
-    def _load_agent_checkpoint(self, alg: RLAlgorithm):
-        def load_hyperparameters(hparams_path):
-            with open(hparams_path, 'r') as f:
-                hparams = json.load(f)
-            return hparams
-
-        if self.agent_checkpoint:
-            # In the case we only give the bundled checkpoint file.
-            # We need to extract the hyperparameters.json file which
-            # contains the hyperparameters of the training and should
-            # be located beside the checkpoint file.
-            checkpoint_dir = os.path.dirname(self.agent_checkpoint)
-        else:
-            # We provide the checkpoint directory (with two files for
-            # the weights of the policy and the critic).
-            checkpoint_dir = self.agent_checkpoint_dir
-
-        LOGGER.debug("Agent checkpoint: {}".format(self.agent_checkpoint))
-        LOGGER.debug("checkpoint_dir: {}".format(checkpoint_dir))
-
-        hparams = load_hyperparameters(os.path.join(
-            checkpoint_dir, 'hyperparameters.json'))
-        ckpt_algo = get_algorithm_cls(hparams['algorithm'])
-
-        alg.load_checkpoint(self.agent_checkpoint)
-        self.save_model(alg, save_model_dir=self.ref_model_dir)
 
     def save_hyperparameters(self):
         super().save_hyperparameters(filename='rlhf_hyperparameters.json')
@@ -495,17 +472,17 @@ class RlhfTraining(FineTrackTraining):
     def start_finetuning_epoch(self, epoch: int, warmup: bool = False):
         if warmup:
             print("==================================================")    
-            print("=========== Starting WARMUP of {} steps =========".format(self.warmup_agent_steps))
+            print("=========== Starting WARMUP of {} steps =========".format(self.hp.warmup_agent_steps))
         else:
             print("==================================================")
-            print("======= Starting RLHF finetuning epoch {}/{} =======".format(epoch+1, self.max_ep))
+            print("======= Starting RLHF finetuning epoch {}/{} =======".format(epoch+1, self.hp.max_ep))
 
     def end_finetuning_epoch(self, epoch: int, warmup: bool = False):
         if warmup:
-            print("=========== Finished WARMUP of {} steps =========".format(self.warmup_agent_steps))
+            print("=========== Finished WARMUP of {} steps =========".format(self.hp.warmup_agent_steps))
             print("==================================================")
         else:
-            print("======= Finished RLHF finetuning epoch {}/{} =======".format(epoch+1, self.max_ep))
+            print("======= Finished RLHF finetuning epoch {}/{} =======".format(epoch+1, self.hp.max_ep))
             print("==================================================")
 
 
@@ -526,17 +503,6 @@ def add_rlhf_training_args(parser: argparse.ArgumentParser):
     rlhf_group.add_argument("--warmup_agent_steps", type=int,
                             help="Minimum number of steps to warm up the agent before starting the training of the oracle")
 
-    # The following arguments are usually used for PPO, but we are also testing it for other algorithms.
-    parser.add_argument('--adaptive_kl', action='store_true',
-                        help='This flag enables the adaptive kl penalty.\n'
-                        'Otherwise, the penalty coefficient is fixed.')
-    parser.add_argument('--kl_penalty_coeff', default=0.02, type=float,
-                        help='Initial KL penalty coefficient.')
-    parser.add_argument('--kl_target', default=0.005, type=float,
-                        help='KL target value.')
-    parser.add_argument('--kl_horizon', default=1000, type=int,
-                        help='KL penalty horizon.')
-
     # Agent training RLHF arguments
     agent_group = rlhf_group.add_argument_group("Agent Training Arguments")
     agent_group.add_argument('--agent_train_steps', type=int, required=True,
@@ -547,10 +513,6 @@ def add_rlhf_training_args(parser: argparse.ArgumentParser):
                                   help='Number of epochs for pretraining the RL agent.\n'
                                   'This is done before starting the RLHF pretraining procedure.')
     agent_checkpoint_group = agent_init_group.add_mutually_exclusive_group()
-    agent_checkpoint_group.add_argument('--agent_checkpoint_dir', type=str,
-                                        help='Path to the folder containing .pth files.\n'
-                                        'This avoids retraining the agent from scratch \n'
-                                        'and allows to directly fine-tune it.')
     agent_checkpoint_group.add_argument('--agent_checkpoint', type=str,
                                         help='Path to the agent checkpoint FILE to load.')
 
@@ -574,7 +536,6 @@ def add_rlhf_training_args(parser: argparse.ArgumentParser):
 def get_trainer_cls_and_args(alg_name: str):
     trainer_map = {
         'SACAuto': SACAutoFineTrackTraining,
-        'PPO': PPOFineTrackTraining,
         'CrossQ': CrossQFineTrackTraining,
     }
 
@@ -587,7 +548,6 @@ def get_trainer_cls_and_args(alg_name: str):
 def get_algorithm_cls(alg_name: str):
     algorithm_map = {
         'SACAuto': SACAuto,
-        'PPO': PPO,
         'CrossQ': CrossQ,
     }
 
@@ -605,7 +565,6 @@ def parse_args():
     )
     add_training_args(parser)
     add_sac_auto_args(parser)
-    add_ppo_args(parser)
     add_rlhf_training_args(parser)
     add_oracle_train_args(parser)
     add_logging_args(parser)

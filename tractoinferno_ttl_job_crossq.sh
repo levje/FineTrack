@@ -10,19 +10,19 @@
 set -e
 
 # Experiment parameters
-USECOMET=1
-EXPNAME="TrackToLearn-CrossQ"
-COMETPROJECT="TrackToLearn-CrossQ"
+USECOMET=0
+EXPNAME="TractoInferno-CrossQ"
+COMETPROJECT="TractoInferno-CrossQ"
 NB_STREAMLINES_POINTS=32
 EXPID="CrossQ-UTD_1"_$(date +"%F-%H_%M_%S")
 
 MAXEP=1000
-NPV=20
+NPV=2
 SEEDS=(1111)
 BATCHSIZE=4096
 N_ACTORS=4096
 GAMMA=0.95
-LR=0.00008
+LR=0.00005
 THETA=30
 
 # Check if the script is ran locally or on a cluster node.
@@ -36,7 +36,7 @@ if [ $islocal -eq 1 ]; then
     # This script should be ran from the root of the project is ran locally.
     echo "Running training locally..."
     SOURCEDIR=.
-    DATADIR=data/datasets/ismrm2015_2mm
+    DATADIR=data/datasets/TractoInferno
     EXPDIR=data/experiments
     LOGSDIR=data/logs
     # BACKUPDIR=data/backups
@@ -105,7 +105,7 @@ do
         ${DEST_FOLDER} \
         "${COMETPROJECT}" \
         "${EXPID_W_SEED}" \
-        "${DATASETDIR}/ismrm2015.hdf5" \
+        "${DATASETDIR}/tractoinferno_single.hdf5" \
         --max_ep ${MAXEP} \
         --hidden_dims "1024-1024-1024" \
         --oracle_reward_checkpoint ${ORACLE_REWARD_CHECKPOINT} \
@@ -114,8 +114,6 @@ do
         --oracle_stopping_criterion \
         --oracle_bonus 10.0 \
         --scoring_data "${DATASETDIR}/scoring_data" \
-        --tractometer_reference "${DATASETDIR}/scoring_data/t1.nii.gz" \
-        --tractometer_validator \
         --workspace "mrzarfir" \
         --rng_seed ${RNGSEED} \
         --n_actor ${N_ACTORS} \
@@ -134,12 +132,13 @@ do
         --alignment_weighting=1.0 \
         --neighborhood_type "axes" \
         --neighborhood_radius 1 \
+        --flatten_state \
         --log_interval 50 \
         --utd 1 \
-        --flatten_state \
         "${additionnal_args[@]}"
+        # --fodf_encoder_ckpt="test_ae/best_model_neigh8_encoder.pth" \
         # --fodf_encoder_ckpt="test_ae/best_model_convs_2048_encoder_only.pth" \
-        --fodf_encoder_ckpt="test_ae/best_model_neigh8_encoder.pth" \
+        # --flatten_state \
         
 
     # POST-PROCESSING

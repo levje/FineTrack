@@ -34,35 +34,35 @@ class Experiment(object):
     def setup_monitors(self):
         #  RL monitors
         self.train_reward_monitor = LossHistory(
-            "Train Reward", "train_reward", self.experiment_path)
+            "Train Reward", "train_reward", self.hp.experiment_path)
         self.train_length_monitor = LossHistory(
-            "Train Length", "length_reward", self.experiment_path)
+            "Train Length", "length_reward", self.hp.experiment_path)
         self.train_ratio_monitor = LossHistory(
-            "Train Log-Ratio", "log_ratio", self.experiment_path)
+            "Train Log-Ratio", "log_ratio", self.hp.experiment_path)
         self.reward_monitor = LossHistory(
-            "Reward - Alignment", "reward", self.experiment_path)
+            "Reward - Alignment", "reward", self.hp.experiment_path)
         self.actor_loss_monitor = LossHistory(
-            "Loss - Actor Policy Loss", "actor_loss", self.experiment_path)
+            "Loss - Actor Policy Loss", "actor_loss", self.hp.experiment_path)
         self.critic_loss_monitor = LossHistory(
-            "Loss - Critic MSE Loss", "critic_loss", self.experiment_path)
+            "Loss - Critic MSE Loss", "critic_loss", self.hp.experiment_path)
         self.len_monitor = LossHistory(
-            "Length", "length", self.experiment_path)
+            "Length", "length", self.hp.experiment_path)
 
         # Tractometer monitors
         # TODO: Infer the number of bundles from the GT
-        if self.tractometer_validator:
+        if self.hp.tractometer_validator:
             self.vc_monitor = LossHistory(
-                "Valid Connections", "vc", self.experiment_path)
+                "Valid Connections", "vc", self.hp.experiment_path)
             self.ic_monitor = LossHistory(
-                "Invalid Connections", "ic", self.experiment_path)
+                "Invalid Connections", "ic", self.hp.experiment_path)
             self.nc_monitor = LossHistory(
-                "Non-Connections", "nc", self.experiment_path)
+                "Non-Connections", "nc", self.hp.experiment_path)
             self.vb_monitor = LossHistory(
-                "Valid Bundles", "VB", self.experiment_path)
+                "Valid Bundles", "VB", self.hp.experiment_path)
             self.ib_monitor = LossHistory(
-                "Invalid Bundles", "IB", self.experiment_path)
+                "Invalid Bundles", "IB", self.hp.experiment_path)
             self.ol_monitor = LossHistory(
-                "Overlap monitor", "ol", self.experiment_path)
+                "Overlap monitor", "ol", self.hp.experiment_path)
 
         else:
             self.vc_monitor = None
@@ -83,10 +83,10 @@ class Experiment(object):
         """
         # The comet object that will handle monitors
         self.comet_monitor = CometMonitor(
-            self.comet_experiment, self.experiment_path,
-            prefix, use_comet=self.use_comet)
-        print(self.hyperparameters)
-        self.comet_monitor.log_parameters(self.hyperparameters)
+            self.comet_experiment, self.hp.experiment_path,
+            prefix, use_comet=self.hp.use_comet)
+        print(self.hp.to_dict())
+        self.comet_monitor.log_parameters(self.hp.to_dict())
 
     def _get_env_dict_and_dto(
         self, noisy, npv=None
@@ -107,31 +107,34 @@ class Experiment(object):
         """
 
         env_dto = {
-            'dataset_file': self.dataset_file,
+            'dataset_file': self.hp.dataset_file,
             'fa_map': self.fa_map,
-            'n_dirs': self.n_dirs,
-            'step_size': self.step_size,
-            'theta': self.theta,
-            'min_length': self.min_length,
-            'max_length': self.max_length,
-            'noise': self.noise,
-            'npv': self.npv if npv is None else npv,
+            'n_dirs': self.hp.n_dirs,
+            'step_size': self.hp.step_size,
+            'theta': self.hp.theta,
+            'min_length': self.hp.min_length,
+            'max_length': self.hp.max_length,
+            'noise': self.hp.noise,
+            'npv': self.hp.npv if npv is None else npv,
             'rng': self.rng,
-            'alignment_weighting': self.alignment_weighting,
-            'oracle_bonus': self.oracle_bonus,
-            'oracle_validator': self.oracle_validator,
-            'oracle_stopping_criterion': self.oracle_stopping_criterion,
-            'oracle_crit_checkpoint': self.oracle_crit_checkpoint,
-            'oracle_reward_checkpoint': self.oracle_reward_checkpoint,
-            'scoring_data': self.scoring_data,
-            'tractometer_validator': self.tractometer_validator,
-            'binary_stopping_threshold': self.binary_stopping_threshold,
+            'alignment_weighting': self.hp.alignment_weighting,
+            'oracle_bonus': self.hp.oracle_bonus,
+            'oracle_validator': self.hp.oracle_validator,
+            'oracle_stopping_criterion': self.hp.oracle_stopping_criterion,
+            'oracle_crit_checkpoint': self.hp.oracle_crit_checkpoint,
+            'oracle_reward_checkpoint': self.hp.oracle_reward_checkpoint,
+            'scoring_data': self.hp.scoring_data,
+            'tractometer_validator': self.hp.tractometer_validator,
+            'binary_stopping_threshold': self.hp.binary_stopping_threshold,
             'compute_reward': self.compute_reward,
-            'use_classic_reward': self.use_classic_reward,
             'device': self.device,
-            'target_sh_order': self.target_sh_order if hasattr(self, 'target_sh_order') else None,
-            'reward_with_gt': self.reward_with_gt,
-            'big_neighborhood': self.big_neighborhood,
+            'target_sh_order': self.hp.target_sh_order,
+            'reward_with_gt': self.hp.reward_with_gt,
+            'neighborhood_radius': self.hp.neighborhood_radius,
+            'neighborhood_type': self.hp.neighborhood_type,
+            'flatten_state': self.hp.flatten_state,
+            'fodf_encoder_ckpt': self.hp.fodf_encoder_ckpt,
+            'interpolation': self.hp.interpolation,
         }
 
         if noisy:
@@ -311,13 +314,15 @@ class Experiment(object):
         """
 
         # Save on the experiment path, or on a specific directory if provided.
-        path_prefix = save_dir if save_dir else self.experiment_path
+        path_prefix = save_dir if save_dir else self.hp.experiment_path
 
         # Save tractogram so it can be looked at, used by the tractometer
         # and more
         filename = pjoin(
             path_prefix,
-            "tractogram_{}_{}_{}.{}".format(self.experiment, self.name, subject_id, extension))
+            "tractogram_{}_{}_{}.{}".format(self.hp.experiment,
+                                            self.hp.experiment_id,
+                                            subject_id, extension))
 
         # Prune empty streamlines, keep only streamlines that have more
         # than the seed.
@@ -373,7 +378,7 @@ class Experiment(object):
         avg_length = np.mean(lens)  # Euclidian length
 
         print('---------------------------------------------------')
-        print(self.experiment_path)
+        print(self.hp.experiment_path)
         print('Episode {} \t avg length: {} \t total reward: {}'.format(
             i_episode,
             avg_length,
@@ -417,11 +422,11 @@ class Experiment(object):
 
 
 def add_experiment_args(parser: ArgumentParser):
-    parser.add_argument('path', type=str,
+    parser.add_argument('experiment_path', type=str,
                         help='Path to experiment')
     parser.add_argument('experiment',
                         help='Name of experiment.')
-    parser.add_argument('id', type=str,
+    parser.add_argument('experiment_id', type=str,
                         help='ID of experiment.')
     parser.add_argument('--workspace', type=str, default='TractOracle',
                         help='Comet.ml workspace')
@@ -429,8 +434,6 @@ def add_experiment_args(parser: ArgumentParser):
                         help='Seed to fix general randomness')
     parser.add_argument('--use_comet', action='store_true',
                         help='Use comet to display training or not')
-    parser.add_argument('--comet_offline_dir', type=str,
-                        help='Comet offline directory. If enabled, logs will be saved to this directory and the experiment will be ran offline.')
     parser.add_argument("--backup_dir", type=str,
                         help="Directory where to save a backup of the experiment's path.\n"
                         "This will compress and archive the experiment's files and\n"
@@ -459,9 +462,6 @@ def add_reward_args(parser: ArgumentParser):
                         help='Alignment weighting for reward')
     parser.add_argument('--reward_with_gt', action='store_true', default=False,
                         help='Use the ground truth to compute the reward instead of the oracle.')
-    parser.add_argument('--use_classic_reward', action='store_true', default=False,
-                        help='Use the classic reward (implementation from the version of\n'
-                        'What-matters [..]) instead of the current reward implementation.')
 
 
 def add_model_args(parser: ArgumentParser):
@@ -469,6 +469,23 @@ def add_model_args(parser: ArgumentParser):
                         help='Number of learners')
     parser.add_argument('--hidden_dims', default='1024-1024-1024', type=str,
                         help='Hidden layers of the model')
+    
+    # Arguments to enlarge the agent's state.
+    parser.add_argument('--neighborhood_radius', type=int, default=1,
+                        help='Radius of the neighborhood.')
+    parser.add_argument('--neighborhood_type', type=str, choices=['axes', 'grid'],
+                        default='axes', help='Type of neighborhood to use.')
+    parser.add_argument('--interpolation', type=str, choices=['efficient', 'dwi_ml'],
+                        default='dwi_ml', help='Type of interpolation to use.')
+    
+    conv_group = parser.add_mutually_exclusive_group(required=True)
+    conv_group.add_argument('--flatten_state', action='store_true',
+                            help='Whether to flatten the state representation.')
+    conv_group.add_argument('--conv_state', action='store_true',
+                            help='Whether to use a convolutional state representation.')
+    conv_group.add_argument('--fodf_encoder_ckpt', type=str, default=None,
+                            help='Path to the encoder checkpoint to use for FODF input.'
+                            'If provided, the neighborhood will be used as a convolutional input to that encoder.')
 
 
 def add_tracking_args(parser: ArgumentParser):

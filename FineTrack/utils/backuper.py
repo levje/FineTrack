@@ -17,7 +17,8 @@ class Backuper(object):
     HPC).
     """
     def __init__(self, exp_path, exp, exp_name, backup_dir: str = None,
-                 min_interval: int = 60, remove_old_backups=True):
+                 min_interval: int = 60, remove_old_backups=True, start_at_step=200,
+                 each_n_steps=100):
         self.exp_path = Path(exp_path)
         if not self.exp_path.exists() or not self.exp_path.is_dir():
             raise FileNotFoundError("The provided experiment directory"
@@ -32,12 +33,14 @@ class Backuper(object):
                                     "exist or is not a directory ({})".format(
                                         str(self.backup_dir)))
         
+        self.start_at_step = start_at_step
         self.min_interval = min_interval # In seconds.
+        self.each_n_steps = each_n_steps
         self.last_timestamp = 0 # Used to make sure we don't save periodically too often.
 
         self.stamp = get_unique_experiment_name(exp, exp_name)
         self.previous_backup_path: Path = None
-        self.previous_step = None
+        self.previous_step = 0
         self.ext = ".tar.gz"
         self.remove_old_backups = remove_old_backups
 
@@ -46,7 +49,10 @@ class Backuper(object):
                         "{}".format(self.backup_dir))
 
     def backup(self, step: int = None):
-        if self.backup_dir is None:
+
+        if self.backup_dir is None \
+            or step < self.start_at_step \
+            or step <= self.previous_step + self.each_n_steps:
             return ""
         
         # Check the interval since last backup
@@ -75,14 +81,25 @@ class Backuper(object):
                              "{})".format(str(self.previous_backup_path)))
 
         self.previous_backup_path = new_backup_file
+        self.previous_step = step
         return str(new_backup_file)
     
     def disable(self):
         self.backup_dir = None
-        LOGGER.info("Backups disabled.")
+        LOGGER.debug("Backups disabled.")
         
     def _archive_experiment(self, out_file):
         LOGGER.info("Archiving new backup.")
         with tarfile.open(out_file, "w:gz") as tar:
             tar.add(self.exp_path, arcname=self.exp_path.stem)
         LOGGER.info("Experiment backup saved at {}".format(out_file))
+
+    def to_dict(self):
+        return {
+            'exp_path': str(self.exp_path),
+            'backup_dir': str(self.backup_dir),
+            'min_interval': self.min_interval,
+            'remove_old_backups': self.remove_old_backups,
+            'start_at_step': self.start_at_step,
+            'each_n_steps': self.each_n_steps
+        }

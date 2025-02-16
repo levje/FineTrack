@@ -17,6 +17,8 @@ from scilpy.reconst.utils import (find_order_from_nb_coeff,
 from dipy.reconst.shm import sh_to_sf_matrix
 from torch.utils.data import DataLoader
 
+from FineTrack.environments.neighborhood_manager import NeighborhoodManager
+from FineTrack.garbage.view_image import display_image
 from FineTrack.utils.logging import get_logger
 from FineTrack.datasets.SubjectDataset import SubjectDataset
 from FineTrack.datasets.utils import (MRIDataVolume,
@@ -32,9 +34,11 @@ from FineTrack.environments.stopping_criteria import (
     StoppingFlags)
 from FineTrack.environments.utils import (  # is_looping,
     is_too_curvy, is_too_long, has_reached_gm)
-from FineTrack.utils.utils import normalize_vectors
+from FineTrack.utils.utils import normalize_vectors, SimpleTimer
 from FineTrack.environments.rollout_env import RolloutEnvironment
 from FineTrack.environments.state import ConvState, State
+from FineTrack.algorithms.shared.fodf_encoder import WorkingFodfEncoder, DummyFodfEncoder
+from FineTrack.utils.interpolation import calc_neighborhood_grid, neighborhood_interpolation
 
 LOGGER = get_logger(__name__)
 
@@ -133,7 +137,7 @@ class BaseEnv(object):
 
         # Reward parameters
         self.compute_reward = env_dto['compute_reward']
-        self.use_classic_reward = env_dto['use_classic_reward']
+
         # "Local" reward parameters
         self.alignment_weighting = env_dto['alignment_weighting']
         # "Sparse" reward parameters
@@ -146,7 +150,49 @@ class BaseEnv(object):
         self.reward_with_gt = env_dto['reward_with_gt']
         self.rollout_env = None
 
-        self.big_neighborhood = env_dto['big_neighborhood']
+        # ==========================================
+        # State parameters
+        # ==========================================
+        self.neighborhood_radius = env_dto['neighborhood_radius']
+        self.neighborhood_type = env_dto['neighborhood_type']
+        self.flatten_state = env_dto['flatten_state'] or env_dto['fodf_encoder_ckpt'] is not None
+        self.fodf_encoder_ckpt = env_dto['fodf_encoder_ckpt']
+        self.interpolation = env_dto['interpolation']
+
+        # ==========================================
+        # FODF Encoder
+        # ==========================================
+        self.fodf_encoder = None
+        if self.fodf_encoder_ckpt is not None:
+            self.fodf_encoder = WorkingFodfEncoder()
+            self.fodf_encoder.load_state_dict(torch.load(self.fodf_encoder_ckpt,
+                                                         map_location=self.device))
+
+            # Make sure that we never calculate gradients for this model
+            self.fodf_encoder.eval()
+
+            # Freeze the model
+            for param in self.fodf_encoder.parameters():
+                param.requires_grad = False
+
+            # print("Compiling the fodf encoder")
+            # with SimpleTimer() as t:
+            #     self.fodf_encoder.compile()
+            # print(f"Compilation done in {t.interval:.2f}s")
+
+            self.fodf_encoder = self.fodf_encoder.to(self.device)
+            print("Sending the encoder to the device: ", self.device)
+
+        # Print a summary of the state we are about to use for the model
+        print("=========================================")
+        print("State parameters")
+        print("=========================================")
+        print(f"Neighborhood radius: {self.neighborhood_radius}")
+        print(f"Neighborhood type: {self.neighborhood_type}")
+        print(f"Flatten state: {self.flatten_state}")
+        print(f"FODF encoder checkpoint: {self.fodf_encoder_ckpt}")
+        print(f"Interpolation method: {self.interpolation}")
+        print("=========================================")
 
         # Load one subject as an example
         self.load_subject()
@@ -177,8 +223,7 @@ class BaseEnv(object):
             self.affine_rasmm2vox = np.linalg.inv(self.affine_vox2rasmm)
 
             # Volumes and masks
-            self.data_volume = torch.from_numpy(
-                input_volume.data).to(self.device, dtype=torch.float32)
+            self.data_volume = input_volume.data
         else:
             (input_volume, tracking_mask, seeding_mask, peaks,
              reference, gm_mask) = self.subject_data
@@ -187,8 +232,7 @@ class BaseEnv(object):
             self.affine_rasmm2vox = np.linalg.inv(self.affine_vox2rasmm)
 
             # Volumes and masks
-            self.data_volume = torch.from_numpy(
-                input_volume.data).to(self.device, dtype=torch.float32)
+            self.data_volume = input_volume.data
 
             self.reference = reference
 
@@ -220,23 +264,24 @@ class BaseEnv(object):
         self.add_neighborhood_vox = convert_length_mm2vox(
             self.step_size_mm,
             self.affine_vox2rasmm)
-        
-        if self.big_neighborhood:
-            # Capture the surrounding voxels.
-            self.neighborhood_type = 'grid'
-            self.neighborhood_radius = 2  # e.g. a radius of 4 voxels will produce
-                                          # a 9x9x9 neighborhood (4 + 1 + 4 for
-                                          # each dimension).
-        else:
-            # Just capture the immediate neighbors.
-            self.neighborhood_type = 'axes'
-            self.neighborhood_radius = 1
 
-        self.neighborhood_directions = prepare_neighborhood_vectors(
-            self.neighborhood_type,
-            self.neighborhood_radius,
-            self.add_neighborhood_vox).to(
-                self.device)
+        # With this manager, we interpolate a bigger neighborhood grid around the current position
+        # to provide to the FODF autoencoder. Since the neighborhood is bigger than the step size
+        # of the agent, we use a fixed resolution of 1 in voxel space.
+        self.neigh_manager = NeighborhoodManager(self.data_volume,
+                                                    self.neighborhood_radius,
+                                                    1, # We just want a crop of the neighborhood around him.
+                                                    False,
+                                                    neighborhood_type=self.neighborhood_type,
+                                                    method=self.interpolation)
+        # This is just to interpolate the direct neighbors
+        self.direct_neigh_manager = NeighborhoodManager(self.data_volume,
+                                            1,
+                                            self.add_neighborhood_vox,
+                                            True,
+                                            neighborhood_type='axes',
+                                            method='dwi_ml')
+                                                        
 
         # Tracking seeds
         self.seeds = track_utils.random_seeds_from_mask(
@@ -297,11 +342,7 @@ class BaseEnv(object):
         # Reward function and reward factors
         if self.compute_reward:
             # Reward streamline according to alignment with local peaks
-            if self.use_classic_reward:
-                from FineTrack.environments.classic_reward import ClassicReward
-                peaks_reward = ClassicReward(self.peaks)
-            else:
-                peaks_reward = PeaksAlignmentReward(self.peaks)
+            peaks_reward = PeaksAlignmentReward(self.peaks)
             factors = [peaks_reward]
             weights = [self.alignment_weighting]
 
@@ -328,7 +369,6 @@ class BaseEnv(object):
             self.reward_function = RewardFunction(
                 factors,
                 weights)
-            
 
     @classmethod
     def from_dataset(
@@ -586,7 +626,7 @@ class BaseEnv(object):
         inputs: `numpy.ndarray`
             Observations of the state, incl. previous directions.
         """
-        with torch.no_grad(), torch.autocast(device_type=str(self.device), dtype=torch.float16):
+        with torch.no_grad(), torch.autocast(device_type=str(self.device), dtype=torch.float16, enabled=False):
             N, L, P = streamlines.shape
 
             if N <= 0:
@@ -603,22 +643,45 @@ class BaseEnv(object):
             # Get the SH coefficients at the last point of each streamline
             # The neighborhood is used to get the SH coefficients around
             # the last point
-            signal, _ = interpolate_volume_in_neighborhood(
-                self.data_volume,
-                coords,
-                self.neighborhood_directions)
-            N, S = signal.shape
+            # if self.use_custom_interpolation:
+            #     signal = neighborhood_interpolation(
+            #         self.data_volume, coords, self.neighborhood_directions)
+            #     # display_image(nib.Nifti1Image(signal[0].cpu().numpy(), self.affine_vox2rasmm), default_slice=self.neighborhood_radius, save_to="test_neighborhood.png")
+            #     # raise NotImplementedError("This implementation wasn't tested")
+            # else:
+            #     signal, _ = interpolate_volume_in_neighborhood(
+            #         self.data_volume,
+            #         coords,
+            #         self.neighborhood_directions, clear_cache=False)
+            #     N, S = signal.shape
 
-            if self.big_neighborhood:
-                # Unflatten the signal to use it for convolutions
-                # Unflatten the signal into (N, W, H, D, C) shape
-                unflattened = unflatten_neighborhood(
-                    signal, self.neighborhood_directions, 'grid',
-                    self.neighborhood_radius, self.add_neighborhood_vox)
+            #     if self.big_neighborhood or self.fodf_encoder is not None:
+            #         # Unflatten the signal to use it for convolutions
+            #         # Unflatten the signal into (N, W, H, D, C) shape
+            #         signal = unflatten_neighborhood(
+            #             signal, self.neighborhood_directions, 'grid',
+            #             self.neighborhood_radius, self.add_neighborhood_vox)
+            #         # signal = custom_unflatten_neighborhood(
+            #         #     signal, self.neighborhood_directions, 'grid',
+            #         #     self.neighborhood_radius, self.add_neighborhood_vox)
 
-                # Permute axes to fit PyTorch's convention of (N, C, D, H, W)
-                # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
-                unflattened = unflattened.permute(0, 4, 1, 2, 3)
+            #         # Permute axes to fit PyTorch's convention of (N, C, D, H, W)
+            #         # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
+            #         signal = signal.permute(0, 4, 1, 2, 3)
+
+            #         # display_image(nib.Nifti1Image(signal[0].cpu().numpy(), self.affine_vox2rasmm), default_slice=self.neighborhood_radius, save_to="test_neighborhood_dwi.png")
+            #         # raise NotImplementedError("This implementation wasn't tested")
+
+            signal = self.direct_neigh_manager.get(coords)
+
+            if self.fodf_encoder is not None:
+                encoded_neighborhood = self._get_neighborhood_grid_encodings(coords)
+
+                # Concatenate the encoded neighborhood to the direct neighbors
+                signal = torch.cat([signal, encoded_neighborhood], dim=1)
+
+            # Flatten the signal as this will be fed to a MLP
+            # signal = signal.reshape(N, -1)
 
             # Placeholder for the previous directions
             previous_dirs = np.zeros((N, self.n_dirs, P), dtype=np.float32)
@@ -636,11 +699,47 @@ class BaseEnv(object):
 
             # Return them separately so we can run convolutions on unflattened
             # but not dir_inputs.
-            if self.big_neighborhood:
-                state = ConvState(unflattened, dir_inputs, self.device)
+            if not self.flatten_state:
+                state = ConvState(signal, dir_inputs, coords, device=self.device)
             else:
-                state = State(signal, dir_inputs, self.device)
+                state = State(signal, dir_inputs, coords, device=self.device)
         return state
+
+    def _get_neighborhood_grid_encodings(self, coords):
+        """
+        This method interpolates the neighborhood grid around the current
+        position and encodes it using the FODF encoder.
+
+        However, since we are interpolating a big neighborhood grid, we need
+        to interpolate the grid in chunks and then concatenate the results
+        to avoid running out of GPU memory.
+        """
+        N = coords.shape[0]
+
+        # Ideally, the method aims to reproduce the following code
+        # (whilst avoiding running out of memory):
+        #
+        # interpolated_neighborhood = self.neigh_manager.get(coords, torch_convention=True)
+        # interpolated_neighborhood = interpolated_neighborhood[:, :, :-1, :-1, :-1]
+        # encoded_neighborhood = self.fodf_encoder(interpolated_neighborhood)
+        # encoded_neighborhood = encoded_neighborhood.reshape(N, -1)
+
+        batch_size = 128 # TODO: Parametrize
+        placeholder = torch.zeros((N, self.fodf_encoder.output_size), device=self.device)
+
+        for start in range(0, N, batch_size):
+            end = min(start + batch_size, N)
+            chunk_coords = coords[start:end]
+
+            interpolated_neighborhood = self.neigh_manager.get(chunk_coords, torch_convention=True)
+            
+            # We crop the interpolated neighborhood to get a evenly-sized grid.
+            interpolated_neighborhood = interpolated_neighborhood[:, :, :-1, :-1, :-1]
+
+            encoded_neighborhood = self.fodf_encoder(interpolated_neighborhood)
+            placeholder[start:end] = encoded_neighborhood.reshape(end - start, -1)
+
+        return placeholder
 
     def _compute_stopping_flags(
         self,

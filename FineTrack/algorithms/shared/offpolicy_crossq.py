@@ -5,6 +5,7 @@ from FineTrack.algorithms.shared.utils import (
     format_widths, make_fc_network, make_conv_network)
 from FineTrack.environments.state import State, StateShape
 from FineTrack.algorithms.shared.batch_renorm import BatchRenorm1d, BatchRenorm3d
+from FineTrack.algorithms.shared.fodf_encoder import FodfEncoder
 
 class CrossQCritic(nn.Module):
     def __init__(
@@ -12,7 +13,6 @@ class CrossQCritic(nn.Module):
         state_dim: StateShape,
         action_dim: int,
         hidden_dims: str,
-        big_neighborhood: bool,
         critic_size_factor=1,
         batch_renorm=False
     ):
@@ -28,7 +28,7 @@ class CrossQCritic(nn.Module):
 
         """
         super(CrossQCritic, self).__init__()
-        self.big_neighborhood = big_neighborhood
+        self.state_is_flat = state_dim.is_flat
 
         if batch_renorm:
             self.norm_func_3d = BatchRenorm3d
@@ -38,19 +38,15 @@ class CrossQCritic(nn.Module):
             self.norm_func_1d = nn.BatchNorm1d
         batch_norm_kwargs = {"momentum": 0.01}
 
-        print("Init CrossQCritic with big_neighborhood: ", big_neighborhood)
+        print("Init CrossQCritic with state_flat: ", self.state_is_flat)
 
-        if self.big_neighborhood:
+        if self.state_is_flat:
+            flat_neigh_size = state_dim.neighborhood_common_shape[0]
+        else:
             conv_state_shape = (state_dim.nb_sh_coefs, state_dim.depth,
                         state_dim.height, state_dim.width)
-            flat_neigh_size = 256
-            self.q_neighbor_encoder = make_conv_network(
-                input_size=conv_state_shape, output_size=flat_neigh_size,
-                norm_layer_1d=self.norm_func_1d, norm_layer_3d=self.norm_func_3d,
-                norm_layer_kwargs=batch_norm_kwargs
-                )
-        else:
-            flat_neigh_size = state_dim.neighborhood_common_shape[0]
+            self.q_neighbor_encoder = FodfEncoder(n_coeffs=conv_state_shape[0], renorm=batch_renorm)
+            flat_neigh_size = self.q_neighbor_encoder.flat_output_size
         
         full_fc_state_dim = flat_neigh_size + state_dim.prev_dirs_size
         print("Full FC state dim: ", full_fc_state_dim)
@@ -88,11 +84,11 @@ class CrossQCritic(nn.Module):
         if next_state is not None and next_action is not None:
             # Predict on both state-action pairs at the same time.
 
-            if self.big_neighborhood:
-                encoder_states_input = torch.cat([state.neighborhood, next_state.neighborhood]) # concat batch dimension
-                encoded_neighborhood_1 = self.q_neighbor_encoder(encoder_states_input)
-            else:
+            if self.state_is_flat:
                 encoded_neighborhood_1 = torch.cat([state.neighborhood, next_state.neighborhood], dim=0)
+            else:
+                encoder_states_input = torch.cat([state.neighborhood, next_state.neighborhood]) # concat batch dimension
+                encoded_neighborhood_1 = self.q_neighbor_encoder(encoder_states_input, flatten=True)
 
             all_prev_dirs = torch.cat([state.prev_dirs, next_state.prev_dirs]) # concat batch-wise
             
@@ -107,10 +103,10 @@ class CrossQCritic(nn.Module):
             return q, next_q
         else:
             # Predict on single state-action pair
-            if self.big_neighborhood:
-                encoded_neighborhood_1 = self.q_neighbor_encoder(state.neighborhood)
-            else:
+            if self.state_is_flat:
                 encoded_neighborhood_1 = state.neighborhood
+            else:
+                encoded_neighborhood_1 = self.q_neighbor_encoder(state.neighborhood, flatten=True)
             q1_states_input = torch.cat([encoded_neighborhood_1, state.prev_dirs], -1)
             q1_input = torch.cat([q1_states_input, action], -1)
             pred = self.q1(q1_input).squeeze(-1)
@@ -144,14 +140,13 @@ class CrossQActorCritic(SACActorCritic):
             state_dim: StateShape,
             action_dim,
             hidden_dims,
-            big_neighborhood,
             device
     ):
         self.device = device
         self.actor = MaxEntropyActor(
-            state_dim, action_dim, hidden_dims, big_neighborhood
+            state_dim, action_dim, hidden_dims,
         ).to(device)
 
         self.critic = CrossQDoubleCritic(
-            state_dim, action_dim, hidden_dims, big_neighborhood
+            state_dim, action_dim, hidden_dims,
         ).to(device)

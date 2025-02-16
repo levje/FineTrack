@@ -4,12 +4,13 @@ import torch
 import torch.nn as nn
 
 import torch.nn.functional as F
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Tuple
 
-from FineTrack.algorithms.sac_auto import SACAuto
+from FineTrack.algorithms.sac_auto import SACAuto, SACAutoHParams
 from FineTrack.algorithms.shared.offpolicy_crossq import CrossQActorCritic
-from FineTrack.algorithms.shared.replay import OffPolicyReplayBuffer, OffPolicyLazyReplayBuffer
+from FineTrack.algorithms.shared.replay import OffPolicyReplayBuffer, OffPolicyLazyReplayBuffer, OffPolicySemiLazyReplayBuffer
+from FineTrack.environments.neighborhood_manager import NeighborhoodManager
 from FineTrack.utils.torch_utils import get_device, gradients_norm
 from FineTrack.environments.state import StateShape
 
@@ -17,19 +18,9 @@ LOG_STD_MAX = 2
 LOG_STD_MIN = -20
 
 @dataclass
-class CrossQHParams:
-    lr: float = 3e-4
-    gamma: float = 0.99
-    n_actors: int = 4096
-
-    alpha: float = 0.2
-    batch_size: int = 2**12
-    replay_size: int = 1e6
-
-    adaptive_kl: bool = False
-    kl_penalty_coeff: float = 0.02
-    kl_target: float = 0.005
-    kl_horizon: int = 1000
+class CrossQHParams(SACAutoHParams):
+    # So far, the hyperparameters for CrossQ are the same as SACAuto
+    algorithm: str = field(default="CrossQ", init=False, repr=False)
 
 class CrossQ(SACAuto):
     """
@@ -54,9 +45,8 @@ class CrossQ(SACAuto):
         self,
         input_shape: StateShape,
         action_size: int,
-        hidden_dims: int,
-        big_neighborhood: bool,
-        hparams: CrossQHParams = CrossQHParams(),
+        neighborhood_manager: NeighborhoodManager,
+        hparams: CrossQHParams,
         rng: np.random.RandomState = None,
         device: torch.device = get_device,
     ):
@@ -86,18 +76,16 @@ class CrossQ(SACAuto):
         device: torch.device
             Device to use for the algorithm. Should be either "cuda:0"
         """
-        self.hparams = hparams
+        self.hp = hparams
         
-        self.batch_size = hparams.batch_size
-        self.gamma = hparams.gamma
-        self.alpha = hparams.alpha
-        self.n_actors = hparams.n_actors
-        self.replay_size = hparams.replay_size
-        self.big_neighborhood = big_neighborhood
+        self.batch_size = self.hp.batch_size
+        self.gamma = self.hp.gamma
+        self.alpha = self.hp.alpha
+        self.n_actors = self.hp.n_actor
+        self.replay_size = self.hp.replay_size
 
         self.max_action = 1.
         self.t = 1
-        self.nb_updates_per_sample = 5
 
         self.action_size = action_size
         self.device = device
@@ -106,32 +94,29 @@ class CrossQ(SACAuto):
 
         # Initialize main agent
         self.agent = CrossQActorCritic(
-            input_shape, action_size, hidden_dims, big_neighborhood, device,
+            input_shape, action_size, self.hp.hidden_dims, device,
         )
 
         # Auto-temperature adjustment
         # SAC automatically adjusts the temperature to maximize entropy and
         # thus exploration, but reduces it over time to converge to a
         # somewhat deterministic policy.
-        starting_temperature = np.log(self.hparams.alpha)  # Found empirically
+        starting_temperature = np.log(self.hp.alpha)  # Found empirically
         self.target_entropy = -np.prod(action_size).item()
         self.log_alpha = torch.full(
             (1,), starting_temperature, requires_grad=True, device=device)
         # Optimizer for alpha
         self.alpha_optimizer = torch.optim.Adam(
-            [self.log_alpha], lr=self.hparams.lr)
-
-        # Initialize target agent to provide baseline
-        self.target_critic = copy.deepcopy(self.agent.critic)
+            [self.log_alpha], lr=self.hp.lr)
 
         # SAC requires a different model for actors and critics
         # Optimizer for actor
         self.actor_optimizer = torch.optim.Adam(
-            self.agent.actor.parameters(), lr=self.hparams.lr)
+            self.agent.actor.parameters(), lr=self.hp.lr)
 
         # Optimizer for critic
         self.critic_optimizer = torch.optim.Adam(
-            self.agent.critic.parameters(), lr=self.hparams.lr)
+            self.agent.critic.parameters(), lr=self.hp.lr)
 
         # SAC-specific parameters
         self.max_action = 1.
@@ -139,14 +124,22 @@ class CrossQ(SACAuto):
 
         self.start_timesteps = 80000
         self.total_it = 0
-        self.tau = 0.005
         self.agent_freq = 1
 
         # Replay buffer
-        self.replay_buffer = OffPolicyReplayBuffer(
-            input_shape, action_size, max_size=self.hparams.replay_size)
+        rb_type = 'normal' if input_shape.is_flat else 'semi_lazy'
+        if rb_type == 'normal':
+            self.replay_buffer = OffPolicyReplayBuffer(
+                input_shape, action_size, max_size=self.hp.replay_size)
+        elif rb_type == 'lazy':
+            self.replay_buffer = OffPolicyLazyReplayBuffer(
+                input_shape, action_size, max_size=self.hp.replay_size)
+        elif rb_type == 'semi_lazy':
+            self.replay_buffer = OffPolicySemiLazyReplayBuffer(
+                input_shape, action_size, neighborhood_manager, max_size=self.hp.replay_size)
 
         self.rng = rng
+        self.start_update_log_was_printed = False
 
     def load_checkpoint(self, checkpoint_file: str):
         """
@@ -160,7 +153,6 @@ class CrossQ(SACAuto):
         checkpoint = torch.load(checkpoint_file, weights_only=False)
 
         self.agent.load_checkpoint(checkpoint['agent'])
-        self.target_critic.load_state_dict(checkpoint['target_critic'])
         self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
         self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
         self.alpha_optimizer.load_state_dict(checkpoint['alpha_optimizer'])
@@ -180,7 +172,6 @@ class CrossQ(SACAuto):
         """
         checkpoint = {
             'agent': self.agent.state_dict(as_dict=True),
-            'target_critic': self.target_critic.state_dict(),
             'actor_optimizer': self.actor_optimizer.state_dict(),
             'critic_optimizer': self.critic_optimizer.state_dict(),
             'alpha_optimizer': self.alpha_optimizer.state_dict(),

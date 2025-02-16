@@ -360,10 +360,11 @@ def prettier_dict(d: dict, title: str = None):
 
 
 class TTLProfiler:
-    def __init__(self, enabled: bool = True, throw_at_stop: bool = True) -> None:
+    def __init__(self, enabled: bool = True, throw_at_stop: bool = True, out_file: str = None) -> None:
         self.pr = None
         self.enabled = enabled
         self.throw_at_stop = throw_at_stop
+        self.out_file = out_file
 
     def __enter__(self):
         self.start()
@@ -395,10 +396,14 @@ class TTLProfiler:
             return
 
         self.pr.disable()
-        s = io.StringIO()
-        ps = pstats.Stats(self.pr, stream=s).sort_stats('cumulative')
-        ps.print_stats()
-        print(s.getvalue())
+        if self.out_file is not None:
+            self.pr.dump_stats(self.out_file)
+        else:
+            s = io.StringIO()
+            ps = pstats.Stats(self.pr, stream=s).sort_stats('cumulative')
+            ps.print_stats()
+            print(s.getvalue())
+        
         self.pr = None
 
         if self.throw_at_stop:
@@ -513,3 +518,7 @@ def get_size_in_gb(shapes, dtype=np.float32):
 def assert_same_weights(model1, model2):
     for p1, p2 in zip(model1.parameters(), model2.parameters()):
         assert torch.all(torch.eq(p1, p2))
+
+def count_parameters(model):
+    # Parameters should have requires_grad=True to be counted properly.
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)

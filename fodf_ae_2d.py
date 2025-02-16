@@ -11,6 +11,7 @@ from FineTrack.algorithms.shared.batch_renorm import BatchRenorm1d, BatchRenorm3
 from FineTrack.utils.torch_utils import get_device, get_device_str
 from FineTrack.utils.logging import get_logger, setLevel
 from FineTrack.algorithms.shared.fodf_encoder import *
+from FineTrack.algorithms.shared.fodf_encoder_2d import *
 from FineTrack.utils.neighborhood_interpolation import \
     interpolate_volume_in_neighborhood
 from dwi_ml.data.processing.space.neighborhood import \
@@ -22,6 +23,7 @@ from FineTrack.environments.neighborhood_manager import NeighborhoodManager
 LOGGER = get_logger(__name__)
 device = get_device_str()
 USE_COMET = False
+torch.manual_seed(42)
 
 class FodfAe(nn.Module):
     def __init__(self, input_shape, n_coeffs=28, renorm=False):
@@ -39,8 +41,11 @@ class FodfAe(nn.Module):
         # self.encoder = NoDownsampleFodfEncoder()
         # self.decoder = NoDownsampleFodfDecoder()
 
-        self.encoder = LinLatentEncoderV2()
-        self.decoder = LinLatentDecoderV2()
+        # self.encoder = LinLatentEncoderV2()
+        # self.decoder = LinLatentDecoderV2()
+
+        self.encoder = LinLatentEncoderV22D()
+        self.decoder = LinLatentDecoderV22D()
 
         # self.encoder = nn.Sequential(
         #     nn.Flatten(),
@@ -100,6 +105,8 @@ class FodfAe(nn.Module):
 
 
     def forward(self, x):
+        # Only keep the first channel
+        x = x[:, 0:1]
         latent = self.encoder(x)
         output = self.decode(latent)
         return output
@@ -158,6 +165,10 @@ class FodfAeTrainer(object):
         fodf_path = "data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz"
         fodf_img = nib.load(fodf_path)
         self.fodf_data = fodf_img.get_fdata().astype(np.float32)
+
+        # Normalize the fodf data between -1 and 1
+        self.fodf_data = (self.fodf_data - self.fodf_data.min()) / (self.fodf_data.max() - self.fodf_data.min())
+
         self.affine = fodf_img.affine
         
         self.neigh_manager = NeighborhoodManager(
@@ -176,7 +187,9 @@ class FodfAeTrainer(object):
 
         self.reconstruction_loss = nn.MSELoss()
 
-        all_coords = self._get_all_coords(input_shape, shuffled=True)[:5].repeat(100, 1)
+        # self.selected_coords = self._get_all_coords(input_shape, shuffled=True)[:5]
+        # all_coords = self.selected_coords.repeat(100, 1)
+        self.selected_coords = all_coords = self._get_all_coords(input_shape, shuffled=True)
 
         self.train_coords = all_coords
         self.valid_coords = all_coords
@@ -208,7 +221,7 @@ class FodfAeTrainer(object):
         self.comet_enabled = USE_COMET
         self.experiment = None
 
-        self.lr = 0.001
+        self.lr = 0.0001
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
         # self.warmup_scheduler = WarmupScheduler(self.optimizer, n_warmup_steps=len(self.train_loader)//10)
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=len(self.train_loader))
@@ -257,74 +270,88 @@ class FodfAeTrainer(object):
 
         self.model = self.model.to(self.device)
         best_loss = torch.inf
+        with tqdm(range(self.nb_epochs), desc="Epochs") as epoch_pbar:
+            for epoch in range(self.nb_epochs):
+                self.model.train()
+                with tqdm(range(len(self.train_loader)), desc="Training batches", leave=False) as train_batch_pbar:
+                    for i, start in enumerate(range(0, len(self.train_coords), self.batch_size)):
+                        end = min(start + self.batch_size, len(self.train_coords))
+                        coords = self.train_coords[start:end]
+                        coords = coords.squeeze(0).to(self.device)
 
-        for epoch in tqdm(range(self.nb_epochs), desc="Epochs"):
-            self.model.train()
-            with tqdm(range(len(self.train_loader)), desc="Training batches", leave=False) as train_batch_pbar:
-                for i, start in enumerate(range(0, len(self.train_coords), self.batch_size)):
-                    end = min(start + self.batch_size, len(self.train_coords))
-                    coords = self.train_coords[start:end]
-                    coords = coords.squeeze(0).to(self.device)
+                        batch = self.neigh_manager.get(coords, torch_convention=True)
+                        # Keep the first sh coef and only the first slice
+                        batch = batch[:, 0:1, 0]
+                        # if check_if_some_elements_zero(batch):
+                        #     raise ValueError("Some elements are zero in the batch")
+                        # Pad the batch from 31x31 to 32x32
+                        batch = nn.functional.pad(batch, (0, 1, 0, 1), mode='constant', value=0)
+                        # if check_if_some_elements_zero(batch):
+                        #     raise ValueError("Some elements are zero in the batch")
+                        # if len(batch.shape) > 5:
+                        #     batch = batch.squeeze(0)
 
-                    batch = self.neigh_manager.get(coords, torch_convention=True)
-                    # if len(batch.shape) > 5:
-                    #     batch = batch.squeeze(0)
-
-                    # with torch.autocast(device_type=device, dtype=torch.float16, enabled=False):
-                    output = self.model(batch)
-                    loss = self.reconstruction_loss(output, batch)
-
-                    factor = 1#0000
-                    loss = loss * factor
-                    # print("loss: ", loss)
-
-                    self.optimizer.zero_grad()
-                    loss.backward()
-                    self.optimizer.step()
-                    self.scheduler.step(metrics=loss)
-                    # loss_item = loss.item()
-                    # self.train_losses.append(loss_item)
-
-                    if loss < best_loss:
-                        best_loss = loss
-                        torch.save(self.model.state_dict(), "fodf_ae/best_model_big.pth")
-                        torch.save(self.model.encoder.state_dict(), "fodf_ae/best_encoder_big.pth")
-
-                        # Send to Comet.ml
-
-                    train_batch_pbar.update(1)
-
-                    if i % 1 == 0:
-                        loss_item = loss.item()
-                        train_batch_pbar.set_postfix({"loss": loss_item, "real_loss": loss_item/factor})
-                        self.experiment.log_metric("train_loss", loss_item, step=i, epoch=epoch)
-                        # self.experiment.log_metric("lr", self.scheduler.get_last_lr()[0], step=i, epoch=epoch)
-
-                    if i % 100 == 0:
-                        torch.cuda.empty_cache()
-
-            # avg_loss = np.mean(self.train_losses)
-            self.train_losses = []
-
-            self.model.eval()
-            with torch.no_grad():
-                for coords in tqdm(self.valid_loader, desc="Validation", leave=False):
-                    coords = coords.squeeze(0).to(self.device)
-
-                    batch = self.neigh_manager.get(coords, torch_convention=True)
-                    # if len(batch.shape) > 5:
-                    #     batch = batch.squeeze(0)
-
-                    with torch.autocast(device_type=device, dtype=torch.float16, enabled=False):
+                        # with torch.autocast(device_type=device, dtype=torch.float16, enabled=False):
                         output = self.model(batch)
                         loss = self.reconstruction_loss(output, batch)
-                    self.valid_losses.append(loss.item())
 
-            avg_loss = np.mean(self.valid_losses)
-            self.valid_losses = []
+                        factor = 1#0000
+                        loss = loss * factor
+                        # print("loss: ", loss)
 
-            # Send to Comet.ml
-            self.experiment.log_metric("valid_loss", avg_loss, epoch=epoch)
+                        self.optimizer.zero_grad()
+                        loss.backward()
+                        self.optimizer.step()
+                        self.scheduler.step(metrics=loss)
+                        loss_item = loss.item()
+                        self.train_losses.append(loss_item)
+
+                        if loss < best_loss:
+                            best_loss = loss
+                            torch.save(self.model.state_dict(), "fodf_ae/best_model_big.pth")
+                            torch.save(self.model.encoder.state_dict(), "fodf_ae/best_encoder_big.pth")
+
+                            # Send to Comet.ml
+
+                        train_batch_pbar.update(1)
+
+                        if i % 1 == 0:
+                            loss_item = loss.item()
+                            train_batch_pbar.set_postfix({"loss": loss_item, "real_loss": loss_item/factor})
+                            self.experiment.log_metric("train_loss", loss_item, step=i, epoch=epoch)
+                            # self.experiment.log_metric("lr", self.scheduler.get_last_lr()[0], step=i, epoch=epoch)
+
+                        if i % 100 == 0:
+                            torch.cuda.empty_cache()
+
+                avg_loss = np.mean(self.train_losses)
+                epoch_pbar.set_postfix({"train_loss": avg_loss})
+                self.train_losses = []
+
+                self.model.eval()
+                with torch.no_grad():
+                    for coords in tqdm(self.valid_loader, desc="Validation", leave=False, disable=True):
+                        coords = coords.squeeze(0).to(self.device)
+
+                        batch = self.neigh_manager.get(coords, torch_convention=True)
+                        # Keep the first sh coef
+                        batch = batch[:, 0:1, 0]
+                        batch = nn.functional.pad(batch, (0, 1, 0, 1), mode='constant', value=0)
+
+                        # if len(batch.shape) > 5:
+                        #     batch = batch.squeeze(0)
+
+                        output = self.model(batch)
+                        loss = self.reconstruction_loss(output, batch)
+                        self.valid_losses.append(loss.item())
+
+                avg_loss = np.mean(self.valid_losses)
+                self.valid_losses = []
+
+                # Send to Comet.ml
+                self.experiment.log_metric("valid_loss", avg_loss, epoch=epoch)
+
+                epoch_pbar.update(1)
 
         return self.valid_losses
 
@@ -358,18 +385,23 @@ class FodfAeTrainer(object):
         coords = self.train_coords[random_indices]
         coords = coords.squeeze(0).to(self.device)
         inputs = self.neigh_manager.get(coords, torch_convention=True)
+        inputs = inputs[:, 0:1, 0]
         inputs = inputs.to(device='cuda')
         
         # Predict
         with torch.no_grad():
+            inputs = nn.functional.pad(inputs, (0, 1, 0, 1), mode='constant', value=0)
             outputs = self.model(inputs)
 
 
         sh_coef_indice = 0
         slice_number = 15
         for j in range(n):
-            axes[0, j].imshow(inputs[j, sh_coef_indice, slice_number][None, ...].permute(1, 2, 0).cpu().detach().numpy())
-            axes[1, j].imshow(outputs[j, sh_coef_indice, slice_number][None, ...].permute(1, 2, 0).cpu().detach().numpy())
+            target = inputs[j, sh_coef_indice][None, ...].permute(1, 2, 0).cpu().detach().numpy()
+            recons = outputs[j, sh_coef_indice][None, ...].permute(1, 2, 0).cpu().detach().numpy()
+            print("loss ({}): {}".format(j, self.reconstruction_loss(outputs[j], inputs[j])))
+            axes[0, j].imshow(target)
+            axes[1, j].imshow(recons)
 
         # plt.show()
         plt.savefig('reconstructions_fodf.png')
@@ -387,14 +419,6 @@ class FodfAeTrainer(object):
         os.makedirs(reconsts_dir, exist_ok=True)
         os.makedirs(crops_dir, exist_ok=True)
 
-
-        # examples of coordinates
-        # coords = [
-        #           [self.fodf_data.shape[0]//2, self.fodf_data.shape[1]//2, self.fodf_data.shape[2]//2],
-        #           [self.fodf_data.shape[0]//3.5, self.fodf_data.shape[1]//3.5, self.fodf_data.shape[2]//3.5],
-        #         #   [1, 1, 1], 
-        #           ]
-        # coords = torch.tensor(coords, dtype=torch.float32)
         all_coords = self._get_all_coords(self.fodf_data.shape[:-1], shuffled=False)
 
         torch.random.manual_seed(42)
@@ -449,6 +473,13 @@ class FodfAeTrainer(object):
                 reconst_path = os.path.join(reconsts_dir, f"reconst_{i}.nii.gz")
                 nib.save(nib.Nifti1Image(frame, self.affine), reconst_path)
 
+def check_if_some_elements_zero(tensor):
+    res = False
+    for i in range(tensor.size(0)):
+        if torch.all(tensor[i] == 0):
+            print("Tensor {} has all elements zero".format(i))
+            res = True
+    return res
 
 def main():
     print("loading fodf image")
@@ -462,7 +493,7 @@ def main():
     print("nb_coefs: ", nb_coefs, " img_shape: ", img_shape)
 
 
-    neighborhood_radius = 9 # 51x51x51 neighborhood
+    neighborhood_radius = 15 # 51x51x51 neighborhood
     
     trainer = FodfAeTrainer(
         input_shape=img_shape,

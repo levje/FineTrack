@@ -84,7 +84,7 @@ class OracleSingleton:
                     # Put the directions in pinned memory
                     placeholder[:current_batch_size] = torch.from_numpy(dirs)
 
-                with torch.amp.autocast(device_type='cuda'):
+                with torch.amp.autocast(device_type=get_device_str()):
                     with torch.no_grad():
                         predictions = self.model(input_data)
                         result[
@@ -108,7 +108,7 @@ class OracleSingleton:
                 dirs = np.diff(data, axis=1)
                 dirs = torch.tensor(dirs, device=self.device)
 
-                with torch.amp.autocast(device_type='cuda'):
+                with torch.amp.autocast(device_type=get_device_str()):
                     with torch.no_grad():
                         predictions = self.model(dirs)
                         result[start:end] = predictions

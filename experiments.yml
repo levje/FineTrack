@@ -1,0 +1,82 @@
+data: 
+  SOURCEDIR: "~/FineTrack"
+  DATADIR: "$SLURM_TMPDIR/data"
+  EXPDIR: "$SLURM_TMPDIR/experiments"
+  LOGSDIR: "$SLURM_TMPDIR/logs"
+  PROJECTS_DIR: "~/projects/def-pmjodoin/levje"
+
+  # Data paths relative to the PROJECTS_DIR
+  ismrm2015:
+    name: "ismrm2015"
+    location: "datasets/ismrm2015_2mm_ttl.tar.gz"
+    tractometer_reference: "scoring_data/t1.nii.gz" # Path within the dataset directory
+    scoring_data: "scoring_data/" # Path within the dataset directory
+  tractoinferno: 
+    name: "tractoinferno"
+    location: "datasets/tractoinferno.hdf5"
+  hcp: 
+    name: "hcp"
+    location: "datasets/hcp.hdf5"
+
+global:
+  project_name: "TrackToLearn-CrossQ"
+  reward_ckpt: "oracles/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Classif/_best_vc_epoch.ckpt"
+  crit_ckpt: "oracles/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Dense/_best_vc_epoch.ckpt"
+  launch_script: "FineTrack/trainers/cross_q_train.py"
+  use_comet: True
+  hidden_dims: "1024-1024-1024"
+  npv: 20
+  min_length: 20
+  max_length: 200
+  noise: 0.0
+  replay_size: 1000000
+  binary_stopping_threshold: 0.1
+  theta: 30
+  n_dirs: 100
+  gamma: 0.95
+  n_actors: 4096
+  batch_size: 4096
+  seed: 1111
+  utd: 1
+  
+  # Neighborhood
+  neighborhood_type: "axes"
+  neighborhood_radius: 1
+  flatten_state: True
+  fodf_encoder_ckpt: null
+  conv_state: False
+
+  log_interval: 50
+  workspace: "mrzarfir"
+  time: "0-40:00:00"
+  mem: "32000M"
+    
+experiments:
+  - exp_name: "CrossQ_TractoInferno"
+    dataset: "tractoinferno"
+    lr: 0.0005
+    max_ep: 1000
+
+  - exp_name: "CrossQ_FODF_Encoder_1"
+    project_name: "TrackToLearn-CrossQ-FODF"
+    dataset: "ismrm2015"
+    lr: 0.0005
+    max_ep: 1000
+    log_interval: 100
+    neighborhood_type: "grid"
+    neighborhood_radius: 16
+    flatten_state: False
+    time: "3-00:00:00"
+    fodf_encoder_ckpt: "encoders/best_model_convs_2048_encoder_only.pth"
+
+  - exp_name: "CrossQ_FODF_Encoder_2"
+    project_name: "TrackToLearn-CrossQ-FODF"
+    dataset: "ismrm2015"
+    lr: 0.00005
+    max_ep: 1000
+    log_interval: 100
+    neighborhood_type: "grid"
+    neighborhood_radius: 16
+    flatten_state: False
+    time: "3-00:00:00"
+    fodf_encoder_ckpt: "encoders/best_model_convs_2048_encoder_only.pth"

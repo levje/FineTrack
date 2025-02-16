@@ -107,9 +107,6 @@ do
     DEST_FOLDER="${EXPDIR}/${EXPNAME}/${EXPID}/${RNGSEED}"
 
     additionnal_args=()
-    if [ $RUN_OFFLINE -eq 1 ]; then
-        additionnal_args+=('--comet_offline_dir' "${LOGSDIR}")
-    fi
 
     if [ -n "$AGENTCHECKPOINT" ]; then
         additionnal_args+=('--agent_checkpoint_dir' "${AGENTCHECKPOINT}")

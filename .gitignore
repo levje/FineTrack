@@ -83,3 +83,8 @@ histograms/
 dipy_segment_*/
 comet_plots/
 test.h5
+fodf_ae_ex/
+
+# Ignore FODF AE data
+test_ae/
+!test_ae/main.py

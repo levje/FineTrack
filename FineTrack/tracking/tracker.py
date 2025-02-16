@@ -204,7 +204,8 @@ class Tracker(object):
 
     def track_and_validate(
         self,
-        env: BaseEnv
+        env: BaseEnv,
+        enable_pbar=False
     ) -> Tuple[Tractogram, float, dict]:
         """
         Run the tracking algorithm without training to see how it performs, but
@@ -235,7 +236,7 @@ class Tracker(object):
 
             # Track for every seed in the environment
             for i, start in enumerate(
-                    tqdm(range(0, len(env.seeds), self.n_actor), disable=True)):
+                    range(0, len(env.seeds), self.n_actor)):
 
                 # Last batch might not be "full"
                 end = min(start + self.n_actor, len(env.seeds))
@@ -250,11 +251,13 @@ class Tracker(object):
 
                 yield batch_tractogram, reward
 
-        for t, r in _generate_streamlines_and_rewards():
-            if tractogram is None and len(t) > 0:
-                tractogram = t
-            elif len(t) > 0:
-                tractogram += t
-            cummulative_reward += r
+        with tqdm(total=len(env.seeds), desc="Validation tracking", disable=not enable_pbar) as pbar:
+            for t, r in _generate_streamlines_and_rewards():
+                if tractogram is None and len(t) > 0:
+                    tractogram = t
+                elif len(t) > 0:
+                    tractogram += t
+                cummulative_reward += r
+                pbar.update(len(t))
 
-        return tractogram,  cummulative_reward
+        return tractogram, cummulative_reward

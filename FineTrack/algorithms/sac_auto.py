@@ -4,33 +4,22 @@ import torch
 import torch.nn as nn
 
 import torch.nn.functional as F
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Tuple
 
-from FineTrack.algorithms.sac import SAC
+from FineTrack.algorithms.sac import SAC, SACHParams
 from FineTrack.algorithms.shared.offpolicy import SACActorCritic
 from FineTrack.algorithms.shared.replay import OffPolicyReplayBuffer, OffPolicyLazyReplayBuffer
 from FineTrack.utils.torch_utils import get_device, gradients_norm
-from FineTrack.algorithms.shared.kl import AdaptiveKLController, FixedKLController
 from FineTrack.environments.state import StateShape
+from FineTrack.algorithms.shared.hyperparameters import HParams
 
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
 
 @dataclass
-class SACAutoHParams:
-    lr: float = 3e-4
-    gamma: float = 0.99
-    n_actors: int = 4096
-
-    alpha: float = 0.2
-    batch_size: int = 2**12
-    replay_size: int = 1e6
-
-    adaptive_kl: bool = False
-    kl_penalty_coeff: float = 0.02
-    kl_target: float = 0.005
-    kl_horizon: int = 1000
+class SACAutoHParams(SACHParams):
+    algorithm: str = field(default="SACAuto", init=False, repr=False)
 
 class SACAuto(SAC):
     """
@@ -55,9 +44,7 @@ class SACAuto(SAC):
         self,
         input_shape: StateShape,
         action_size: int,
-        hidden_dims: int,
-        big_neighborhood: bool,
-        hparams: SACAutoHParams = SACAutoHParams(),
+        hparams: SACAutoHParams,
         rng: np.random.RandomState = None,
         device: torch.device = get_device,
     ):
@@ -87,15 +74,14 @@ class SACAuto(SAC):
         device: torch.device
             Device to use for the algorithm. Should be either "cuda:0"
         """
-        self.hparams = hparams
+        self.hp = hparams
         
         # TO REMOVE
-        self.batch_size = hparams.batch_size
-        self.gamma = hparams.gamma
-        self.alpha = hparams.alpha
-        self.n_actors = hparams.n_actors
-        self.replay_size = hparams.replay_size
-        self.big_neighborhood = big_neighborhood
+        self.batch_size = self.hp.batch_size
+        self.gamma = self.hp.gamma
+        self.alpha = self.hp.alpha
+        self.n_actors = self.hp.n_actor
+        self.replay_size = self.hp.replay_size
 
         self.max_action = 1.
         self.t = 1
@@ -106,39 +92,22 @@ class SACAuto(SAC):
 
         self.rng = rng
 
-        def _assert_same_weights(model1, model2):
-            for p1, p2 in zip(model1.parameters(), model2.parameters()):
-                assert torch.all(torch.eq(p1, p2))
-
         # Initialize main agent
         self.agent = SACActorCritic(
-            input_shape, action_size, hidden_dims, device,
+            input_shape, action_size, self.hp.hidden_dims, device,
         )
-        self.old_agent = copy.deepcopy(self.agent.actor)
-        _assert_same_weights(self.agent.actor, self.old_agent)
-
-        def _post_state_dict_agent_hook(module, incompatible_keys):
-            """
-            Since we are initializing the current and the reference policy
-            with the same weights, we need to make sure that when there's a
-            checkpoint loaded for the current policy (initially), the reference
-            should also be updated with the same weights.
-            """
-            self.old_agent.load_state_dict(self.agent.actor.state_dict())
-
-        self.agent.actor.register_load_state_dict_post_hook(_post_state_dict_agent_hook)
 
         # Auto-temperature adjustment
         # SAC automatically adjusts the temperature to maximize entropy and
         # thus exploration, but reduces it over time to converge to a
         # somewhat deterministic policy.
-        starting_temperature = np.log(self.hparams.alpha)  # Found empirically
+        starting_temperature = np.log(self.hp.alpha)  # Found empirically
         self.target_entropy = -np.prod(action_size).item()
         self.log_alpha = torch.full(
             (1,), starting_temperature, requires_grad=True, device=device)
         # Optimizer for alpha
         self.alpha_optimizer = torch.optim.Adam(
-            [self.log_alpha], lr=self.hparams.lr)
+            [self.log_alpha], lr=self.hp.lr)
 
         # Initialize target agent to provide baseline
         self.target = copy.deepcopy(self.agent)
@@ -146,11 +115,11 @@ class SACAuto(SAC):
         # SAC requires a different model for actors and critics
         # Optimizer for actor
         self.actor_optimizer = torch.optim.Adam(
-            self.agent.actor.parameters(), lr=self.hparams.lr)
+            self.agent.actor.parameters(), lr=self.hp.lr)
 
         # Optimizer for critic
         self.critic_optimizer = torch.optim.Adam(
-            self.agent.critic.parameters(), lr=self.hparams.lr)
+            self.agent.critic.parameters(), lr=self.hp.lr)
 
         # SAC-specific parameters
         self.max_action = 1.
@@ -163,15 +132,10 @@ class SACAuto(SAC):
 
         # Replay buffer
         self.replay_buffer = OffPolicyReplayBuffer(
-            input_shape, action_size, max_size=self.hparams.replay_size)
+            input_shape, action_size, max_size=self.hp.replay_size)
 
         self.rng = rng
-
-        if self.hparams.adaptive_kl:
-            self.kl_penalty_ctrler = AdaptiveKLController(
-                self.hparams.kl_penalty_coeff, self.hparams.kl_target, self.hparams.kl_horizon)
-        else:
-            self.kl_penalty_ctrler = FixedKLController(self.hparams.kl_penalty_coeff)
+        self.start_update_log_was_printed = False
 
     def load_checkpoint(self, checkpoint_file: str):
         """

@@ -2,10 +2,11 @@ import json
 import os
 import random
 from os.path import join as pjoin
-
+from pathlib import Path
 import numpy as np
 import torch
 import time
+import shutil
 
 from FineTrack.algorithms.rl import RLAlgorithm
 from FineTrack.algorithms.shared.utils import old_mean_losses as mean_losses, mean_rewards
@@ -25,6 +26,8 @@ from FineTrack.tracking.tracker import Tracker
 from FineTrack.utils.torch_utils import get_device, assert_accelerator
 from FineTrack.utils.hooks import HooksManager, RlHookEvent
 from FineTrack.utils.backuper import Backuper
+from FineTrack.utils.utils import TTLProfiler
+from FineTrack.algorithms.shared.hyperparameters import HParams
 
 
 class FineTrackTraining(Experiment):
@@ -34,167 +37,80 @@ class FineTrackTraining(Experiment):
 
     def __init__(
         self,
-        train_dto: dict,
+        config: dict,
         comet_experiment=None,
     ):
         """
         Parameters
         ----------
-        train_dto: dict
+        config: dict
             Dictionnary containing the training parameters.
             Put into a dictionnary to prevent parameter errors if modified.
         """
-        self.init_hyperparameters(train_dto)
+        self.init_hyperparameters(config)
 
         self.comet_experiment = comet_experiment
-        self.best_epoch_vc = -np.inf
+        self.comet_experiment.set_name(self.hp.experiment_id)
+        self.best_epoch_metric = -np.inf
         self._hooks_manager = HooksManager(RlHookEvent)
-
 
         # Setup validators, which will handle validation and scoring
         # of the generated streamlines
         self.validators = []
-        if self.tractometer_validator:
+        if self.hp.tractometer_validator:
             tractometer_validator = TractometerValidator(
-                self.scoring_data, self.tractometer_reference,
-                dilate_endpoints=self.tractometer_dilate,
-                min_length=self.min_length, max_length=self.max_length)
+                self.hp.scoring_data, self.hp.tractometer_reference,
+                dilate_endpoints=self.hp.tractometer_dilate,
+                min_length=self.hp.min_length, max_length=self.hp.max_length,
+                oracle_model=self.hp.oracle_crit_checkpoint)
             self.validators.append(tractometer_validator)
-        if self.oracle_validator:  # TODO: This is problematic if we call rl_train multiple times
+        if self.hp.oracle_validator:  # TODO: This is problematic if we call rl_train multiple times
             self.validators.append(OracleValidator(
-                self.oracle_crit_checkpoint, self.device))
+                self.hp.oracle_crit_checkpoint, self.device))
 
-    def init_hyperparameters(self, train_dto: dict):
-        # TODO: Find a better way to pass parameters around
-        self.target_sh_order = train_dto['target_sh_order']
+    @property
+    def hparams_class(self):
+        return HParams
 
-        # Experiment parameters
-        self.experiment_path = train_dto['path']
-        self.experiment = train_dto['experiment']
-        self.name = train_dto['id']
+    def init_hyperparameters(self, config: dict):
+        # Load hyperparameters
+        self.hp = self.hparams_class.from_dict(config)
+
+        self.comet_monitor_was_setup = False
+        self.compute_reward = True  # Always compute reward during training
+        self.fa_map = None
+        self.last_episode = 0
+        self.device = get_device()
 
         # Directories
-        self.model_dir = os.path.join(self.experiment_path, "model")
+        self.model_dir = os.path.join(self.hp.experiment_path, "model")
         self.model_saving_dirs = [self.model_dir]
 
         if not os.path.exists(self.model_dir):
             os.makedirs(self.model_dir)
 
-        # RL parameters
-        self.max_ep = train_dto['max_ep']
-        self.log_interval = train_dto['log_interval']
-        self.noise = train_dto['noise']
-
-        # Training parameters
-        self.lr = train_dto['lr']
-        self.gamma = train_dto['gamma']
-
-        #  Tracking parameters
-        self.step_size = train_dto['step_size']
-        self.dataset_file = train_dto['dataset_file']
-        self.rng_seed = train_dto['rng_seed']
-        self.npv = train_dto['npv']
-
-        # Angular thresholds
-        self.theta = train_dto['theta']
-
-        # More tracking parameters
-        self.min_length = train_dto['min_length']
-        self.max_length = train_dto['max_length']
-        self.binary_stopping_threshold = train_dto['binary_stopping_threshold']
-
-        # Reward parameters
-        self.alignment_weighting = train_dto['alignment_weighting']
-
-        # Model parameters
-        self.hidden_dims = train_dto['hidden_dims']
-
-        # Environment parameters
-        self.n_actor = train_dto['n_actor']
-        self.n_dirs = train_dto['n_dirs']
-
-        # Oracle parameters
-        self.oracle_crit_checkpoint = train_dto['oracle_crit_checkpoint']
-        self.oracle_reward_checkpoint = train_dto['oracle_reward_checkpoint']
-        self.oracle_bonus = train_dto['oracle_bonus']
-        self.oracle_validator = train_dto['oracle_validator']
-        self.oracle_stopping_criterion = train_dto['oracle_stopping_criterion']
-
-        # Tractometer parameters
-        self.tractometer_validator = train_dto['tractometer_validator']
-        self.tractometer_dilate = train_dto['tractometer_dilate']
-        self.tractometer_reference = train_dto['tractometer_reference']
-        self.scoring_data = train_dto['scoring_data']
-
-        self.compute_reward = True  # Always compute reward during training
-        self.use_classic_reward = train_dto['use_classic_reward']
-        self.fa_map = None
-
-        # Various parameters
-        self.last_episode = 0
-
-        self.device = get_device()
-        self.use_comet = train_dto['use_comet']
-        self.comet_offline_dir = train_dto['comet_offline_dir']
-
-        self.comet_monitor_was_setup = False
-        self.reward_with_gt = train_dto['reward_with_gt']
-        self.default_model_dir = 'model'
-
         # RNG
-        torch.manual_seed(self.rng_seed)
-        np.random.seed(self.rng_seed)
-        self.rng = np.random.RandomState(seed=self.rng_seed)
-        random.seed(self.rng_seed)
+        torch.manual_seed(self.hp.rng_seed)
+        np.random.seed(self.hp.rng_seed)
+        self.rng = np.random.RandomState(seed=self.hp.rng_seed)
+        random.seed(self.hp.rng_seed)
 
-        backup_dir = train_dto['backup_dir']
-        self.backuper = Backuper(self.experiment_path, self.experiment,
-                                    self.name, backup_dir)
-
-        self.hyperparameters = {
-            # RL parameters
-            # TODO: Make sure all parameters are logged
-            'name': self.name,
-            'experiment': self.experiment,
-            'max_ep': self.max_ep,
-            'log_interval': self.log_interval,
-            'lr': self.lr,
-            'gamma': self.gamma,
-            # Data parameters
-            'step_size': self.step_size,
-            'random_seed': self.rng_seed,
-            'dataset_file': self.dataset_file,
-            'n_seeds_per_voxel': self.npv,
-            'max_angle': self.theta,
-            'min_length': self.min_length,
-            'max_length': self.max_length,
-            'binary_stopping_threshold': self.binary_stopping_threshold,
-            # Model parameters
-            'experiment_path': self.experiment_path,
-            'hidden_dims': self.hidden_dims,
-            'last_episode': self.last_episode,
-            'n_actor': self.n_actor,
-            'n_dirs': self.n_dirs,
-            'noise': self.noise,
-            # Reward parameters
-            'alignment_weighting': self.alignment_weighting,
-            'use_classic_reward': self.use_classic_reward,
-            # Oracle parameters
-            'oracle_bonus': self.oracle_bonus,
-            'oracle_crit_checkpoint': self.oracle_crit_checkpoint,
-            'oracle_reward_checkpoint': self.oracle_reward_checkpoint,
-            'oracle_stopping_criterion': self.oracle_stopping_criterion,
-        }
+        # Setup Backuper
+        self.backuper = Backuper(self.hp.experiment_path, self.hp.experiment,
+                                    self.hp.experiment_id, self.hp.backup_dir)
+        
 
     def save_hyperparameters(self, filename: str = "hyperparameters.json"):
         """ Save hyperparameters to json file
         """
         # Add input and action size to hyperparameters
         # These are added here because they are not known before
-        self.hyperparameters.update({'input_size': self.input_size.to_dict(),
-                                     'action_size': self.action_size,
-                                     'voxel_size': str(self.voxel_size),
-                                     'target_sh_order': self.target_sh_order})
+        hparams_dict = self.hp.to_dict()
+        hparams_dict.update(self.backuper.to_dict())
+        hparams_dict.update({
+            'input_size': self.input_size.to_dict(),
+            'action_size': self.action_size,
+            'voxel_size': str(self.voxel_size)})
 
         for saving_dir in self.model_saving_dirs:
             with open(
@@ -203,7 +119,7 @@ class FineTrackTraining(Experiment):
             ) as json_file:
                 json_file.write(
                     json.dumps(
-                        self.hyperparameters,
+                        hparams_dict,
                         indent=4,
                         separators=(',', ': ')))
 
@@ -217,9 +133,12 @@ class FineTrackTraining(Experiment):
             os.makedirs(directory)
 
         if is_best_model:
-            alg.save_checkpoint(os.path.join(directory, "best_model_state.ckpt"), **scores_info)
+            ckpt_path = os.path.join(directory, "best_model_state.ckpt")
         else:
-            alg.save_checkpoint(os.path.join(directory, "last_model_state.ckpt"), **scores_info)
+            ckpt_path = os.path.join(directory, "last_model_state.ckpt")    
+        alg.save_checkpoint(ckpt_path, **scores_info)
+
+        return ckpt_path
 
     def rl_train(
         self,
@@ -258,10 +177,10 @@ class FineTrackTraining(Experiment):
         # Initialize Trackers, which will handle streamline generation and
         # trainnig
         train_tracker = Tracker(
-            alg, self.n_actor, prob=0.0, compress=0.0)
+            alg, self.hp.n_actor, prob=0.0, compress=0.0)
 
         valid_tracker = Tracker(
-            alg, self.n_actor,
+            alg, self.hp.n_actor,
             prob=1.0, compress=0.0)
 
         # Run tracking before training to see what an untrained network does
@@ -290,157 +209,147 @@ class FineTrackTraining(Experiment):
                 valid_tractogram, valid_reward, i_episode)
 
         # Main training loop
-        while i_episode < upper_bound:
+        with TTLProfiler(out_file="profiling.prof", enabled=False) as profiler:
+            while i_episode < upper_bound:
+                # Train for an episode
+                self._train_iter(env, train_tracker, i_episode, t)
 
-            # Last episode/epoch. Was initially for resuming experiments but
-            # since they take so little time I just restart them from scratch
-            # Not sure what to do with this
-            self.last_episode = i_episode
+                i_episode += 1
 
-            # Train for an episode
-            env.load_subject()
-            tractogram, losses, reward, reward_factors, mean_ratio = \
-                train_tracker.track_and_train(env)
-
-            # Compute average streamline length
-            lengths = [len(s) for s in tractogram]
-            avg_length = np.mean(lengths)  # Nb. of steps
-
-            # Keep track of how many transitions were gathered
-            t += sum(lengths)
-
-            # Compute average reward per streamline
-            # Should I use the mean or the sum ?
-            avg_reward = reward / self.n_actor
-
-            print(
-                f"Episode Num: {i_episode+1} "
-                f"Avg len: {avg_length:.3f} Avg. reward: "
-                f"{avg_reward:.3f} sub: {env.subject_id}"
-                f"Avg. log-ratio: {mean_ratio:.3f}")
-
-            # Update monitors
-            self.train_reward_monitor.update(avg_reward)
-            self.train_reward_monitor.end_epoch(i_episode)
-            self.train_length_monitor.update(avg_length)
-            self.train_length_monitor.end_epoch(i_episode)
-            self.train_ratio_monitor.update(mean_ratio)
-            self.train_ratio_monitor.end_epoch(i_episode)
-
-            i_episode += 1
-            # Update comet logs
-            if self.comet_experiment is not None:
-                mean_ep_reward_factors = mean_rewards(reward_factors)
-                self.comet_monitor.log_losses(
-                    mean_ep_reward_factors, i_episode)
-
-                self.comet_monitor.update_train(
-                    self.train_reward_monitor, i_episode)
-                self.comet_monitor.update_train(
-                    self.train_length_monitor, i_episode)
-                self.comet_monitor.update_train(
-                    self.train_ratio_monitor, i_episode)
-                mean_ep_losses = mean_losses(losses)
-                self.comet_monitor.log_losses(mean_ep_losses, i_episode)
-
-            # Time to do a valid run and display stats
-            if i_episode % self.log_interval == 0:
-                print("Validation run!")
-                # Validation run
-
-                print("Loading subject...", end="")
-                start = time.time()
-                valid_env.load_subject()
-                print(f" in {time.time() - start} seconds")
-
-                print("Tracking and validating...", end="")
-                start = time.time()
-                valid_tractogram, valid_reward = \
-                    valid_tracker.track_and_validate(valid_env)
-                print(f" in {time.time() - start} seconds")
-
-                print("Computing stopping stats...", end="")
-                start = time.time()
-                stopping_stats = self.stopping_stats(valid_tractogram)
-                print(f" in {time.time() - start} seconds")
-
-                print(stopping_stats)  # DO NOT REMOVE
-
-                print("Logging losses", end="")
-                start = time.time()
-                self.comet_monitor.log_losses(stopping_stats, i_episode)
-                print(f" in {time.time() - start} seconds")
-
-                print("Saving tractogram...", end="")
-                start = time.time()
-                filename = self.save_rasmm_tractogram(
-                    valid_tractogram, valid_env.subject_id,
-                    valid_env.affine_vox2rasmm, valid_env.reference)
-                print(f" in {time.time() - start} seconds")
-
-                print("Scoring tractogram...", end="")
-                start = time.time()
-                scores = self.score_tractogram(
-                    filename, valid_env)
-
-                print(f" in {time.time() - start} seconds")
-
-                print(scores)
-
-                # Display what the network is capable-of "now"
-                self.log(
-                    valid_tractogram, valid_reward, i_episode)
-                self.comet_monitor.log_losses(scores, i_episode)
-                self.save_model(alg, save_model_dir=save_model_dir)
-
-                # Save best_epoch separately
-                is_best_agent = scores["VC"] > self.best_epoch_vc
-                if is_best_agent:
-                    self.best_epoch_vc = scores["VC"]
-                    self._hooks_manager.trigger_hooks(
-                        RlHookEvent.ON_RL_BEST_VC)
-
-                    self.save_model(alg, save_model_dir=save_model_dir,
-                                    is_best_model=True)
+                # Time to do a valid run and display stats
+                if i_episode % self.hp.log_interval == 0 \
+                    or i_episode == upper_bound:
+                    self._valid_iter(valid_env, valid_tracker, alg, i_episode, save_model_dir)
                 
                 # Backup to that directory after each validation run.
+                # This can take a while.
                 self.backuper.backup(step=i_episode)
 
-        # End of training, save the model and hyperparameters and track
+        # Trigger end hooks
+        self._hooks_manager.trigger_hooks(RlHookEvent.ON_RL_TRAIN_END)
+
+    def _train_iter(
+        self,
+        env: BaseEnv,
+        train_tracker: Tracker,
+        i_episode: int,
+        t: int
+    ):
+        # Last episode/epoch. Was initially for resuming experiments but
+        # since they take so little time I just restart them from scratch
+        # Not sure what to do with this
+        self.last_episode = i_episode
+
+        # Train for an episode
+        env.load_subject()
+
+        tractogram, losses, reward, reward_factors, mean_ratio = \
+            train_tracker.track_and_train(env)
+
+        # Compute average streamline length
+        lengths = [len(s) for s in tractogram]
+        avg_length = np.mean(lengths)  # Nb. of steps
+
+        # Keep track of how many transitions were gathered
+        t += sum(lengths)
+
+        # Compute average reward per streamline
+        # Should I use the mean or the sum ?
+        avg_reward = reward / self.hp.n_actor
+
+        print(
+            f"Episode Num: {i_episode+1} "
+            f"Avg len: {avg_length:.3f} Avg. reward: "
+            f"{avg_reward:.3f} sub: {env.subject_id}"
+            f"Avg. log-ratio: {mean_ratio:.3f}")
+
+        # Update monitors
+        self.train_reward_monitor.update(avg_reward)
+        self.train_reward_monitor.end_epoch(i_episode)
+        self.train_length_monitor.update(avg_length)
+        self.train_length_monitor.end_epoch(i_episode)
+        self.train_ratio_monitor.update(mean_ratio)
+        self.train_ratio_monitor.end_epoch(i_episode)
+
+        # Update comet logs
+        if self.comet_experiment is not None:
+            mean_ep_reward_factors = mean_rewards(reward_factors)
+            self.comet_monitor.log_losses(
+                mean_ep_reward_factors, i_episode)
+
+            self.comet_monitor.update_train(
+                self.train_reward_monitor, i_episode)
+            self.comet_monitor.update_train(
+                self.train_length_monitor, i_episode)
+            self.comet_monitor.update_train(
+                self.train_ratio_monitor, i_episode)
+            mean_ep_losses = mean_losses(losses)
+            self.comet_monitor.log_losses(mean_ep_losses, i_episode)
+
+    def _valid_iter(self, valid_env, valid_tracker, alg, i_episode, save_model_dir):
+        print("Validation run!")
+        print("Loading subject...", end="")
+        start = time.time()
         valid_env.load_subject()
-        valid_tractogram, valid_reward = valid_tracker.track_and_validate(
-            valid_env)
+        print(f" in {time.time() - start} seconds")
+
+        start = time.time()
+        print("Tracking and validating...", end="")
+        valid_tractogram, valid_reward = \
+            valid_tracker.track_and_validate(valid_env, enable_pbar=True)
+        print(f" in {time.time() - start} seconds")
+
+        print("Computing stopping stats...", end="")
+        start = time.time()
         stopping_stats = self.stopping_stats(valid_tractogram)
-        print(stopping_stats)
+        print(f" in {time.time() - start} seconds")
 
+        print(stopping_stats)  # DO NOT REMOVE
+
+        print("Logging losses", end="")
+        start = time.time()
         self.comet_monitor.log_losses(stopping_stats, i_episode)
+        print(f" in {time.time() - start} seconds")
 
-        filename = self.save_rasmm_tractogram(valid_tractogram,
-                                              valid_env.subject_id,
-                                              valid_env.affine_vox2rasmm,
-                                              valid_env.reference)
-        scores = self.score_tractogram(filename, valid_env)
+        print("Saving tractogram...", end="")
+        start = time.time()
+        filename = self.save_rasmm_tractogram(
+            valid_tractogram, valid_env.subject_id,
+            valid_env.affine_vox2rasmm, valid_env.reference)
+        print(f" in {time.time() - start} seconds")
+
+        print("Scoring tractogram...", end="")
+        start = time.time()
+        scores = self.score_tractogram(
+            filename, valid_env)
+
+        print(f" in {time.time() - start} seconds")
+
         print(scores)
 
         # Display what the network is capable-of "now"
         self.log(
             valid_tractogram, valid_reward, i_episode)
-
         self.comet_monitor.log_losses(scores, i_episode)
+        ckpt_path = self.save_model(alg, save_model_dir=save_model_dir)
 
-        self.save_model(alg, save_model_dir=save_model_dir)
-        is_best_agent = scores["VC"] > self.best_epoch_vc
+        # Save best_epoch separately
+
+        metric = scores["VC"] if "VC" in scores else valid_reward
+        is_best_agent = metric > self.best_epoch_metric
         if is_best_agent:
-            self.best_epoch_vc = scores["VC"]
+            self.best_epoch_metric = metric
             self._hooks_manager.trigger_hooks(
                 RlHookEvent.ON_RL_BEST_VC)
 
-            self.save_model(alg, save_model_dir=save_model_dir,
-                            is_best_model=True)
-
-        # Trigger end hooks
-        self._hooks_manager.trigger_hooks(RlHookEvent.ON_RL_TRAIN_END)
-        self.backuper.backup(step=i_episode)
+            # Instead of having to pack and serialize the model again,
+            # as this takes time, just copy the file.
+            # This aims to do the following:
+            # self.save_model(alg, save_model_dir=save_model_dir,
+            #                 is_best_model=True)
+            ckpt_path = Path(ckpt_path)
+            best_ckpt_path = ckpt_path.parent / "best_model_state.ckpt"
+            shutil.copyfile(ckpt_path, best_ckpt_path)
 
     def setup_logging(self):
         # Save hyperparameters
@@ -466,8 +375,9 @@ class FineTrackTraining(Experiment):
 
         # Voxel size
         self.voxel_size = env.get_voxel_size()
+
         # SH Order (used for tracking afterwards)
-        self.target_sh_order = env.target_sh_order
+        self.hp.target_sh_order = env.target_sh_order
 
         return env
 
@@ -485,12 +395,12 @@ class FineTrackTraining(Experiment):
         max_traj_length = env.max_nb_steps
 
         # The RL training algorithm
-        alg = self.get_alg(max_traj_length)
+        alg = self.get_alg(max_traj_length, env.neigh_manager)
 
         self.setup_logging()
 
         # Start training !
-        self.rl_train(alg, env, valid_env, self.max_ep)
+        self.rl_train(alg, env, valid_env, self.hp.max_ep, test_before_training=False)
 
 
 def add_rl_args(parser):

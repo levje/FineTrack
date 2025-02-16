@@ -87,10 +87,10 @@ def make_fc_network(
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, norm_layer=nn.Identity, norm_layer_kwargs={}):
         super(ResidualBlock, self).__init__()
-        self.conv1 = nn.Conv3d(in_channels, 2*in_channels, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv3d(2*in_channels, in_channels, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv3d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv3d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)
         self.activation = nn.GELU()
-        self.norm_layer_1 = norm_layer(2*in_channels, **norm_layer_kwargs)
+        self.norm_layer_1 = norm_layer(in_channels, **norm_layer_kwargs)
         self.norm_layer_2 = norm_layer(in_channels, **norm_layer_kwargs)
  
     def forward(self, x):
@@ -102,6 +102,41 @@ class ResidualBlock(nn.Module):
         out += residual
         out = self.activation(out)
         out = self.norm_layer_2(out)
+        return out
+    
+class ResNextBlock(nn.Module):
+    def __init__(self, in_channels, hidden_channels, cardinality=8, stride=1):
+        super(ResNextBlock, self).__init__()
+        print(f"Trying to create a block with cardinality {cardinality}, hidden_channels {hidden_channels}, stride {stride}")
+        self.cardinality = cardinality
+        self.conv1x1_1 = nn.Conv3d(in_channels, hidden_channels, kernel_size=1)
+        self.conv3x3 = nn.Conv3d(hidden_channels, hidden_channels, kernel_size=3, stride=stride,
+                                 padding=1, groups=self.cardinality)
+        self.conv1x1_2 = nn.Conv3d(hidden_channels, in_channels, kernel_size=1)
+        self.bn = nn.BatchNorm3d(in_channels)
+        self.activ = nn.ReLU()
+
+    def forward(self, x):
+        residue = x
+        out = self.conv1x1_1(x)
+        out = self.activ(out)
+        out = self.conv3x3(out)
+        out = self.activ(out)
+        out = self.conv1x1_2(out)
+        out = self.bn(out)
+        out += residue
+        return out
+
+    
+class DWSConv3d(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, dilation=1, stride=1, padding=1):
+        super().__init__()
+        self.conv1 = nn.Conv3d(in_channels, in_channels, kernel_size=kernel_size, groups=in_channels, stride=stride, padding=padding)
+        self.conv2 = nn.Conv3d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
+    
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.conv2(out)
         return out
 
 def make_conv_network(input_size, output_size,

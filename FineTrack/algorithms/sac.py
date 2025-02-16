@@ -3,13 +3,29 @@ import numpy as np
 import torch
 
 from typing import Tuple
+from collections import defaultdict
+from dataclasses import dataclass, field
 
-from FineTrack.algorithms.ddpg import DDPG
+from FineTrack.algorithms.rl import RLAlgorithm
+from FineTrack.algorithms.shared.hyperparameters import HParams
+from FineTrack.environments.env import BaseEnv
 from FineTrack.algorithms.shared.offpolicy import SACActorCritic
 from FineTrack.algorithms.shared.replay import OffPolicyReplayBuffer
+from FineTrack.algorithms.shared.utils import add_item_to_means
 from FineTrack.utils.torch_utils import get_device
+from FineTrack.utils.logging import get_logger
 
-class SAC(DDPG):
+LOGGER = get_logger(__name__)
+
+@dataclass
+class SACHParams(HParams):
+    algorithm: str = field(default="SAC", init=False, repr=False)
+    alpha: float
+    batch_size: int
+    replay_size: int
+    utd: int
+
+class SAC(RLAlgorithm):
     """
     The sample-gathering and training algorithm.
     Based on
@@ -33,13 +49,7 @@ class SAC(DDPG):
         self,
         input_size: int,
         action_size: int,
-        hidden_dims: str,
-        lr: float = 3e-4,
-        gamma: float = 0.99,
-        alpha: float = 0.2,
-        n_actors: int = 4096,
-        batch_size: int = 2**12,
-        replay_size: int = 1e6,
+        hparams: SACHParams,
         rng: np.random.RandomState = None,
         device: torch.device = get_device(),
     ):
@@ -71,21 +81,21 @@ class SAC(DDPG):
         device: torch.device
             Device to train on. Should always be cuda:0
         """
-
+        self.hp = hparams
         self.max_action = 1.
         self.t = 1
 
         self.action_size = action_size
-        self.lr = lr
-        self.gamma = gamma
+        self.lr = self.hp.lr
+        self.gamma = self.hp.gamma
         self.device = device
-        self.n_actors = n_actors
+        self.n_actors = self.hp.n_actor
 
         self.rng = rng
 
         # Initialize main policy
         self.agent = SACActorCritic(
-            input_size, action_size, hidden_dims, device,
+            input_size, action_size, self.hp.hidden_dims, device,
         )
 
         # Initialize target policy to provide baseline
@@ -94,14 +104,14 @@ class SAC(DDPG):
         # SAC requires a different model for actors and critics
         # Optimizer for actor
         self.actor_optimizer = torch.optim.Adam(
-            self.agent.actor.parameters(), lr=lr)
+            self.agent.actor.parameters(), lr=self.hp.lr)
 
         # Optimizer for critic
         self.critic_optimizer = torch.optim.Adam(
-            self.agent.critic.parameters(), lr=lr)
+            self.agent.critic.parameters(), lr=self.hp.lr)
 
         # Temperature
-        self.alpha = alpha
+        self.alpha = self.hp.alpha
 
         # SAC-specific parameters
         self.max_action = 1.
@@ -111,14 +121,53 @@ class SAC(DDPG):
         self.total_it = 0
         self.tau = 0.005
 
-        self.batch_size = batch_size
-        self.replay_size = replay_size
+        self.batch_size = self.hp.batch_size
+        self.replay_size = self.hp.replay_size
 
         # Replay buffer
         self.replay_buffer = OffPolicyReplayBuffer(
-            input_size, action_size, max_size=replay_size)
+            input_size, action_size, max_size=self.hp.replay_size)
 
         self.rng = rng
+        self.start_update_log_was_printed = False
+
+    def load_checkpoint(self, checkpoint_file: str):
+        """
+        Load a checkpoint into the algorithm.
+
+        Parameters
+        ----------
+        checkpoint: dict
+            Dictionary containing the checkpoint to load.
+        """
+        checkpoint = torch.load(checkpoint_file, weights_only=False)
+
+        self.agent.load_checkpoint(checkpoint['agent'])
+        self.target.load_checkpoint(checkpoint['target'])
+        self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
+        self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
+        if checkpoint.get('replay_buffer', None) is not None:
+            self.replay_buffer.load_state_dict(checkpoint['replay_buffer'])
+
+    def save_checkpoint(self, checkpoint_file: str, **extra_info):
+        """
+        Save the current state of the algorithm into a checkpoint.
+
+        Parameters
+        ----------
+        checkpoint_file: str
+            File to save the checkpoint into.
+        """
+        checkpoint = {
+            'agent': self.agent.state_dict(as_dict=True),
+            'target': self.target.state_dict(as_dict=True),
+            'actor_optimizer': self.actor_optimizer.state_dict(),
+            'critic_optimizer': self.critic_optimizer.state_dict(),
+            'replay_buffer': self.replay_buffer.state_dict(),
+            **extra_info
+        }
+
+        torch.save(checkpoint, checkpoint_file)
 
     def sample_action(
         self,
@@ -131,6 +180,110 @@ class SAC(DDPG):
         action = self.agent.select_action(state, probabilistic=1.0)
 
         return action
+
+    def _episode(
+        self,
+        initial_state: np.ndarray,
+        env: BaseEnv,
+    ) -> Tuple[float, float, float, int]:
+        """
+        Main loop for the algorithm
+        From a starting state, run the model until the env. says its done
+        Gather transitions and train on them according to the RL algorithm's
+        rules.
+
+        Parameters
+        ----------
+        initial_state: np.ndarray
+            Initial state of the environment
+        env: BaseEnv
+            The environment actions are applied on. Provides the state fed to
+            the RL algorithm
+
+        Returns
+        -------
+        running_reward: float
+            Sum of rewards gathered during the episode
+        running_losses: dict
+            Dict. containing losses and training-related metrics.
+        episode_length: int
+            Length of the episode
+        running_reward_factors: dict
+            Dict. containing the factors that contributed to the reward
+        """
+
+        running_reward = 0
+        state = initial_state
+        done = False
+        running_losses = defaultdict(list)
+        running_reward_factors = defaultdict(list)
+
+        episode_length = 0
+
+        self.replay_buffer.enter_write_mode()
+
+        while not np.all(done):
+
+            # Select action according to policy + noise for exploration
+            with torch.no_grad():
+                action = self.sample_action(state)
+
+            # Perform action
+            next_state, _, reward, done, info = env.step(
+                action.to(device='cpu', copy=True).numpy())
+            done_bool = done
+
+            running_reward_factors = add_item_to_means(
+                running_reward_factors, info['reward_info'])
+
+            # Store data in replay buffer
+            # WARNING: This is a bit of a trick and I'm not entirely sure this
+            # is legal. This is effectively adding to the replay buffer as if
+            # I had n agents gathering transitions instead of a single one.
+            # This is not mentionned in the TD3 paper. PPO2 does use multiple
+            # learners, though.
+            # I'm keeping it since since it reaaaally speeds up training with
+            # no visible costs
+            self.replay_buffer.add(
+                state.to('cpu', copy=True),
+                action.to('cpu', copy=True),
+                next_state.to('cpu', copy=True),
+                torch.as_tensor(reward[..., None], dtype=torch.float32),
+                torch.as_tensor(done_bool[..., None], dtype=torch.float32))
+
+            running_reward += sum(reward)
+
+            # Train agent after collecting sufficient data
+            if self.t >= self.start_timesteps:
+                if not self.start_update_log_was_printed:
+                    self.start_update_log_was_printed = True
+                    LOGGER.info("Acquired enough data to start updating the agent!")
+                    print("Acquired enough data to start updating the agent!")
+
+                # Update several times
+                self.replay_buffer.enter_read_mode()
+                for _ in range(self.hp.utd):
+                    batch = self.replay_buffer.sample(self.batch_size)
+                    losses = self.update(
+                        batch)
+            
+                    running_losses = add_item_to_means(running_losses, losses)
+
+            self.t += action.shape[0]
+
+            # "Harvesting" here means removing "done" trajectories
+            # from state as well as removing the associated streamlines
+            # This line also set the next_state as the state
+            state, _, _ = env.harvest()
+
+            # Keeping track of episode length
+            episode_length += 1
+        return (
+            running_reward,
+            running_losses,
+            episode_length,
+            running_reward_factors,
+            0)
 
     def update(
         self,
