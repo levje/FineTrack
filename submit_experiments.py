@@ -240,9 +240,10 @@ cp $SLURM_TMPDIR/data/$OUTNAME ~/scratch/$OUTNAME
 # Submit the jobs to SLURM.
 ######################################################
 if not args.dry_run:
-    if args.local:
-        print(f"Running experiment {exp_name} locally with job script: {slurm_script_path}")
-        subprocess.run(["qc", "bash", slurm_script_path], check=True)
-    else:
-        print(f"Submitted experiment {exp_name} with job script: {slurm_script_path}")
-        subprocess.run(["sbatch", slurm_script_path], check=True)
+    for exp_name, exp_id, slurm_script_path in all_jobs:
+        if args.local:
+            print(f"Running experiment {exp_name} locally with job script: {slurm_script_path}")
+            subprocess.run(["qc", "bash", slurm_script_path], check=True)
+        else:
+            print(f"Submitted experiment {exp_name} with job script: {slurm_script_path}")
+            subprocess.run(["sbatch", slurm_script_path], check=True)

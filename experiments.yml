@@ -62,8 +62,9 @@ experiments:
     dataset: "ismrm2015"
     lr: 0.0005
     max_ep: 1000
+    log_interval: 100
     neighborhood_type: "grid"
-    neighborhood_radius: 8
+    neighborhood_radius: 16
     flatten_state: False
     time: "3-00:00:00"
     fodf_encoder_ckpt: "encoders/best_model_convs_2048_encoder_only.pth"
@@ -73,8 +74,9 @@ experiments:
     dataset: "ismrm2015"
     lr: 0.00005
     max_ep: 1000
+    log_interval: 100
     neighborhood_type: "grid"
-    neighborhood_radius: 8
+    neighborhood_radius: 16
     flatten_state: False
     time: "3-00:00:00"
     fodf_encoder_ckpt: "encoders/best_model_convs_2048_encoder_only.pth"
