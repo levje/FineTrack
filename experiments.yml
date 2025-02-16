@@ -20,8 +20,8 @@ data:
 
 global:
   project_name: "TrackToLearn-CrossQ"
-  reward_ckpt: "/oracles/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Classif/_best_vc_epoch.ckpt"
-  crit_ckpt: "/oracles/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Dense/_best_vc_epoch.ckpt"
+  reward_ckpt: "oracles/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Classif/_best_vc_epoch.ckpt"
+  crit_ckpt: "oracles/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Dense/_best_vc_epoch.ckpt"
   launch_script: "FineTrack/trainers/cross_q_train.py"
   use_comet: True
   hidden_dims: "1024-1024-1024"
@@ -57,7 +57,24 @@ experiments:
     lr: 0.0005
     max_ep: 1000
 
-  - exp_name: "CrossQ_LR_00001"
+  - exp_name: "CrossQ_FODF_Encoder_1"
+    project_name: "TrackToLearn-CrossQ-FODF"
     dataset: "ismrm2015"
-    lr: 0.00001
-    max_ep: 50
+    lr: 0.0005
+    max_ep: 1000
+    neighborhood_type: "grid"
+    neighborhood_radius: 8
+    flatten_state: False
+    time: "3-00:00:00"
+    fodf_encoder_ckpt: "encoders/best_model_convs_2048_encoder_only.pth"
+
+  - exp_name: "CrossQ_FODF_Encoder_2"
+    project_name: "TrackToLearn-CrossQ-FODF"
+    dataset: "ismrm2015"
+    lr: 0.00005
+    max_ep: 1000
+    neighborhood_type: "grid"
+    neighborhood_radius: 8
+    flatten_state: False
+    time: "3-00:00:00"
+    fodf_encoder_ckpt: "encoders/best_model_convs_2048_encoder_only.pth"
