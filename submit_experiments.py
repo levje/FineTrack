@@ -187,7 +187,7 @@ DEST_FOLDER="{EXPDIR}/{exp_name}/{exp_id}/{exp_config['seed']}"
 # Run training script
 echo "Running experiment..."
 python -O {SOURCEDIR}/{exp_config["launch_script"]} \\
-    {exp_name} \\
+    $DEST_FOLDER \\
     "{exp_config['project_name']}" \\
     "{exp_id}" \\
     "{slurm_ds_dir}/{dataset_name}.hdf5" \\

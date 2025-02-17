@@ -49,7 +49,7 @@ global:
   log_interval: 50
   workspace: "mrzarfir"
   time: "0-40:00:00"
-  mem: "32000M"
+  mem: "40000M"
     
 experiments:
   - exp_name: "CrossQ_TractoInferno"
