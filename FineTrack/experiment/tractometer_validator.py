@@ -451,47 +451,39 @@ class TractometerValidator(Validator):
         # If an oracle is provided, we evaluate its accuracy of predicting
         # the validity of streamlines. 
         if self.oracle_model is not None:
+            def predict_on_sft(sft, is_valid=True):
+                target_scores = np.ones(len(sft)) if is_valid else np.zeros(len(sft))
+                batch_size = 256
+                N = len(sft.streamlines)
+                scores = np.zeros((N))
+                for i in range(0, N, batch_size):
+                    j = min(i + batch_size, N)
+                    batch_scores = self.oracle_model.predict(sft.streamlines[i:j])
+                    scores[i:j] = batch_scores
+                preds = (scores > 0.5).astype(float)
+                nb_right = (target_scores == preds).sum()
+                nb_elements = len(sft)
+                return nb_right, nb_elements
+
+            # Predicting on valid/invalid is faster than grouping all the sfts together
+            # then predicting on them, and this is more gentle on memory.
             LOGGER.info("Evaluating the oracle model's accuracy...")
-            # Predict on the valid bundles
-            sft = self._combine_to_scored_sft(vb_sft_list, nc_sft)
-            sft.to_vox()
-            sft.to_corner()
+            total_right, total_elements = 0, 0
+
+            LOGGER.info("Predicting on the invalid bundles...")
+            nc_sft.to_vox()
+            nc_sft.to_corner()
+            nb_right, nb_elements = predict_on_sft(nc_sft, is_valid=False)
+            total_right += nb_right
+            total_elements += nb_elements
+
+            LOGGER.info("Predicting on the valid bundles...")
+            for valid_sft in vb_sft_list:
+                valid_sft.to_vox()
+                valid_sft.to_corner()
+                nb_right, nb_elements = predict_on_sft(valid_sft, is_valid=True)
+                total_right += nb_right
+                total_elements += nb_elements
             
-            streamlines = sft.streamlines
-            target_scores = sft.data_per_streamline['scores']
-
-            batch_size = 256
-            N = len(streamlines)
-            scores = np.zeros((N))
-            for i in range(0, N, batch_size):
-                j = min(i + batch_size, N)
-                batch_scores = self.oracle_model.predict(streamlines[i:j])
-                scores[i:j] = batch_scores
-            preds = (scores > 0.5).astype(float)
-
-            accuracy = (target_scores == preds).mean()
-            relevant_results["Oracle_Accuracy"] = accuracy
+            relevant_results["Oracle_Accuracy"] = total_right / total_elements
             return relevant_results
-    
-    def _combine_to_scored_sft(self, vb_sft_list, nc_sft):
-        """
-        Combine the different types of streamlines into a single StatefulTractogram.
-        """
-
-        # Combine all the streamlines
-        full_sft = nc_sft
-        full_sft.data_per_streamline['scores'] = np.zeros(len(full_sft))
-        
-        full_sft.to_corner() # Why is this required...?
-
-        for sft in vb_sft_list:
-            nb_streamlines = len(sft)
-
-            if nb_streamlines == 0:
-                continue
-
-            scores = np.ones(nb_streamlines)
-            sft.data_per_streamline['scores'] = scores
-            full_sft += sft
-
-        return full_sft
