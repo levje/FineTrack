@@ -184,6 +184,8 @@ cp {os.path.join(PROJECTS_DIR, exp_config["crit_ckpt"])} $ORACLE_CRIT_CHECKPOINT
 
 DEST_FOLDER="{EXPDIR}/{exp_name}/{exp_id}/{exp_config['seed']}"
 
+mkdir -p $DEST_FOLDER
+
 # Run training script
 echo "Running experiment..."
 python -O {SOURCEDIR}/{exp_config["launch_script"]} \\

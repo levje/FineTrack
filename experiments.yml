@@ -52,10 +52,10 @@ global:
   mem: "40000M"
     
 experiments:
-  - exp_name: "CrossQ_TractoInferno"
-    dataset: "tractoinferno"
-    lr: 0.0005
-    max_ep: 1000
+  # - exp_name: "CrossQ_TractoInferno"
+  #   dataset: "tractoinferno"
+  #   lr: 0.0005
+  #   max_ep: 1000
 
   - exp_name: "CrossQ_FODF_Encoder_1"
     project_name: "TrackToLearn-CrossQ-FODF"
