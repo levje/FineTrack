@@ -88,3 +88,8 @@ fodf_ae_ex/
 # Ignore FODF AE data
 test_ae/
 !test_ae/main.py
+
+# Nextflow
+.nextflow/
+nf_output_dir/
+results_rbx/
