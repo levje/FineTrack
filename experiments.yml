@@ -205,4 +205,24 @@ experiments:
     oracle_train_steps: 4
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     max_ep: 20
+
+  - exp_name: "CrossQ_RLHF_4"
+    extra_type: "rlhf"
+    project_name: "CrossQ_RLHF"
+    dataset: "ismrm2015"
+    lr: 0.0005
+    oracle_lr: 0.0001
+    oracle_train_steps: 10
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    max_ep: 20
+
+  - exp_name: "CrossQ_RLHF_5"
+    extra_type: "rlhf"
+    project_name: "CrossQ_RLHF"
+    dataset: "ismrm2015"
+    lr: 0.0005
+    oracle_lr: 0.0001
+    oracle_train_steps: 3
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    max_ep: 30
     
