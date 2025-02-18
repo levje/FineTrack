@@ -55,10 +55,10 @@ data:
       cluster: "~/projects/def-pmjodoin/levje/datasets/ismrm2015_2mm_ttl.tar.gz"
     tractometer_reference:
       local: "~/Documents/FineTrack/data/datasets/ismrm2015_2mm/scoring_data/t1.nii.gz" # Path within the dataset directory
-      cluster: "$SLURM_TMPDIR/data/ismrm2015_2mm/scoring_data/t1.nii.gz"
+      cluster: "scoring_data/t1.nii.gz"
     scoring_data:
       local: "~/Documents/FineTrack/data/datasets/ismrm2015_2mm/scoring_data/" # Path within the dataset directory
-      cluster: "$SLURM_TMPDIR/data/ismrm2015_2mm/scoring_data/"
+      cluster: "scoring_data/"
   tractoinferno: 
     name: "tractoinferno"
     location:
