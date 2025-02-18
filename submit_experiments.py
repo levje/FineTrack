@@ -5,7 +5,6 @@ from datetime import datetime
 import argparse
 
 from typing import Union
-from FineTrack.trainers.rlhf_train_simple import RlhfHParams
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Submit experiments to SLURM.")
