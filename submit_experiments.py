@@ -3,6 +3,7 @@ import os
 import subprocess
 from datetime import datetime
 import argparse
+from pathlib import Path
 
 from typing import Union
 
@@ -286,9 +287,16 @@ def get_prepare_dataset_command(dataset_name, data_config, data_dir, is_local):
         dataset_dir = data_dir
 
     if dataset_type == "tar":
-        return f"tar xf {dataset_path} -C {data_dir}", os.path.join(data_dir, "ismrm2015_2mm")
+        archive_path = dataset_path
+        output_path = data_dir
+        
+        slurm_dataset_dir = os.path.join(data_dir, "ismrm2015_2mm")
+        hdf5_path = os.path.join(slurm_dataset_dir, "ismrm2015.hdf5")
+
+        return f"tar xf {archive_path} -C {output_path}", slurm_dataset_dir, hdf5_path
     elif dataset_type == "hdf5":
-        return f"cp {dataset_path} {dataset_dir}/{dataset_name}.hdf5", dataset_dir
+        hdf5_path = Path(dataset_dir) / Path(dataset_path).name
+        return f"cp {dataset_path} {dataset_dir}/{dataset_name}.hdf5", dataset_dir, str(hdf5_path)
     else:
         raise ValueError(f"Unknown dataset format: {dataset_path}")
 
@@ -325,7 +333,7 @@ def main():
 
         # Paths to the dataset
         dataset_name = config["dataset"]
-        prepare_ds_cmd, ds_dir = get_prepare_dataset_command(dataset_name, config_manager.data_config, config_manager.DATADIR, args.local)
+        prepare_ds_cmd, ds_dir, hdf5_path = get_prepare_dataset_command(dataset_name, config_manager.data_config, config_manager.DATADIR, args.local)
 
         # If the dataset has a field "tractometer_reference", add it to the extra flags
         if config_manager.data_config[dataset_name].get("tractometer_reference", None) is not None:
@@ -336,7 +344,6 @@ def main():
 
         # SLURM script content
         script_path = os.path.join(config_manager.SOURCEDIR, config["launch_script"])
-        hdf5_path = config_manager.data_config[dataset_name].get("location", None)
         extra_flags_string = extra_flags_manager.compile_flags(linebreak=True, indent=1, start_with_linebreak=True)
         slurm_script = f"""#!/bin/bash
 #SBATCH --gres=gpu:1
