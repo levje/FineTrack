@@ -135,6 +135,7 @@ class Experiment(object):
             'flatten_state': self.hp.flatten_state,
             'fodf_encoder_ckpt': self.hp.fodf_encoder_ckpt,
             'interpolation': self.hp.interpolation,
+            'extractor_target': self.hp.extractor_target,
         }
 
         if noisy:
@@ -288,6 +289,58 @@ class Experiment(object):
             all_scores.update(scores)
 
         return all_scores
+    
+    def save_sft(self,
+        sft,
+        subject_id: str,
+        save_dir: str = None,
+        extension: str = 'trk'):
+
+        # Save on the experiment path, or on a specific directory if provided.
+        path_prefix = save_dir if save_dir else self.hp.experiment_path
+
+        # Save tractogram so it can be looked at, used by the tractometer
+        # and more
+        filename = pjoin(
+            path_prefix,
+            "tractogram_{}_{}_{}.{}".format(self.hp.experiment,
+                                            self.hp.experiment_id,
+                                            subject_id, extension))
+        
+        save_tractogram(sft, filename, bbox_valid_check=False)
+        return filename
+
+    def convert_to_rasmm_sft(
+        self,
+        tractogram,
+        affine: np.ndarray,
+        reference: nib.Nifti1Image
+    ) -> StatefulTractogram:
+        """
+        Converts a tractogram to RASMM space.
+        """
+        # Prune empty streamlines, keep only streamlines that have more
+        # than the seed.
+        indices = [i for (i, s) in enumerate(tractogram.streamlines)
+                   if len(s) > 1]
+
+        tractogram.apply_affine(affine)
+
+        streamlines = tractogram.streamlines[indices]
+        data_per_streamline = tractogram.data_per_streamline[indices]
+        data_per_point = tractogram.data_per_point[indices]
+
+        tractogram.apply_affine(affine)
+        sft = StatefulTractogram(
+            streamlines,
+            reference,
+            Space.RASMM,
+            origin=Origin.TRACKVIS,
+            data_per_streamline=data_per_streamline,
+            data_per_point=data_per_point)
+
+        sft.to_rasmm()
+        return sft
 
     def save_rasmm_tractogram(
         self,
@@ -312,42 +365,9 @@ class Experiment(object):
         filename: str
             Filename of the saved tractogram.
         """
-
-        # Save on the experiment path, or on a specific directory if provided.
-        path_prefix = save_dir if save_dir else self.hp.experiment_path
-
-        # Save tractogram so it can be looked at, used by the tractometer
-        # and more
-        filename = pjoin(
-            path_prefix,
-            "tractogram_{}_{}_{}.{}".format(self.hp.experiment,
-                                            self.hp.experiment_id,
-                                            subject_id, extension))
-
-        # Prune empty streamlines, keep only streamlines that have more
-        # than the seed.
-        indices = [i for (i, s) in enumerate(tractogram.streamlines)
-                   if len(s) > 1]
-
-        tractogram.apply_affine(affine)
-
-        streamlines = tractogram.streamlines[indices]
-        data_per_streamline = tractogram.data_per_streamline[indices]
-        data_per_point = tractogram.data_per_point[indices]
-
-        sft = StatefulTractogram(
-            streamlines,
-            reference,
-            Space.RASMM,
-            origin=Origin.TRACKVIS,
-            data_per_streamline=data_per_streamline,
-            data_per_point=data_per_point)
-
-        sft.to_rasmm()
-
-        save_tractogram(sft, filename, bbox_valid_check=False)
-
-        return filename
+        sft = self.convert_to_rasmm_sft(tractogram, affine, reference)
+        return self.save_sft(sft, subject_id, save_dir, extension)
+        
 
     def log(
         self,
@@ -523,6 +543,13 @@ def add_tractometer_args(parser: ArgumentParser):
                          help='Dilation factor for the ROIs of the '
                               'Tractometer.')
 
+def add_extractor_args(parser: ArgumentParser):
+    extractor = parser.add_argument_group('Extractor')
+    extractor.add_argument('--extractor_validator', action='store_true',
+                           help='Run extractor during validation to monitor' +
+                           ' how the training is doing w.r.t. ground truth.')
+    extractor.add_argument('--extractor_target', type=str, default=None,
+                           help='Target file for the extractor.')
 
 def add_oracle_args(parser: ArgumentParser):
     oracle = parser.add_argument_group('Oracle')

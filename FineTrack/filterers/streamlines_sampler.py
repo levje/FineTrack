@@ -4,13 +4,21 @@ from FineTrack.utils.logging import get_logger
 
 LOGGER = get_logger(__name__)
 
+class IdentitySampler(object):
+    def __init__(self):
+        pass
+
+    def sample_streamlines(self, valid_sft: StatefulTractogram, invalid_sft: StatefulTractogram):
+        return valid_sft, invalid_sft
+
 class StreamlinesSampler(object):
     def __init__(self):
         pass
 
     def sample_streamlines(self,
                            valid_sft: StatefulTractogram,
-                           invalid_sft: StatefulTractogram):
+                           invalid_sft: StatefulTractogram,
+                           force_zero: bool = False):
         """
         Equalize the number of streamlines in the tractogram to the reference.
 
@@ -26,7 +34,7 @@ class StreamlinesSampler(object):
 
         if nb_valid == nb_invalid:
             return valid_sft, invalid_sft
-        elif nb_valid == 0 or nb_invalid == 0:
+        elif (nb_valid == 0 or nb_invalid == 0) and force_zero:
             return valid_sft, invalid_sft
         elif nb_valid > nb_invalid:
             return self._sample_streamlines(

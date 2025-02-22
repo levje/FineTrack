@@ -18,7 +18,8 @@ from FineTrack.experiment.experiment import (add_data_args,
                                                 add_oracle_args,
                                                 add_reward_args,
                                                 add_tracking_args,
-                                                add_tractometer_args)
+                                                add_tractometer_args,
+                                                add_extractor_args)
 from FineTrack.experiment.oracle_validator import OracleValidator
 from FineTrack.experiment.tractometer_validator import TractometerValidator
 from FineTrack.experiment.experiment import Experiment
@@ -187,7 +188,7 @@ class FineTrackTraining(Experiment):
         if test_before_training:
             valid_env.load_subject()
             valid_tractogram, valid_reward = valid_tracker.track_and_validate(
-                valid_env)
+                valid_env, enable_pbar=True)
             stopping_stats = self.stopping_stats(valid_tractogram)
             print(stopping_stats)
             if valid_tractogram:
@@ -431,3 +432,4 @@ def add_training_args(parser):
     add_tracking_args(parser)
     add_oracle_args(parser)
     add_tractometer_args(parser)
+    add_extractor_args(parser)

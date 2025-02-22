@@ -12,16 +12,18 @@ class Filterer(metaclass=ABCMeta):
 
     def __call__(self, tractogram, out_dir, scored_extension="trk"):
         """Filter a list of tracts."""
-        valid, invalid = self._filter(tractogram, out_dir, scored_extension)
-        valid, invalid = \
-            self.sampler.sample_streamlines(valid, invalid)
+        valid, invalid, subject_ids = self._filter(tractogram, out_dir, scored_extension)
 
-        # Make sure the number of valid and invalid is almost equal
-        assert np.abs(len(valid) - len(invalid)) < 5, \
-            f"Number of valid and invalid streamlines differ by more than 5. " \
-            f"Valid: {len(valid)}, invalid: {len(invalid)}"
+        if self.sampler is not None:
+            valid, invalid = \
+                self.sampler.sample_streamlines(valid, invalid)
+
+            # Make sure the number of valid and invalid is almost equal
+            assert np.abs(len(valid) - len(invalid)) < 5, \
+                f"Number of valid and invalid streamlines differ by more than 5. " \
+                f"Valid: {len(valid)}, invalid: {len(invalid)}"
         
-        return valid, invalid
+        return valid, invalid, subject_ids
         
     @abstractmethod
     def _filter(self, tractogram, out_dir, scored_extension="trk") -> Tuple[StatefulTractogram, StatefulTractogram]:

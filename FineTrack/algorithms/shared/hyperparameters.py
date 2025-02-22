@@ -40,6 +40,10 @@ class HParams:
     tractometer_reference: str
     scoring_data: str
 
+    # Extractor parameters
+    extractor_validator: bool
+    extractor_target: str
+
     # Tracking parameters
     npv: int
     theta: float # Angular thresholds

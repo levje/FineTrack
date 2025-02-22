@@ -8,6 +8,9 @@ from pathlib import Path
 
 from comet_ml import Experiment as CometExperiment
 
+from dipy.io.streamline import load_tractogram
+from dipy.io.streamline import save_tractogram
+
 from FineTrack.utils.logging import get_logger
 from FineTrack.trainers.cross_q_train import CrossQFineTrackTraining
 from FineTrack.trainers.sac_auto_train import FineTrackTraining, add_sac_auto_args, SACAutoFineTrackTraining
@@ -20,6 +23,7 @@ from FineTrack.algorithms.cross_q import CrossQ, CrossQHParams
 from FineTrack.environments.env import BaseEnv
 from FineTrack.tracking.tracker import Tracker
 from FineTrack.filterers.tractometer_filterer import TractometerFilterer
+from FineTrack.filterers.extractor.extractor_filterer import ExtractorFilterer
 from FineTrack.oracles.oracle import OracleSingleton
 from FineTrack.trainers.oracle.oracle_trainer import OracleTrainer
 from FineTrack.trainers.oracle.data_module import StreamlineDataModule
@@ -60,13 +64,12 @@ class RlhfHParams(CrossQHParams):
 
     def __post_init__(self):
         assert self.pretrain_max_ep is not None \
-            or (self.agent_checkpoint_dir is not None \
-                or self.agent_checkpoint is not None), \
-            "Either pretrain_max_ep or (agent_checkpoint | agent_checkpoint_dir) must be provided for RLHF training."
+            or self.agent_checkpoint is not None, \
+            "Either pretrain_max_ep or agent_checkpoint must be provided for RLHF training."
         
         if self.agent_checkpoint:
             assert os.path.isfile(
-                self.agent_checkpoint), "Agent checkpoint must be an checkpoint file."
+                self.agent_checkpoint), "Agent checkpoint must be a checkpoint file."
 
 class RlhfTraining(FineTrackTraining):
 
@@ -119,10 +122,8 @@ class RlhfTraining(FineTrackTraining):
         self.agent_trainer.backuper.disable()
 
         ################################################
-        # Continue by initializing the oracle trainer. #
-        self.dataset_manager = StreamlineDatasetManager(saving_path=self.oracle_training_dir,
-                                                        dataset_to_augment_path=self.hp.dataset_to_augment,
-                                                        max_dataset_size=self.hp.max_dataset_size)
+        # Setup oracle training
+        ################################################
 
         # Note: for the two oracle trainers, we disable the automatic checkpointing
         # because we will want to save the checkpoints only when we improve the 
@@ -151,6 +152,20 @@ class RlhfTraining(FineTrackTraining):
             metrics_prefix='crit'
         )
 
+        # Load reward oracle
+        self.oracle_reward = OracleSingleton(self.hp.oracle_reward_checkpoint,
+                                      device=self.device,
+                                      batch_size=self.hp.oracle_batch_size,
+                                      lr=self.hp.oracle_lr)
+        self.oracle_reward_trainer.setup_model_training(self.oracle_reward.model)
+
+        # Load stopping criterion oracle
+        self.oracle_crit = OracleSingleton(self.hp.oracle_crit_checkpoint,
+                                           device=self.device,
+                                           batch_size=self.hp.oracle_batch_size,
+                                           lr=self.hp.oracle_lr)
+        self.oracle_crit_trainer.setup_model_training(self.oracle_crit.model)
+
         # Register hooks on best VC reached to save the oracles that
         # contributed to reach that level of VC.
         def _save_oracles_on_best_vc():
@@ -161,6 +176,14 @@ class RlhfTraining(FineTrackTraining):
             RlHookEvent.ON_RL_BEST_VC,
             _save_oracles_on_best_vc
         )
+
+        ###########################################################
+        # Continue by initializing the streamline dataset manager #
+        self.dataset_manager = StreamlineDatasetManager(saving_path=self.oracle_training_dir,
+                                                        dataset_to_augment_path=self.hp.dataset_to_augment,
+                                                        max_dataset_size=self.hp.max_dataset_size,
+                                                        nb_points=self.oracle_reward.nb_points)
+        self.streamline_sampler = StreamlinesSampler()
 
     @property
     def hparams_class(self):
@@ -231,24 +254,6 @@ class RlhfTraining(FineTrackTraining):
             "RLHF-start-ep-{}".format(current_ep))
 
         ################################################
-        # Setup oracle training
-        ################################################
-
-        # Load reward oracle
-        self.oracle_reward = OracleSingleton(self.hp.oracle_reward_checkpoint,
-                                      device=self.device,
-                                      batch_size=self.hp.oracle_batch_size,
-                                      lr=self.hp.oracle_lr)
-        self.oracle_reward_trainer.setup_model_training(self.oracle_reward.model)
-
-        # Load stopping criterion oracle
-        self.oracle_crit = OracleSingleton(self.hp.oracle_crit_checkpoint,
-                                           device=self.device,
-                                           batch_size=self.hp.oracle_batch_size,
-                                           lr=self.hp.oracle_lr)
-        self.oracle_crit_trainer.setup_model_training(self.oracle_crit.model)
-
-        ################################################
         # Setup environment
         ################################################
         self.tracker_env = self.get_rlhf_env(npv=self.hp.rlhf_inter_npv)
@@ -257,12 +262,18 @@ class RlhfTraining(FineTrackTraining):
 
         # Setup filterers which will be used to filter tractograms
         # for the RLHF pipeline.
-        sampler = StreamlinesSampler()
-        self.filterers = [
-            TractometerFilterer(self.hp.scoring_data, self.hp.tractometer_reference,
-                                dilate_endpoints=self.hp.tractometer_dilate,
-                                sampler=sampler)
-        ]
+        self.filterers = []
+
+        if self.hp.tractometer_validator:
+            self.filterers.append(
+                TractometerFilterer(self.hp.scoring_data, self.hp.tractometer_reference,
+                                dilate_endpoints=self.hp.tractometer_dilate))
+            
+        if self.hp.extractor_validator:
+            self.filterers.append(
+                ExtractorFilterer())
+            
+            self.extractor_filterer = self.filterers[-1]
 
         do_warmup = self.hp.warmup_agent_steps and current_ep < self.hp.warmup_agent_steps - 1
 
@@ -332,39 +343,70 @@ class RlhfTraining(FineTrackTraining):
                 sft_invalid = None
 
                 while total_added < self.hp.nb_new_streamlines_per_iter:
-                    # Generate a tractogram
-                    tractograms_path = os.path.join(tmpdir, "tractograms")
-                    if not os.path.exists(tractograms_path):
-                        os.makedirs(tractograms_path)
-                    LOGGER.info(
-                        "Generating tractograms for RLHF training...")
-                    tractograms = self.generate_and_save_tractograms(
-                        self.tracker, self.tracker_env, tractograms_path)
+                    with tempfile.TemporaryDirectory(dir=tmpdir) as sub_tmpdir:
+                        # Generate a tractogram
+                        tractograms_path = os.path.join(sub_tmpdir, "tractograms")
+                        if not os.path.exists(tractograms_path):
+                            os.makedirs(tractograms_path)
+                        LOGGER.info(
+                            "Generating tractograms for RLHF training...")
+                        root_dir, tractograms, transform_map = \
+                            self.generate_and_save_tractograms(
+                                self.tracker, self.tracker_env, tractograms_path)
 
-                    # Filter the tractogram
-                    filtered_path = os.path.join(tmpdir, "filtered")
-                    if not os.path.exists(filtered_path):
-                        os.makedirs(filtered_path)
+                        # Filter the tractogram
+                        filtered_path = os.path.join(sub_tmpdir, "filtered")
+                        if not os.path.exists(filtered_path):
+                            os.makedirs(filtered_path)
 
-                    LOGGER.info(
-                        "Filtering tractograms for RLHF training...")
-                    # Need to filter for each filterer and keep the same order.
-                    filtered_tractograms = self.filter_tractograms(
-                        tractograms, filtered_path)
-                    
-                    # Merge the valid and invalid tractograms
-                    for valid, invalid in filtered_tractograms:
-                        if sft_valid is None:
-                            sft_valid = valid
-                            sft_invalid = invalid
-                        else:
-                            sft_valid += valid
-                            sft_invalid += invalid
+                        LOGGER.info(
+                            "Filtering tractograms for RLHF training...")
+                        # Need to filter for each filterer and keep the same order.
+                        f_valids, f_invalids, subject_ids, requires_transform = self.filter_tractograms(
+                            root_dir, tractograms, filtered_path)
+                        
+                        LOGGER.info(
+                            "Combining and transforming the tractograms to the reference...")
+                        # Merge the valid and invalid tractograms
+                        nb_new_streamlines = 0
+                        for valid, invalid, subject_id, requires_transform in zip(f_valids, f_invalids, subject_ids, requires_transform):
+                            _valid = valid
+                            if isinstance(_valid, str):
+                                # It's a path, load the tractogram here.
+                                _valid = load_tractogram(
+                                    valid, "same", bbox_valid_check=False)
 
-                        nb_new_streamlines = len(valid) + len(invalid)
+                            _invalid = invalid
+                            if isinstance(_invalid, str):
+                                # It's a path, load the tractogram here.
+                                _invalid = load_tractogram(
+                                    invalid, "same", bbox_valid_check=False)
+                                
+                            # Transform the tractograms to the reference space
+                            # This might take some time.
+                            if requires_transform:
+                                _valid = self._transform_tractogram_to_ref(
+                                    self.tracker_env, _valid, subject_id, transform_map)
+                                _invalid = self._transform_tractogram_to_ref(
+                                    self.tracker_env, _invalid, subject_id, transform_map)
+                                
+                            # Resample the streamlines so that they are in equal numbers
+                            # of valid vs invalid.
+                            _valid, _invalid = self.streamline_sampler.sample_streamlines(
+                                _valid, _invalid)
 
-                    total_added += nb_new_streamlines
-                    sub_pbar.update(nb_new_streamlines)
+                            if len(_valid) > 0 or len(_invalid) > 0:
+                                if sft_valid is None:
+                                    sft_valid = _valid
+                                    sft_invalid = _invalid
+                                else:
+                                    sft_valid += _valid
+                                    sft_invalid += _invalid
+
+                                nb_new_streamlines += len(_valid) + len(_invalid)
+
+                        total_added += nb_new_streamlines
+                        sub_pbar.update(nb_new_streamlines)
 
                 LOGGER.info(
                     "Adding filtered tractograms to the dataset...")
@@ -376,6 +418,22 @@ class RlhfTraining(FineTrackTraining):
         LOGGER.info(
             prettier_dict(data_stats, title="Dataset stats (iter {})".format(
                 iter_num)))
+
+    def _transform_tractogram_to_ref(self, env, sft, subject_id, transform_map):
+
+        # Unpack the transform map
+        transforms_subject = transform_map[subject_id]
+        reference = transforms_subject['reference']
+        transformation = transforms_subject['transformation']
+        deformation = transforms_subject['deformation']
+
+        new_sft = env.transform_tractogram_to_reference(
+            sft,
+            reference=reference,
+            transformation=transformation,
+            deformation=deformation)
+        
+        return new_sft
 
     def train_reward(self):
         """
@@ -438,33 +496,84 @@ class RlhfTraining(FineTrackTraining):
         print(prettier_metrics(metrics_after, title="Test metrics after fine-tuning"))
         print(">>> Finished stopping criterion model training <<<")
 
-    def generate_and_save_tractograms(self, tracker: Tracker, env: BaseEnv, save_dir: str):
+    def generate_and_save_tractograms(self, tracker: Tracker, env: BaseEnv,
+                                      save_dir: str,
+                                      max_nb_subjects: int = 1):
         """
-        """
-        # TODO: Change to only track().
-        tractogram, _ = tracker.track_and_validate(self.tracker_env)
-        filename = self.save_rasmm_tractogram(
-            tractogram,
-            env.subject_id,
-            env.affine_vox2rasmm,
-            env.reference,
-            save_dir,
-            extension='tck')
-        return [filename]
+        Most of the flows requires a single directory containing all the
+        tractograms to filter in the following structure of files:
+        
+        root
+        ├── <subject_id_1>
+        │   └── <tractogram_1>.trk
+        ├── <subject_id_2>
+        │   └── <tractogram_2>.trk
+        └── ...
 
-    def filter_tractograms(self, tractograms: str, out_dir: str):
+        This function tracks and organize the tractograms in this structure.
         """
+
+        nb_subjects = min(len(env.dataset), max_nb_subjects)
+
+        root_path = save_dir
+        tractograms_path = []
+
+        # Since the environment only loads one subject at a time, we need to
+        # keep track of the following information to be able to register
+        # the filtered tractograms back to the reference space, if needed.
+        transform_map = {}
+
+        # Track on several subjects if there are.
+        for _ in range(nb_subjects):
+            # Build the path to save the tractogram as described above.
+            subject_save_path = os.path.join(save_dir, env.subject_id)
+            os.makedirs(subject_save_path, exist_ok=True)
+
+            # Track on the current subject.
+            LOGGER.info("Tracking on subject: {}".format(env.subject_id))
+            tractogram, _ = tracker.track_and_validate(env) # TODO: Change to only track(), no need to validate.
+            sft = self.convert_to_rasmm_sft(tractogram, env.affine_vox2rasmm, env.reference)
+
+            # If we're using extractor_flow, we need to transform the tractogram
+            # to MNI space.
+            if self.hp.extractor_validator and env.can_transform_to_mni:
+                LOGGER.info("Transforming tractogram to MNI space.")
+                sft, transform_map_subj = env.transform_tractogram_to_mni(sft)
+                transform_map.update(transform_map_subj)
+            elif self.hp.extractor_validator:
+                # Add the T1w file to the in_directory
+                LOGGER.info("Copying T1w file to the subject's directory.")
+                t1_filename = f"{env.subject_id}_t1.nii.gz"
+                env.save_anat_to(subject_save_path, t1_filename)
+
+            filename = self.save_sft(sft, env.subject_id,
+                                     subject_save_path, extension='trk')
+            
+            tractograms_path.append(os.path.join(subject_save_path, filename))
+            
+            if len(env.dataset) > 1:
+                self.tracker_env.load_subject() # Load the next subject to track on.
+
+        return root_path, tractograms_path, transform_map
+
+    def filter_tractograms(self, in_directory: str, tractograms: str,
+                           out_dir: str, transform_map: dict = None):
         """
-        filterer = self.filterers[0]
+        Filter tractograms using the first filterer in the list.
+        """
 
-        filtered_tractograms = []
-        for tractogram in tractograms:
-            # TODO: Implement for more than one filterer
-            valid_tractogram, invalid_tractogram = filterer(
-                tractogram, out_dir, scored_extension="trk")
-            filtered_tractograms.append((valid_tractogram, invalid_tractogram))
-
-        return filtered_tractograms
+        valid_tractograms = []
+        invalid_tractograms = []
+        subject_ids = []
+        requires_transform = []
+        for filterer in self.filterers:
+            valids, invalids, subject_ids = filterer(in_directory, tractograms, out_dir, transform_map)
+            valid_tractograms.extend(valids)
+            invalid_tractograms.extend(invalids)
+            subject_ids.extend(subject_ids)
+            requires_transform.extend([not filterer.ends_up_in_orig_space] * len(tractograms))
+    
+        return valid_tractograms, invalid_tractograms, subject_ids, requires_transform
 
     def save_hyperparameters(self):
         super().save_hyperparameters(filename='rlhf_hyperparameters.json')

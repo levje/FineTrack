@@ -11,9 +11,13 @@ from os.path import join
 
 from nibabel.nifti1 import Nifti1Image
 from scilpy.io.utils import add_sh_basis_args
+from scilpy.io.utils import load_matrix_in_any_format
 
 from FineTrack.utils.utils import (
     Timer)
+from FineTrack.utils.logging import get_logger
+
+LOGGER = get_logger(__name__)
 
 """
 Script to process "multiple" subjects into a single .hdf5 file.
@@ -100,10 +104,22 @@ def add_subject_to_hdf5(
     seeding_file = config['seeding']
     anat_file = config['anat']
     gm_file = config['gm']
+    transfo_file = config.get('transformation', None)
+    deformation_file = config.get('deformation', None)
+
+    print("transfo_file: ", transfo_file)
+    print("deformation file: ", deformation_file)
+
+    if (transfo_file is not None and deformation_file is None) \
+        or (transfo_file is None and deformation_file is not None):
+        raise ValueError("Both (or none) transformation and deformation files must be provided.")
+    elif transfo_file is None and deformation_file is None:
+        LOGGER.warning("No transformation or deformation files provided. "
+                       "You might encounter slow processing or even errors if you're using extractor_flow.")
 
     # Process subject's data
     process_subject(hdf_subject, input_files, peaks_file, tracking_file,
-                    seeding_file, anat_file, gm_file)
+                    seeding_file, anat_file, gm_file, transfo_file, deformation_file)
 
 
 def process_subject(
@@ -114,6 +130,8 @@ def process_subject(
     seeding: str,
     anat: str,
     gm: str,
+    in_transfo: str = None,
+    in_deformation: str = None,
 ):
     """ Process a subject's data and save it in the hdf5 file.
 
@@ -167,6 +185,21 @@ def process_subject(
 
     gm_mask_image = nib.load(gm)
     add_volume_to_hdf5(hdf_subject, gm_mask_image, 'gm_volume')
+
+    # Transformations to MNI if provided.
+    # Transformation matrix
+    if in_transfo is not None:
+        transfo = load_matrix_in_any_format(in_transfo)
+        transfo_volume_group = hdf_subject.create_group('transformation_volume')
+        transfo_volume_group.create_dataset('data', data=transfo)
+
+    # Load deformation field
+    if in_deformation is not None:
+        deformation_data = nib.load(in_deformation).get_fdata(dtype=np.float32)
+        deformation_data = np.squeeze(deformation_data)
+        deform_volume_group = hdf_subject.create_group('deformation_volume')
+        deform_volume_group.create_dataset('data', data=deformation_data)
+
 
 
 def add_volume_to_hdf5(hdf_subject, volume_img, volume_name):

@@ -93,3 +93,4 @@ test_ae/
 .nextflow/
 nf_output_dir/
 results_rbx/
+flows_runs/

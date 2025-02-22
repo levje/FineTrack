@@ -53,8 +53,12 @@ class SubjectDataset(Dataset):
         reference = tracto_data.reference
         gm_mask = tracto_data.gm
 
+        transformation = tracto_data.transformation
+        deformation = tracto_data.deformation
+
         return (subject_id, input_volume, tracking_mask,
-                seeding, peaks, reference, gm_mask)
+                seeding, peaks, reference, gm_mask,
+                transformation, deformation)
 
     def __len__(self):
         """

@@ -4,6 +4,7 @@ from typing import Callable, Dict, Tuple
 import nibabel as nib
 import numpy as np
 import torch
+import os
 from dipy.core.sphere import HemiSphere
 from dipy.data import get_sphere
 from dipy.direction.peaks import reshape_peaks_for_visualization
@@ -39,6 +40,7 @@ from FineTrack.environments.rollout_env import RolloutEnvironment
 from FineTrack.environments.state import ConvState, State
 from FineTrack.algorithms.shared.fodf_encoder import WorkingFodfEncoder, DummyFodfEncoder
 from FineTrack.utils.interpolation import calc_neighborhood_grid, neighborhood_interpolation
+from scilpy.tractograms.tractogram_operations import transform_warp_sft
 
 LOGGER = get_logger(__name__)
 
@@ -150,6 +152,11 @@ class BaseEnv(object):
         self.reward_with_gt = env_dto['reward_with_gt']
         self.rollout_env = None
 
+        # Extractor parameters
+        self.extractor_target = None
+        if env_dto['extractor_target'] is not None:
+            self.extractor_target = nib.load(env_dto['extractor_target'])
+
         # ==========================================
         # State parameters
         # ==========================================
@@ -210,11 +217,11 @@ class BaseEnv(object):
 
             try:
                 (sub_id, input_volume, tracking_mask, seeding_mask,
-                 peaks, reference, gm_mask) = next(self.loader_iter)[0]
+                 peaks, reference, gm_mask, transformation, deformation) = next(self.loader_iter)[0]
             except StopIteration:
                 self.loader_iter = iter(self.loader)
                 (sub_id, input_volume, tracking_mask, seeding_mask,
-                 peaks, reference, gm_mask) = next(self.loader_iter)[0]
+                 peaks, reference, gm_mask, transformation, deformation) = next(self.loader_iter)[0]
 
             self.subject_id = sub_id
             # Affines
@@ -226,14 +233,13 @@ class BaseEnv(object):
             self.data_volume = input_volume.data
         else:
             (input_volume, tracking_mask, seeding_mask, peaks,
-             reference, gm_mask) = self.subject_data
+             reference, gm_mask, transformation, deformation) = self.subject_data
 
             self.affine_vox2rasmm = input_volume.affine_vox2rasmm
             self.affine_rasmm2vox = np.linalg.inv(self.affine_vox2rasmm)
 
             # Volumes and masks
             self.data_volume = input_volume.data
-
             self.reference = reference
 
         # The SH target order is taken from the hyperparameters in the case of tracking.
@@ -249,6 +255,11 @@ class BaseEnv(object):
         self.seeding_data = seeding_mask.data.astype(np.uint8)
 
         self.gm_data = gm_mask.data.astype(np.uint8) if gm_mask else None
+
+        # Used for registering the streamlines to MNI space
+        # (e.g. for extractor_flow)
+        self.transformation = transformation
+        self.deformation = deformation
 
         self.step_size = convert_length_mm2vox(
             self.step_size_mm,
@@ -799,3 +810,78 @@ class BaseEnv(object):
         which streamlines should stop.
         """
         pass
+
+    def transform_tractogram_to_mni(self, moving_sft):
+        """
+        Transform a tractogram to mni space using the current subject's
+        transformation matrices which are available within the HDF5 file.
+        """
+
+        assert self.transformation is not None, \
+            "Transformation matrix might be missing from the dataset."
+        assert self.deformation is not None, \
+            "Deformation volume might be missing from the dataset."
+        assert self.extractor_target is not None, \
+            "Can't transform to MNI space without a target file."
+        assert moving_sft is not None, "Input moving_sft cannot be None"
+
+        new_sft = transform_warp_sft(moving_sft, self.transformation,
+                                    self.extractor_target,
+                                    inverse=True,
+                                    reverse_op=False,
+                                    deformation_data=self.deformation,
+                                    remove_invalid=True,
+                                    cut_invalid=False)
+
+        print("Transformed tractogram to MNI space.")
+
+        transform_map_subj = {
+            self.subject_id: {
+                'transformation': self.transformation,
+                'deformation': self.deformation,
+                'reference': self.reference
+            }
+        }
+
+        return new_sft, transform_map_subj
+    
+    def transform_tractogram_to_reference(self, moving_sft,
+                                          reference=None, transformation=None,
+                                          deformation=None):
+        
+        _reference = reference if reference is not None else self.reference
+        _transformation = transformation if transformation is not None else self.transformation
+        _deformation = deformation if deformation is not None else self.deformation
+
+        assert _transformation is not None, \
+            "Transformation matrix might be missing from the dataset."
+        assert _deformation is not None, \
+            "Deformation volume might be missing from the dataset."
+        assert _reference is not None, \
+            "Can't transform to MNI space without a target file."
+        
+        assert moving_sft is not None, "Input moving_sft cannot be None"
+
+        new_sft = transform_warp_sft(moving_sft, _transformation,
+                                     _reference,
+                                     inverse=False,
+                                     reverse_op=True,
+                                     deformation_data=_deformation,
+                                     remove_invalid=True,
+                                     cut_invalid=False)
+
+        print("Transformed tractogram to reference space.")
+        
+        return new_sft
+
+    @property
+    def can_transform_to_mni(self):
+        return self.transformation is not None \
+            and self.deformation is not None\
+            and self.extractor_target is not None
+    
+    def save_anat_to(self, out_dir, filename):
+        """
+        Save the anat file with its associated affine to a directory.
+        """
+        nib.save(self.reference, os.path.join(out_dir, filename))

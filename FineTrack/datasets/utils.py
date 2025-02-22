@@ -59,7 +59,9 @@ class SubjectData(object):
         tracking=None,
         seeding=None,
         reference=None,
-        gm=None
+        gm=None,
+        transformation=None,
+        deformation=None
     ):
         self.subject_id = subject_id
         self.input_dv = input_dv
@@ -68,6 +70,8 @@ class SubjectData(object):
         self.seeding = seeding
         self.reference = reference
         self.gm = gm
+        self.transformation = transformation
+        self.deformation = deformation
 
     @classmethod
     def from_hdf_subject(cls, hdf_file, subject_id):
@@ -83,12 +87,20 @@ class SubjectData(object):
             hdf_subject, 'anat_volume', 'tracking_volume')
         mask_gm = MRIDataVolume.from_hdf_group(
             hdf_subject, 'gm_volume', 'tracking_volume')
+        
+        transformation = None
+        deformation = None
+        if 'transformation_volume' in hdf_subject:
+            transformation = np.array(hdf_subject['transformation_volume']['data'], dtype=np.float32)
+        if 'deformation_volume' in hdf_subject:
+            deformation = np.array(hdf_subject['deformation_volume']['data'], dtype=np.float32)
 
         reference = nib.Nifti1Image(anatomy.data, anatomy.affine_vox2rasmm)
 
         return cls(
             subject_id, input_dv=input_dv, tracking=tracking,
-            seeding=seeding, reference=reference, peaks=peaks, gm=mask_gm)
+            seeding=seeding, reference=reference, peaks=peaks, gm=mask_gm,
+            transformation=transformation, deformation=deformation)
 
 
 def convert_length_mm2vox(

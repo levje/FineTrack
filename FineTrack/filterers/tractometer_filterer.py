@@ -48,41 +48,57 @@ class TractometerFilterer(Filterer):
                 self.gt_dir,
                 False)
 
-    def _filter(self, tractogram, out_dir, scored_extension="trk"):
-        assert os.path.exists(tractogram), f"Tractogram {tractogram} does not exist."
-        filtered_path_valid = os.path.join(out_dir, "valid_scored_{}.{}".format(Path(tractogram).stem, scored_extension))
-        filtered_path_invalid = os.path.join(out_dir, "invalid_scored_{}.{}".format(Path(tractogram).stem, scored_extension))
-        sft = load_tractogram(tractogram, self.reference,
-                            bbox_valid_check=self.bbox_valid_check, trk_header_check=True)
-        
-        if len(sft.streamlines) == 0:
-            return (sft, sft)
+    @property
+    def ends_up_in_orig_space(self):
+        return True
 
-        args_mocker = namedtuple('args', [
-            'compute_ic', 'save_wpc_separately', 'unique', 'reference',
-            'bbox_check', 'out_dir', 'dilate_endpoints', 'no_empty'])
+    def _filter(self, in_directory: str, tractograms: str, out_dir: str):
+        valids = []
+        invalids = []
+        subject_ids = []
 
-        with tempfile.TemporaryDirectory() as temp:
+        scored_extension = 'trk' # This might fail for ISMRM2015...
+    
+        for tractogram in tractograms:
+            assert os.path.exists(tractogram), f"Tractogram {tractogram} does not exist."
+            filtered_path_valid = os.path.join(out_dir, "valid_scored_{}.{}".format(Path(tractogram).stem, scored_extension))
+            filtered_path_invalid = os.path.join(out_dir, "invalid_scored_{}.{}".format(Path(tractogram).stem, scored_extension))
+            sft = load_tractogram(tractogram, self.reference,
+                                bbox_valid_check=self.bbox_valid_check, trk_header_check=True)
             
-            args = args_mocker(
-                False, False, True, self.reference, False, temp,
-                self.dilation_factor, False)
+            if len(sft.streamlines) == 0:
+                return (sft, sft)
 
-            # Segment VB, WPC, IB
-            (vb_sft_list, wpc_sft_list, ib_sft_list, nc_sft,
-            ib_names, _) = segment_tractogram_from_roi(
-                sft, self.gt_tails, self.gt_heads, self.bundle_names,
-                self.bundle_lengths, self.angles, self.orientation_lengths,
-                self.abs_orientation_lengths, self.inv_all_masks, self.any_masks,
-                self.list_rois, args)
-            
-            valid, invalid = self._merge_with_scores(vb_sft_list, nc_sft)
-            
-            # Replace saving with directly putting that data into a hdf5 file.
-            save_tractogram(valid, filtered_path_valid)
-            save_tractogram(invalid, filtered_path_invalid)
+            args_mocker = namedtuple('args', [
+                'compute_ic', 'save_wpc_separately', 'unique', 'reference',
+                'bbox_check', 'out_dir', 'dilate_endpoints', 'no_empty'])
 
-        return valid, invalid
+            with tempfile.TemporaryDirectory() as temp:
+                
+                args = args_mocker(
+                    False, False, True, self.reference, False, temp,
+                    self.dilation_factor, False)
+
+                # Segment VB, WPC, IB
+                (vb_sft_list, wpc_sft_list, ib_sft_list, nc_sft,
+                ib_names, _) = segment_tractogram_from_roi(
+                    sft, self.gt_tails, self.gt_heads, self.bundle_names,
+                    self.bundle_lengths, self.angles, self.orientation_lengths,
+                    self.abs_orientation_lengths, self.inv_all_masks, self.any_masks,
+                    self.list_rois, args)
+                
+                valid, invalid = self._merge_with_scores(vb_sft_list, nc_sft)
+                
+                # Replace saving with directly putting that data into a hdf5 file.
+                save_tractogram(valid, filtered_path_valid)
+                save_tractogram(invalid, filtered_path_invalid)
+
+            # We could also append the filtered_path instead of the tractogram themselves.
+            valids.append(valid)
+            invalids.append(invalid)
+            subject_ids.append(Path(tractogram).parent.name)
+
+        return valids, invalids, subject_ids
 
     def _merge_with_scores(self, vb_sft_list, inv_tractogram, merge_valid_invalid=False):
         """
