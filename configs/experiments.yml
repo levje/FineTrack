@@ -225,4 +225,16 @@ experiments:
     oracle_train_steps: 3
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     max_ep: 30
+
+  - exp_name: "SACAuto-3000"
+    extra_type: "rlhf"
+    project_name: "SACAuto-3000"
+    dataset: "ismrm2015"
+    lr: 0.0005
+    warmup_agent_steps: 3000
+    agent_train_steps: 1
+    oracle_train_steps: 1
+    max_ep: 1
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    alg: "SACAuto"
     

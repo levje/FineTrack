@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import argparse
 import seaborn as sns
 import numpy as np
+import re
 
 sns.set_style("darkgrid")
 
@@ -49,6 +50,26 @@ def plot_data(data, args, output_file=None):
 
     plt.figure(figsize=(10, 6))
 
+    # If average_reg is specified, we want to average the data that matches the regular expression.
+    # The regular expression is "average_reg". We want to check all items "name" that matches
+    # that expression and average their data and plot it as a line.
+    if args.average_reg:
+        x = data[0]['x']
+        print("X_length: ", len(x))
+        average_data_y = []
+        for item in data:
+            if re.match(args.average_reg, item['name']):
+                average_data_y.append(item['y'])
+                print("Matched {} with length {}".format(item['name'], len(item['x'])))
+
+                assert len(item['x']) == len(x), "All x-values must have the same length."
+        
+        average_data_y = np.mean(average_data_y, axis=0)
+        std_data_y = np.std(average_data_y, axis=0)
+        plt.plot(x, average_data_y, label='Average', alpha=0.6)
+        plt.fill_between(x, average_data_y - std_data_y, average_data_y + std_data_y, alpha=0.2, color='blue')
+
+    # Plot other data
     for item in data:
         label = item.get("legend", item.get("name", None))
         plt.plot(item['x'], item['y'], label=label, alpha=0.6)
@@ -107,6 +128,7 @@ def main():
     parser.add_argument("--min_y", type=float, default=None, help="Minimum y-value to plot.")
     parser.add_argument("--xlabel", type=str, default="X-axis", help="Label for the x-axis.")
     parser.add_argument("--ylabel", type=str, default="Y-axis", help="Label for the y-axis.")
+    parser.add_argument("--average_reg", type=str, default=None, help="Regular expression to average the data.")
     
     parser.add_argument(
         "--output-file", 

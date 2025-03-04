@@ -62,7 +62,7 @@ data:
   tractoinferno: 
     name: "tractoinferno"
     location:
-      local: "~/Documents/FineTrack/data/datasets/TractoInferno/tractoinferno_small.hdf5"
+      local: "~/Documents/FineTrack/data/datasets/TractoInferno/tractoinferno_single.hdf5"
       cluster: "~/projects/def-pmjodoin/levje/datasets/tractoinferno.hdf5"
   hcp: 
     name: "hcp"
@@ -96,8 +96,8 @@ global:
   theta: 30
   n_dirs: 100
   gamma: 0.95
-  n_actors: 4096
-  batch_size: 4096
+  n_actors: 256
+  batch_size: 256
   seed: 1111
   utd: 1
   oracle_bonus: 10
@@ -180,6 +180,7 @@ experiments:
     dataset: "tractoinferno"
     lr: 0.0005
     max_ep: 1000
+    npv: 1
 
 ## RLHF experiments
   # - exp_name: "CrossQ_RLHF_Inferno_1"
