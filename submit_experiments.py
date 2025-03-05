@@ -251,9 +251,7 @@ class ExtrasManager:
 
         if value is not None \
             and value != "True" \
-            and value != "False" \
-            and value != True \
-            and value != False:
+            and value != "False":
             self._flags.append(str(value))
 
     def add_config(self, extras_config: dict):
