@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from FineTrack.utils.utils import count_parameters
 from FineTrack.environments.neighborhood_manager import NeighborhoodManager
-from FineTrack.algorithms.shared.fodf_encoder import WorkingFodfEncoder, WorkingFodfDecoder
+from FineTrack.algorithms.shared.fodf_encoder import WorkingFodfEncoder, WorkingFodfDecoder, SmallWorkingFodfEncoder, SmallWorkingFodfDecoder
 
 VOLUME_PATH = '/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz'
 WM_MASK_PATH = '/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_2mm/masks/ismrm2015_wm_mask.nii.gz'
@@ -255,8 +255,10 @@ class Model(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.encoder = WorkingFodfEncoder()
-        self.decoder = WorkingFodfDecoder()
+        # self.encoder = WorkingFodfEncoder()
+        # self.decoder = WorkingFodfDecoder()
+        self.encoder = SmallWorkingFodfEncoder()
+        self.decoder = SmallWorkingFodfDecoder()
     
     def forward(self, x):
         latent = self.encoder(x)
@@ -265,7 +267,7 @@ class Model(nn.Module):
 
 
 def train(model, interp='crop'):
-    trainloader, testloader = setup_neighborhood_datasets(neighborhood_size=16, method=interp)
+    trainloader, testloader = setup_neighborhood_datasets(neighborhood_size=4, method=interp)
     model.train()
     model = model.to(device='cuda')
     criterion = nn.MSELoss()
@@ -320,7 +322,7 @@ def train(model, interp='crop'):
     # plt.show()
 
 def test(model, out_file=None, interp='crop'):
-    _, testloader = setup_neighborhood_datasets(neighborhood_size=16, method=interp)
+    _, testloader = setup_neighborhood_datasets(neighborhood_size=4, method=interp)
     neigh_manager = NeighborhoodManager(
         data_volume=nib.load(VOLUME_PATH).get_fdata(),
         radius=16,

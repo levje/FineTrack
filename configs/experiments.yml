@@ -161,80 +161,94 @@ experiments:
   #     local: "~/Documents/FineTrack/test_ae/best_model_convs_2048_encoder_only.pth"
   #     cluster: "encoders/best_model_convs_2048_encoder_only.pth"
 
-  # - exp_name: "CrossQ_FODF_Encoder_2"
-  #   project_name: "TrackToLearn-CrossQ-FODF"
-  #   dataset: "ismrm2015"
-  #   lr: 0.00005
-  #   max_ep: 1000
-  #   log_interval: 100
-  #   neighborhood_type: "grid"
-  #   neighborhood_radius: 16
-  #   flatten_state: False
-  #   time: "3-00:00:00"
-  #   fodf_encoder_ckpt:
-  #     local: "~/Documents/FineTrack/test_ae/best_model_convs_2048_encoder_only.pth"
-  #     cluster: "encoders/best_model_convs_2048_encoder_only.pth"
+  - exp_name: "CrossQ_FODF_Encoder_9x9x9"
+    project_name: "TrackToLearn-CrossQ-FODF"
+    dataset: "ismrm2015"
+    lr: 0.00005
+    max_ep: 3000
+    log_interval: 3000
+    neighborhood_type: "grid"
+    neighborhood_radius: 4 # Grid of 9x9x9
+    flatten_state: False
+    time: "4-00:00:00"
+    fodf_encoder_ckpt:
+      local: "~/Documents/FineTrack/test_ae/best_model_9x9x9_encoder.pth"
+      cluster: "encoders/best_model_9x9x9_encoder.pth"
+
+  - exp_name: "CrossQ_FODF_Encoder_9x9x9"
+    project_name: "TrackToLearn-CrossQ-FODF"
+    dataset: "ismrm2015"
+    lr: 0.0001
+    max_ep: 3000
+    log_interval: 3000
+    neighborhood_type: "grid"
+    neighborhood_radius: 4 # Grid of 9x9x9
+    flatten_state: False
+    time: "4-00:00:00"
+    fodf_encoder_ckpt:
+      local: "~/Documents/FineTrack/test_ae/best_model_9x9x9_encoder.pth"
+      cluster: "encoders/best_model_9x9x9_encoder.pth"
 
 ## RLHF experiments
-  - exp_name: "CrossQ_RLHF_1"
-    extra_type: "rlhf"
-    project_name: "CrossQ_RLHF"
-    dataset: "ismrm2015"
-    lr: 0.0005
-    oracle_lr: 0.0001
-    oracle_train_steps: 5
-    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-    max_ep: 20
+  # - exp_name: "CrossQ_RLHF_1"
+  #   extra_type: "rlhf"
+  #   project_name: "CrossQ_RLHF"
+  #   dataset: "ismrm2015"
+  #   lr: 0.0005
+  #   oracle_lr: 0.0001
+  #   oracle_train_steps: 5
+  #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+  #   max_ep: 20
 
-  - exp_name: "CrossQ_RLHF_2"
-    extra_type: "rlhf"
-    project_name: "CrossQ_RLHF"
-    dataset: "ismrm2015"
-    lr: 0.0005
-    oracle_lr: 0.0005
-    oracle_train_steps: 3
-    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-    max_ep: 20
+  # - exp_name: "CrossQ_RLHF_2"
+  #   extra_type: "rlhf"
+  #   project_name: "CrossQ_RLHF"
+  #   dataset: "ismrm2015"
+  #   lr: 0.0005
+  #   oracle_lr: 0.0005
+  #   oracle_train_steps: 3
+  #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+  #   max_ep: 20
 
-  - exp_name: "CrossQ_RLHF_3"
-    extra_type: "rlhf"
-    project_name: "CrossQ_RLHF"
-    dataset: "ismrm2015"
-    lr: 0.0005
-    oracle_lr: 0.001
-    oracle_train_steps: 4
-    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-    max_ep: 20
+  # - exp_name: "CrossQ_RLHF_3"
+  #   extra_type: "rlhf"
+  #   project_name: "CrossQ_RLHF"
+  #   dataset: "ismrm2015"
+  #   lr: 0.0005
+  #   oracle_lr: 0.001
+  #   oracle_train_steps: 4
+  #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+  #   max_ep: 20
 
-  - exp_name: "CrossQ_RLHF_4"
-    extra_type: "rlhf"
-    project_name: "CrossQ_RLHF"
-    dataset: "ismrm2015"
-    lr: 0.0005
-    oracle_lr: 0.0001
-    oracle_train_steps: 10
-    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-    max_ep: 20
+  # - exp_name: "CrossQ_RLHF_4"
+  #   extra_type: "rlhf"
+  #   project_name: "CrossQ_RLHF"
+  #   dataset: "ismrm2015"
+  #   lr: 0.0005
+  #   oracle_lr: 0.0001
+  #   oracle_train_steps: 10
+  #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+  #   max_ep: 20
 
-  - exp_name: "CrossQ_RLHF_5"
-    extra_type: "rlhf"
-    project_name: "CrossQ_RLHF"
-    dataset: "ismrm2015"
-    lr: 0.0005
-    oracle_lr: 0.0001
-    oracle_train_steps: 3
-    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-    max_ep: 30
+  # - exp_name: "CrossQ_RLHF_5"
+  #   extra_type: "rlhf"
+  #   project_name: "CrossQ_RLHF"
+  #   dataset: "ismrm2015"
+  #   lr: 0.0005
+  #   oracle_lr: 0.0001
+  #   oracle_train_steps: 3
+  #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+  #   max_ep: 30
 
-  - exp_name: "SACAuto-3000"
-    extra_type: "rlhf"
-    project_name: "SACAuto-3000"
-    dataset: "ismrm2015"
-    lr: 0.0005
-    warmup_agent_steps: 3000
-    agent_train_steps: 1
-    oracle_train_steps: 1
-    max_ep: 1
-    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-    alg: "SACAuto"
+  # - exp_name: "SACAuto-3000"
+  #   extra_type: "rlhf"
+  #   project_name: "SACAuto-3000"
+  #   dataset: "ismrm2015"
+  #   lr: 0.0005
+  #   warmup_agent_steps: 3000
+  #   agent_train_steps: 1
+  #   oracle_train_steps: 1
+  #   max_ep: 1
+  #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+  #   alg: "SACAuto"
     

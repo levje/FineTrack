@@ -32,72 +32,11 @@ class FodfAe(nn.Module):
 
         # Let's say the input image is 128x128x128x28
         self.input_shape = input_shape
+        self.encoder = SmallWorkingFodfEncoder()
+        self.decoder = SmallWorkingFodfDecoder()
 
-        # self.encoder = ExpFodfEncoder()
-        # self.decoder = ExpFodfDecoder()
-
-        # self.encoder = NoDownsampleFodfEncoder()
-        # self.decoder = NoDownsampleFodfDecoder()
-
-        self.encoder = LinLatentEncoderV2()
-        self.decoder = LinLatentDecoderV2()
-
-        # self.encoder = nn.Sequential(
-        #     nn.Flatten(),
-        #     nn.Linear(19*19*19*28, 2048),
-        #     nn.Linear(2048, 1024),
-        # )
-
-        # self.decoder = nn.Sequential(
-        #     nn.Linear(1024, 2048),
-        #     nn.Linear(2048, 19*19*19*28),
-        #     nn.Unflatten(1, (28, 19, 19, 19)),
-        # )
-
-        # self.encoder = nn.Sequential(
-        #     nn.Conv3d(n_coeffs, n_coeffs, kernel_size=1, stride=1, padding=0),  # 64x19x19x19
-        #     # nn.ReLU(),
-
-        #     # nn.Conv3d(n_coeffs, 128, kernel_size=3, stride=1, padding=1),  # 128x19x19x19
-        # )
-        # self.decoder = nn.Sequential(
-        #     # nn.ConvTranspose3d(128, n_coeffs, kernel_size=3, stride=1, padding=0),  # 64x24x24x24
-        #     # nn.Conv3d(128, n_coeffs, kernel_size=3, stride=1, padding=1),  # 128x19x19x19
-
-
-        #     nn.Conv3d(n_coeffs, n_coeffs, kernel_size=1, stride=1, padding=0),  # 28x19x19x19
-        # )
         print("Encoder: {} params".format(count_parameters(self.encoder)))
         print("Decoder: {} params".format(count_parameters(self.decoder)))
-
-        # self.encoder = FodfEncoder(n_coeffs, renorm)
-
-        # self.decoder = nn.Sequential(
-        #     # 2048x3x3x3
-        #     nn.Conv3d(2048, 1024, kernel_size=3, stride=1, padding=1), # 1024x3x3x3
-        #     ResidualBlock(1024, norm_layer=self.norm_layer),  # 1024x3x3x3
-
-        #     nn.Upsample(scale_factor=2),  # 1024x6x6x6
-        #     nn.Conv3d(1024, 512, kernel_size=3, stride=1, padding=1),  # 512x6x6x6
-        #     ResidualBlock(512, norm_layer=self.norm_layer),  # 512x6x6x6
-
-        #     # Start upsampling
-        #     nn.Upsample(scale_factor=2),  # 512x12x12x12
-        #     nn.Conv3d(512, 256, kernel_size=3, stride=1, padding=1),  # 256x12x12x12
-        #     ResidualBlock(256, norm_layer=self.norm_layer),  # 256x12x12x12
-
-        #     nn.Upsample(scale_factor=2),  # 256x24x24x24
-        #     nn.Conv3d(256, 128, kernel_size=3, stride=1, padding=1),  # 128x24x24x24
-        #     ResidualBlock(128, norm_layer=self.norm_layer),  # 128x24x24x24
-
-        #     nn.Conv3d(128, 64, kernel_size=5, stride=1, padding=0), # 64x20x20x20
-        #     self.activation(),
-        #     self.norm_layer(64),
-
-        #     nn.Conv3d(64, n_coeffs, kernel_size=1, stride=1, padding=0),  # 28x20x20x20
-        # )
-
-
 
     def forward(self, x):
         latent = self.encoder(x)
@@ -153,7 +92,7 @@ class FodfAeTrainer(object):
         self.model = FodfAe(input_shape=input_shape, n_coeffs=n_coeffs, renorm=False)
         self.device = device
         self.batch_size = batch_size
-        self.nb_epochs = 10000
+        self.nb_epochs = nb_epochs
 
         fodf_path = "data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz"
         fodf_img = nib.load(fodf_path)
@@ -287,8 +226,8 @@ class FodfAeTrainer(object):
 
                     if loss < best_loss:
                         best_loss = loss
-                        torch.save(self.model.state_dict(), "fodf_ae/best_model_big.pth")
-                        torch.save(self.model.encoder.state_dict(), "fodf_ae/best_encoder_big.pth")
+                        torch.save(self.model.state_dict(), "fodf_ae/best_model_small_9x9x9.pth")
+                        torch.save(self.model.encoder.state_dict(), "fodf_ae/best_encoder_small_9x9x9.pth")
 
                         # Send to Comet.ml
 
@@ -350,7 +289,6 @@ class FodfAeTrainer(object):
 
         import matplotlib.pyplot as plt
 
-        n = 5 # number of reconstructions to vizualize
         fig, axes = plt.subplots(2, n, figsize=(20, 5))
 
         # Prepare input
@@ -366,7 +304,7 @@ class FodfAeTrainer(object):
 
 
         sh_coef_indice = 0
-        slice_number = 15
+        slice_number = 4
         for j in range(n):
             axes[0, j].imshow(inputs[j, sh_coef_indice, slice_number][None, ...].permute(1, 2, 0).cpu().detach().numpy())
             axes[1, j].imshow(outputs[j, sh_coef_indice, slice_number][None, ...].permute(1, 2, 0).cpu().detach().numpy())
@@ -462,19 +400,19 @@ def main():
     print("nb_coefs: ", nb_coefs, " img_shape: ", img_shape)
 
 
-    neighborhood_radius = 9 # 51x51x51 neighborhood
+    neighborhood_radius = 4 # 9x9x9 neighborhood
     
     trainer = FodfAeTrainer(
         input_shape=img_shape,
         n_coeffs=nb_coefs,
-        nb_epochs=100,
+        nb_epochs=10000,
         neighborhood_radius=neighborhood_radius,
         batch_size=32,
         device=device)
     
-    # trainer.model.load_state_dict(torch.load("fodf_ae/best_model_big.pth"))
+    # trainer.model.load_state_dict(torch.load("fodf_ae/best_model_small_9x9x9.pth"))
     trainer.train()
-    trainer.display_examples(n=5)
+    trainer.display_examples(n=10)
     
     # trainer.predict_examples(n=5)
 

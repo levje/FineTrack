@@ -672,6 +672,22 @@ def upsampling_block(in_channels, out_channels):
         nn.ReLU(),
     )
 
+def small_downsampling_block(in_channels, out_channels):
+    return nn.Sequential(
+        conv_layer(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=0), # No padding => reduces by 2.
+        nn.ReLU(),
+        conv_layer(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
+        nn.ReLU()
+    )
+
+def small_upsampling_block(in_channels, out_channels):
+    return nn.Sequential(
+        conv_t_layer(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=0),
+        nn.ReLU(),
+        conv_layer(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
+        nn.ReLU(),
+    )
+
 class WorkingFodfEncoder(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -746,3 +762,73 @@ class WorkingFodfDecoder(nn.Module):
 
     def forward(self, x):
         return self.layers(x)
+    
+class SmallWorkingFodfEncoder(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.layers = nn.Sequential(
+            # 32x32x3
+            ResidualBlock(in_channels=28), # 9x9x9
+            ResidualBlock(in_channels=28), # 9x9x9
+            ResidualBlock(in_channels=28), # 9x9x9
+            ResidualBlock(in_channels=28), # 9x9x9
+
+            small_downsampling_block(in_channels=28, out_channels=48), # 7x7x7
+            ResidualBlock(in_channels=48),
+            ResidualBlock(in_channels=48),
+            ResidualBlock(in_channels=48),
+            ResidualBlock(in_channels=48),
+
+            small_downsampling_block(in_channels=48, out_channels=96), # 5x5x5
+            ResidualBlock(in_channels=96),
+            ResidualBlock(in_channels=96),
+            ResidualBlock(in_channels=96),
+            ResidualBlock(in_channels=96),
+
+            small_downsampling_block(in_channels=96, out_channels=32), # 3x3x3
+            ResidualBlock(in_channels=32),
+            ResidualBlock(in_channels=32),
+            ResidualBlock(in_channels=32),
+            ResidualBlock(in_channels=32),
+        )
+
+        self.output_size = get_flat_size(3)*32 # 4x4x4x32 = 2048
+
+        print(f'{self.__class__.__name__}: {count_parameters(self)} params')
+
+    def forward(self, x):
+        return self.layers(x)
+
+class SmallWorkingFodfDecoder(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.layers = nn.Sequential(
+            # 3x3x3
+            ResidualBlock(in_channels=32),
+            ResidualBlock(in_channels=32),
+            ResidualBlock(in_channels=32),
+            ResidualBlock(in_channels=32),
+            small_upsampling_block(in_channels=32, out_channels=96), # 5x5x5
+
+            ResidualBlock(in_channels=96),
+            ResidualBlock(in_channels=96),
+            ResidualBlock(in_channels=96),
+            ResidualBlock(in_channels=96),
+            small_upsampling_block(in_channels=96, out_channels=48), # 7x7x7
+
+            ResidualBlock(in_channels=48),
+            ResidualBlock(in_channels=48),
+            ResidualBlock(in_channels=48),
+            ResidualBlock(in_channels=48),
+            conv_t_layer(in_channels=48, out_channels=48, kernel_size=3, stride=1, padding=0), # 9x9x9
+            nn.ReLU(),
+            conv_layer(in_channels=48, out_channels=28, kernel_size=3, stride=1, padding=1),
+        )
+
+        print(f'{self.__class__.__name__}: {count_parameters(self)} params')
+
+    def forward(self, x):
+        return self.layers(x)
+

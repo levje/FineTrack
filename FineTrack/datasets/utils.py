@@ -90,10 +90,10 @@ class SubjectData(object):
         
         transformation = None
         deformation = None
-        if 'transformation_volume' in hdf_subject:
-            transformation = np.array(hdf_subject['transformation_volume']['data'], dtype=np.float32)
-        if 'deformation_volume' in hdf_subject:
-            deformation = np.array(hdf_subject['deformation_volume']['data'], dtype=np.float32)
+        # if 'transformation_volume' in hdf_subject:
+        #     transformation = np.array(hdf_subject['transformation_volume']['data'], dtype=np.float32)
+        # if 'deformation_volume' in hdf_subject:
+        #     deformation = np.array(hdf_subject['deformation_volume']['data'], dtype=np.float32)
 
         reference = nib.Nifti1Image(anatomy.data, anatomy.affine_vox2rasmm)
 

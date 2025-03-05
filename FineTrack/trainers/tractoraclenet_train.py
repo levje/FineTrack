@@ -103,7 +103,7 @@ class TractOracleNetTraining(object):
             oracle_experiment,
             root_dir,
             self.oracle_train_steps,
-            enable_checkpointing=True,
+            enable_auto_checkpointing=True,
             log_interval=1,
             val_interval=1,
             device=self.device,

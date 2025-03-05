@@ -38,7 +38,7 @@ from FineTrack.environments.utils import (  # is_looping,
 from FineTrack.utils.utils import normalize_vectors, SimpleTimer
 from FineTrack.environments.rollout_env import RolloutEnvironment
 from FineTrack.environments.state import ConvState, State
-from FineTrack.algorithms.shared.fodf_encoder import WorkingFodfEncoder, DummyFodfEncoder
+from FineTrack.algorithms.shared.fodf_encoder import WorkingFodfEncoder, SmallWorkingFodfEncoder, DummyFodfEncoder
 from FineTrack.utils.interpolation import calc_neighborhood_grid, neighborhood_interpolation
 from scilpy.tractograms.tractogram_operations import transform_warp_sft
 
@@ -171,7 +171,7 @@ class BaseEnv(object):
         # ==========================================
         self.fodf_encoder = None
         if self.fodf_encoder_ckpt is not None:
-            self.fodf_encoder = WorkingFodfEncoder()
+            self.fodf_encoder = SmallWorkingFodfEncoder()
             self.fodf_encoder.load_state_dict(torch.load(self.fodf_encoder_ckpt,
                                                          map_location=self.device))
 
@@ -683,13 +683,15 @@ class BaseEnv(object):
             #         # display_image(nib.Nifti1Image(signal[0].cpu().numpy(), self.affine_vox2rasmm), default_slice=self.neighborhood_radius, save_to="test_neighborhood_dwi.png")
             #         # raise NotImplementedError("This implementation wasn't tested")
 
-            signal = self.direct_neigh_manager.get(coords)
 
             if self.fodf_encoder is not None:
+                signal = self.direct_neigh_manager.get(coords)
                 encoded_neighborhood = self._get_neighborhood_grid_encodings(coords)
 
                 # Concatenate the encoded neighborhood to the direct neighbors
                 signal = torch.cat([signal, encoded_neighborhood], dim=1)
+            else:
+                signal = self.direct_neigh_manager.get(coords)
 
             # Flatten the signal as this will be fed to a MLP
             # signal = signal.reshape(N, -1)
@@ -737,6 +739,7 @@ class BaseEnv(object):
 
         batch_size = 128 # TODO: Parametrize
         placeholder = torch.zeros((N, self.fodf_encoder.output_size), device=self.device)
+        # print("placeholder size: ", placeholder.shape)
 
         for start in range(0, N, batch_size):
             end = min(start + batch_size, N)
@@ -745,7 +748,7 @@ class BaseEnv(object):
             interpolated_neighborhood = self.neigh_manager.get(chunk_coords, torch_convention=True)
             
             # We crop the interpolated neighborhood to get a evenly-sized grid.
-            interpolated_neighborhood = interpolated_neighborhood[:, :, :-1, :-1, :-1]
+            # interpolated_neighborhood = interpolated_neighborhood[:, :, :-1, :-1, :-1]
 
             encoded_neighborhood = self.fodf_encoder(interpolated_neighborhood)
             placeholder[start:end] = encoded_neighborhood.reshape(end - start, -1)

@@ -152,7 +152,7 @@ class OracleMonitor(object):
     ):
         self.experiment = experiment
 
-        self.metrics_prefix = _get_prefix_with_delim(metrics_prefix)
+        self.metrics_prefix = _get_prefix_with_delim(metrics_prefix) if metrics_prefix else None
 
         self.use_comet = use_comet
         if not self.use_comet:
