@@ -331,7 +331,6 @@ class Experiment(object):
         data_per_streamline = tractogram.data_per_streamline[indices]
         data_per_point = tractogram.data_per_point[indices]
 
-        tractogram.apply_affine(affine)
         sft = StatefulTractogram(
             streamlines,
             reference,
