@@ -170,6 +170,7 @@ class BaseEnv(object):
         # FODF Encoder
         # ==========================================
         self.fodf_encoder = None
+        self.exclude_direct_neigh = env_dto['exclude_direct_neigh']
         if self.fodf_encoder_ckpt is not None:
             self.fodf_encoder = SmallWorkingFodfEncoder()
             self.fodf_encoder.load_state_dict(torch.load(self.fodf_encoder_ckpt,
@@ -689,7 +690,10 @@ class BaseEnv(object):
                 encoded_neighborhood = self._get_neighborhood_grid_encodings(coords)
 
                 # Concatenate the encoded neighborhood to the direct neighbors
-                signal = torch.cat([signal, encoded_neighborhood], dim=1)
+                if self.exclude_direct_neigh:
+                    signal = encoded_neighborhood
+                else:
+                    signal = torch.cat([signal, encoded_neighborhood], dim=1)
             else:
                 signal = self.direct_neigh_manager.get(coords)
 

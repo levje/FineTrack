@@ -26,6 +26,7 @@ class HParams:
     conv_state: bool # Redundant with flatten_state
     fodf_encoder_ckpt: str
     interpolation: str
+    exclude_direct_neigh: bool
 
     # Oracle parameters
     oracle_crit_checkpoint: str

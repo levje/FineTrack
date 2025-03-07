@@ -179,8 +179,14 @@ experiments:
     project_name: "CrossQ_RLHF"
     dataset: "tractoinferno"
     lr: 0.0005
-    max_ep: 1000
+    max_ep: 3000
     npv: 1
+    reward_ckpt:
+      local: "~/Documents/FineTrack/data/experiments/OracleNet-TractoInferno/OracleNet-TractoInferno/train-extractorflow/_best_epoch.ckpt"
+      cluster: ""
+    crit_ckpt: 
+      local: "~/Documents/FineTrack/data/experiments/OracleNet-TractoInferno/OracleNet-TractoInferno/train-extractorflow/_best_epoch.ckpt"
+      cluster: ""
 
 ## RLHF experiments
   # - exp_name: "CrossQ_RLHF_Inferno_1"

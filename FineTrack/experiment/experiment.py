@@ -136,6 +136,7 @@ class Experiment(object):
             'fodf_encoder_ckpt': self.hp.fodf_encoder_ckpt,
             'interpolation': self.hp.interpolation,
             'extractor_target': self.hp.extractor_target,
+            'exclude_direct_neigh': self.hp.exclude_direct_neigh
         }
 
         if noisy:
@@ -506,6 +507,8 @@ def add_model_args(parser: ArgumentParser):
     conv_group.add_argument('--fodf_encoder_ckpt', type=str, default=None,
                             help='Path to the encoder checkpoint to use for FODF input.'
                             'If provided, the neighborhood will be used as a convolutional input to that encoder.')
+    parser.add_argument('--exclude_direct_neigh', action='store_true',
+                            help='Whether to exclude the direct neighborhood from the state representation.')
 
 
 def add_tracking_args(parser: ArgumentParser):

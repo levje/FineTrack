@@ -250,8 +250,7 @@ class ExtrasManager:
         self._flags.append(str(flag))
 
         if value is not None \
-            and value != "True" \
-            and value != "False":
+            and not isinstance(value, bool):
             self._flags.append(str(value))
 
     def add_config(self, extras_config: dict):
@@ -343,6 +342,8 @@ def main():
             extra_flags_manager.add_flag("--tractometer_validator")
         if config_manager.data_config[dataset_name].get("scoring_data", None) is not None:
             extra_flags_manager.add_flag("--scoring_data", os.path.join(ds_dir, config_manager.data_config[dataset_name]['scoring_data']))
+        if config.get("exclude_direct_neigh", False):
+            extra_flags_manager.add_flag("--exclude_direct_neigh")
 
         # SLURM script content
         script_path = os.path.join(config_manager.SOURCEDIR, config["launch_script"])
@@ -371,7 +372,7 @@ fi
 # Only run that when on a cluster node
 if [ $islocal -eq 0 ]; then
     echo "Loading modules and virtual env..."
-    module load python/3.10 cuda cudnn httpproxy
+    module load python/3.10 cuda cudnn httpproxy nextflow
     source ~/FineTrack/venv/bin/activate
 
     # Prepare directories
