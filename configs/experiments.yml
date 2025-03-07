@@ -162,48 +162,48 @@ experiments:
   #     local: "~/Documents/FineTrack/test_ae/best_model_convs_2048_encoder_only.pth"
   #     cluster: "encoders/best_model_convs_2048_encoder_only.pth"
 
-  # - exp_name: "CrossQ_FODF_Encoder_9x9x9"
-  #   project_name: "TrackToLearn-CrossQ-FODF"
-  #   dataset: "ismrm2015"
-  #   lr: 0.00005
-  #   max_ep: 3000
-  #   log_interval: 3000
-  #   neighborhood_type: "grid"
-  #   neighborhood_radius: 4 # Grid of 9x9x9
-  #   flatten_state: False
-  #   time: "4-00:00:00"
-  #   fodf_encoder_ckpt:
-  #     local: "~/Documents/FineTrack/test_ae/best_model_9x9x9_encoder.pth"
-  #     cluster: "encoders/best_model_9x9x9_encoder.pth"
+  - exp_name: "CrossQ_FODF_Encoder_9x9x9_1"
+    project_name: "TrackToLearn-CrossQ-FODF"
+    dataset: "ismrm2015"
+    lr: 0.00005
+    max_ep: 3000
+    log_interval: 200
+    neighborhood_type: "grid"
+    neighborhood_radius: 4 # Grid of 9x9x9
+    flatten_state: False
+    time: "4-00:00:00"
+    fodf_encoder_ckpt:
+      local: "~/Documents/FineTrack/test_ae/best_model_9x9x9_encoder.pth"
+      cluster: "~/projects/def-pmjodoin/levje/encoders/best_model_9x9x9_encoder.pth"
 
-  # - exp_name: "CrossQ_FODF_Encoder_9x9x9"
-  #   project_name: "TrackToLearn-CrossQ-FODF"
-  #   dataset: "ismrm2015"
-  #   lr: 0.0001
-  #   max_ep: 3000
-  #   log_interval: 3000
-  #   neighborhood_type: "grid"
-  #   neighborhood_radius: 4 # Grid of 9x9x9
-  #   flatten_state: False
-  #   time: "4-00:00:00"
-  #   fodf_encoder_ckpt:
-  #     local: "~/Documents/FineTrack/test_ae/best_model_9x9x9_encoder.pth"
-  #     cluster: "encoders/best_model_9x9x9_encoder.pth"
+  - exp_name: "CrossQ_FODF_Encoder_9x9x9_2"
+    project_name: "TrackToLearn-CrossQ-FODF"
+    dataset: "ismrm2015"
+    lr: 0.0001
+    max_ep: 3000
+    log_interval: 200
+    neighborhood_type: "grid"
+    neighborhood_radius: 4 # Grid of 9x9x9
+    flatten_state: False
+    time: "4-00:00:00"
+    fodf_encoder_ckpt:
+      local: "~/Documents/FineTrack/test_ae/best_model_9x9x9_encoder.pth"
+      cluster: "~/projects/def-pmjodoin/levje/encoders/best_model_9x9x9_encoder.pth"
 
   - exp_name: "CrossQ_FODF_Encoder_9x9x9_latent_only"
     project_name: "TrackToLearn-CrossQ-FODF"
     dataset: "ismrm2015"
     lr: 0.0001
     max_ep: 3000
-    log_interval: 3000
+    log_interval: 200
     neighborhood_type: "grid"
     neighborhood_radius: 4 # Grid of 9x9x9
     flatten_state: False
-    exclude_direct_neigh: True
+    exclude_direct_neigh: True # Exclude direct neighbors
     time: "4-00:00:00"
     fodf_encoder_ckpt:
       local: "~/Documents/FineTrack/test_ae/best_model_9x9x9_encoder.pth"
-      cluster: "encoders/best_model_9x9x9_encoder.pth"
+      cluster: "~/projects/def-pmjodoin/levje/encoders/best_model_9x9x9_encoder.pth"
 
 
 ## RLHF experiments
