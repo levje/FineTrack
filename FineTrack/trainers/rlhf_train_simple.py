@@ -342,7 +342,9 @@ class RlhfTraining(FineTrackTraining):
                 sft_valid = None
                 sft_invalid = None
 
-                while total_added < self.hp.nb_new_streamlines_per_iter:
+                max_nb_of_tries = 10
+                nb_tries = 0
+                while total_added < self.hp.nb_new_streamlines_per_iter and nb_tries < max_nb_of_tries:
                     with tempfile.TemporaryDirectory(dir=tmpdir) as sub_tmpdir:
                         # Generate a tractogram
                         tractograms_path = os.path.join(sub_tmpdir, "tractograms")
@@ -407,6 +409,7 @@ class RlhfTraining(FineTrackTraining):
 
                         total_added += nb_new_streamlines
                         sub_pbar.update(nb_new_streamlines)
+                        nb_tries += 1
 
                 LOGGER.info(
                     "Adding filtered tractograms to the dataset...")
