@@ -36,7 +36,7 @@ class ExtractorFilterer(Filterer):
     def _filter(self, tractogram, out_dir, scored_extension="trk"):
         pass
 
-    def __call__(self, in_directory, tractograms, out_dir, tmp_base_dir=None):
+    def __call__(self, in_directory, tractograms, out_dir):
 
         # TODO: We need to copy the T1w file to the in_directory corresponding to the subject.
         # TODO: And, to improve speed, we should manually register the tractograms.

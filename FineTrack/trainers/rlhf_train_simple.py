@@ -560,7 +560,7 @@ class RlhfTraining(FineTrackTraining):
         return root_path, tractograms_path, transform_map
 
     def filter_tractograms(self, in_directory: str, tractograms: str,
-                           out_dir: str, transform_map: dict = None):
+                           out_dir: str):
         """
         Filter tractograms using the first filterer in the list.
         """
@@ -570,7 +570,7 @@ class RlhfTraining(FineTrackTraining):
         subject_ids = []
         requires_transform = []
         for filterer in self.filterers:
-            valids, invalids, subject_ids = filterer(in_directory, tractograms, out_dir, transform_map)
+            valids, invalids, subject_ids = filterer(in_directory, tractograms, out_dir)
             valid_tractograms.extend(valids)
             invalid_tractograms.extend(invalids)
             subject_ids.extend(subject_ids)

@@ -10,9 +10,9 @@ class Filterer(metaclass=ABCMeta):
     def __init__(self, sampler: StreamlinesSampler = None):
         self.sampler = sampler
 
-    def __call__(self, tractogram, out_dir, scored_extension="trk"):
+    def __call__(self, in_directory: str, tractograms: str, out_dir: str):
         """Filter a list of tracts."""
-        valid, invalid, subject_ids = self._filter(tractogram, out_dir, scored_extension)
+        valid, invalid, subject_ids = self._filter(in_directory, tractograms, out_dir)
 
         if self.sampler is not None:
             valid, invalid = \
@@ -26,7 +26,8 @@ class Filterer(metaclass=ABCMeta):
         return valid, invalid, subject_ids
         
     @abstractmethod
-    def _filter(self, tractogram, out_dir, scored_extension="trk") -> Tuple[StatefulTractogram, StatefulTractogram]:
+    def _filter(self, in_directory: str, tractograms: str, out_dir: str) -> Tuple[StatefulTractogram, StatefulTractogram]:
+        """Implement the filtering logic for the tractograms."""
         raise NotImplementedError("Filter method not implemented.")
 
     
