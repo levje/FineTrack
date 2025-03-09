@@ -123,7 +123,7 @@ global:
 extras:
   rlhf:
     pretrain_max_ep: 0
-    warmup_agent_steps: 200
+    warmup_agent_steps: 250
     agent_train_steps: 50
     oracle_train_steps: 4
     oracle_lr: 0.0001
@@ -152,17 +152,17 @@ experiments:
     oracle_lr: 0.0001
     oracle_train_steps: 5
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-    max_ep: 56
+    max_ep: 55
 
   - exp_name: "CrossQ_RLHF_3000_2"
     extra_type: "rlhf"
     project_name: "CrossQ_RLHF_3000"
     dataset: "ismrm2015"
     lr: 0.0005
-    oracle_lr: 0.0005
+    oracle_lr: 0.0002
     oracle_train_steps: 3
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-    max_ep: 56
+    max_ep: 55
 
   - exp_name: "CrossQ_RLHF_3000_3"
     extra_type: "rlhf"
@@ -172,24 +172,25 @@ experiments:
     oracle_lr: 0.0005
     oracle_train_steps: 4
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-    max_ep: 56
+    max_ep: 55
+    gamma: 0.99
 
-  - exp_name: "CrossQ_RLHF_3000_4"
-    extra_type: "rlhf"
-    project_name: "CrossQ_RLHF_3000"
-    dataset: "ismrm2015"
-    lr: 0.0005
-    oracle_lr: 0.0001
-    oracle_train_steps: 6
-    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-    max_ep: 56
+  # - exp_name: "CrossQ_RLHF_3000_4"
+  #   extra_type: "rlhf"
+  #   project_name: "CrossQ_RLHF_3000"
+  #   dataset: "ismrm2015"
+  #   lr: 0.0005
+  #   oracle_lr: 0.0001
+  #   oracle_train_steps: 6
+  #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+  #   max_ep: 55
 
-  - exp_name: "CrossQ_RLHF_3000_5"
-    extra_type: "rlhf"
-    project_name: "CrossQ_RLHF_3000"
-    dataset: "ismrm2015"
-    lr: 0.0005
-    oracle_lr: 0.0001
-    oracle_train_steps: 3
-    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-    max_ep: 56
+  # - exp_name: "CrossQ_RLHF_3000_5"
+  #   extra_type: "rlhf"
+  #   project_name: "CrossQ_RLHF_3000"
+  #   dataset: "ismrm2015"
+  #   lr: 0.0005
+  #   oracle_lr: 0.0001
+  #   oracle_train_steps: 3
+  #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+  #   max_ep: 55
