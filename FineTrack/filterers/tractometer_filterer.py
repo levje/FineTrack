@@ -117,7 +117,9 @@ class TractometerFilterer(Filterer):
             bundle.data_per_streamline['score'] = np.ones(
                 num_streamlines, dtype=np.float32)
 
-            if main_tractogram is None:
+            if num_streamlines <= 0:
+                continue
+            elif main_tractogram is None:
                 main_tractogram = bundle
             else:
                 main_tractogram = main_tractogram + bundle
