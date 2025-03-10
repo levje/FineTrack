@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=2
 #SBATCH --mem=22000M
 #SBATCH --time=0-40:00:00
 #SBATCH --mail-user=jeremi.levesque@usherbrooke.ca
 #SBATCH --mail-type=ALL
 
-EXPNAME=OracleNet-Transformer-Crit-32-Classif
-EXPID=OracleNet-Transformer-Crit-32-Classif
+EXPNAME=OracleNet-TractoInferno
+EXPID=OracleNet-TractoInferno-32-Classif
 MAXEPOCHS=75
 NB_STREAMLINES_POINTS=32
 NUM_WORKERS=20
@@ -34,27 +34,29 @@ if [ $islocal -eq 1 ]; then
     echo "Running locally"
     EXPPATH=data/experiments/TractOracleNet/${EXPNAME}
     DATASET_FILE=/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine_valid.hdf5
-    # DATASET_FILE=/home/local/USHERBROOKE/levj1404/Documents/TractOracleNet/TractOracleNet/datasets/ismrm2015_1mm/train_test_classical_tracts_dataset.hdf5
-    # DATASET_FILE=antoine-pft.hdf5
-    # DATASET_FILE=full-antoine.hdf5
-    # DATASET_FILE=data/datasets/ismrm2015_1mm/streamlines/stable/train_test_classical_tracts_antoine_modrange.hdf5
-    # DATASET_FILE=data/datasets/fibercup/streamlines/stable/fibercup_tracts.hdf5
-    # DATASET_FILE=data/datasets/fibercup/streamlines/stable/fibercup_tracts_big.hdf5
 else
     echo "Running on HPC..."
-    module load python/3.10 cuda cudnn httpproxy
-    source ~/ENV-TTL-2/bin/activate
+    module load python/3.10 cuda cudnn httpproxy nextflow
+    source ~/FineTrack/venv/bin/activate
     export COMET_API_KEY=$(cat ~/.comet_api_key)
 
     EXPPATH=${SLURM_TMPDIR}/experiment/${EXPNAME}
     mkdir -p ${EXPPATH}
 
+    DATASET_TO_USE=tractoinferno
     # Prepare datasets
-    echo "Copying dataset..."
-    cp ~/projects/def-pmjodoin/levje/datasets/train_test_classical_tracts_antoine_valid.hdf5 $SLURM_TMPDIR
-    DATASET_FILE=$SLURM_TMPDIR/train_test_classical_tracts_antoine_valid.hdf5
-    
-    NUM_WORKERS=3
+    # ISMRM2015
+    echo "Copying dataset ${DATASET_TO_USE}..."
+    if [ $DATASET_TO_USE == "ismrm2015" ]; then
+        cp ~/projects/def-pmjodoin/levje/datasets/train_test_classical_tracts_antoine_valid.hdf5 $SLURM_TMPDIR/${DATASET_TO_USE}_st_dataset.hdf5
+    elif [ $DATASET_TO_USE == "tractoinferno" ]; then
+        cp ~/projects/def-pmjodoin/levje/datasets/tractoinferno_tracts.hdf5 $SLURM_TMPDIR/${DATASET_TO_USE}_st_dataset.hdf5
+    else
+        echo "Error: Unknown dataset specified."
+        exit 1
+    fi
+    DATASET_FILE=$SLURM_TMPDIR/${DATASET_TO_USE}_st_dataset.hdf5
+
 fi
 
 
@@ -82,12 +84,12 @@ python FineTrack/trainers/tractoraclenet_train.py \
     --lr 0.0001 \
     --oracle_batch_size ${MICRO_BATCH_SIZE} \
     --grad_accumulation_steps ${GRAD_ACCUM_STEPS} \
-    --use_comet \
     --n_head 4 \
     --n_layers 4 \
     --out_activation sigmoid \
     --nb_streamlines_points ${NB_STREAMLINES_POINTS} \
     --num_workers ${NUM_WORKERS} \
+    --use_comet \
     "${additionnal_args[@]}"
 
 # Archive into .tar.gz everything in $SCRATCH_TMPDIR and copy it to ~/scratch/ with the name TractOracleNet-aaaa-mm-dd-hh-mm-ss.tar.gz

@@ -9,8 +9,8 @@ import os
 import nibabel as nib
 
 
-T1_path = "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_2mm/anat/ismrm2015_T1.nii.gz"
-out_dir = "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/dipy_segment_tissues_b03"
+T1_path = "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/dipy_segment_tissues_b03/reg/T1_toDiff.nii.gzWarped.nii.gz"
+out_dir = "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/dipy_segment_tissues_new_b02"
 
 os.makedirs(out_dir, exist_ok=True)
 print("Output directory: %s" % out_dir)
@@ -37,7 +37,7 @@ plt.savefig(os.path.join(out_dir, 't1_ref.png'))
 # Now we segment the tissues
 print("Segmenting the tissues...")
 nclass = 3
-beta = 0.3
+beta = 0.2
 
 start_time = time.time()
 hmrf = TissueClassifierHMRF()

@@ -135,7 +135,7 @@ class Experiment(object):
             'flatten_state': self.hp.flatten_state,
             'fodf_encoder_ckpt': self.hp.fodf_encoder_ckpt,
             'interpolation': self.hp.interpolation,
-            'extractor_target': self.hp.extractor_target,
+            'extractor_target': self.hp.extractor_target if hasattr(self.hp, 'extractor_target') else None,
             'exclude_direct_neigh': self.hp.exclude_direct_neigh
         }
 
@@ -230,7 +230,7 @@ class Experiment(object):
             'sh_basis': self.sh_basis,
             'is_sh_basis_legacy': self.is_sh_basis_legacy,
             'input_wm': self.input_wm,
-            'reference': self.reference_file,
+            'reference': self.hp.reference_file,
             'gm_mask': self.gm_mask if hasattr(self, 'gm_mask') else None,
             # file instead of being passed directly.
         })

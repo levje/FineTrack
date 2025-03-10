@@ -6,6 +6,7 @@ import numpy as np
 import os
 import random
 import torch
+from dataclasses import dataclass, field, fields
 
 from argparse import RawTextHelpFormatter
 from os.path import join
@@ -28,8 +29,11 @@ from FineTrack.experiment.experiment import Experiment
 from FineTrack.tracking.tracker import Tracker
 from FineTrack.utils.torch_utils import get_device
 from FineTrack.environments.rollout_env import \
-    (RolloutEnvironment, RolloutUtilityTracker)
+    (RolloutEnvironment, RolloutUtilityTracker, RolloutStats)
 from FineTrack.oracles.oracle import OracleSingleton
+from FineTrack.algorithms.shared.hyperparameters import HParams
+from FineTrack.utils.logging import get_logger
+from FineTrack.utils.utils import prettier_dict
 
 # Define the example model paths from the install folder.
 # Hackish ? I'm not aware of a better solution but I'm
@@ -39,6 +43,71 @@ _ROOT = os.sep.join(os.path.normpath(
 DEFAULT_MODEL = os.path.join(
     _ROOT, 'models')
 
+LOGGER = get_logger(__name__)
+
+@dataclass
+class TrackConfig:
+    algorithm: str
+    in_odf: str
+    in_mask: str
+    in_seed: str
+    input_wm: bool
+    gm_mask: str
+    out_tractogram: str
+    noise: float
+    binary_stopping_threshold: float
+    n_actor: int
+    npv: int
+    min_length: int
+    max_length: int
+    save_seeds: bool
+    mc_oracle_checkpoint: str
+    agent_checkpoint: str
+    rng_seed: int
+
+    fa_map_file: str = None # Optional
+    compress: float = 0.0
+
+    def __post_init__(self):
+        self.dataset_file = None
+        self.subject_id = None
+        self.tractometer_validator = False
+        self.scoring_data = None
+        self.compute_reward = False
+        self.use_classic_reward = False
+        self.render = False
+        self.reward_with_gt = False
+
+        self.reference_file = self.in_mask
+        self.alignment_weighting = 0.0
+        self.oracle_reward_checkpoint = None
+        self.oracle_crit_checkpoint = None
+        self.oracle_bonus = 0
+        self.oracle_validator = False
+        self.oracle_stopping_criterion = False
+
+    @classmethod
+    def from_dict(cls, config: dict, filter_extra_keys=True):
+        if filter_extra_keys:
+            valid_keys = {field.name for field in fields(cls) if field.init}
+            filtered_config = {k: v for k, v in config.items() if k in valid_keys}
+            extra_keys = set(config.keys()) - valid_keys
+            if extra_keys:
+                print(f"Warning: Ignoring unsupported parameters: {extra_keys}")
+            return cls(**filtered_config)
+        else:
+            return cls(**config)
+        
+    def update_with_dict(self, config, overwrite=False):
+        # This function iterates over the config file. If the key is already
+        # present in the object, it won't do anything unless overwrite is True.
+        # If the key is not present, it will add it to the object.
+        for key, value in config.items():
+            if hasattr(self, key):
+                if overwrite:
+                    setattr(self, key, value)
+            else:
+                setattr(self, key, value)
 
 class FineTrackTrack(Experiment):
     """ FineTrack testing script. Should work on any model trained with a
@@ -52,109 +121,74 @@ class FineTrackTrack(Experiment):
         """
         """
 
-        self.in_odf = track_dto['in_odf']
-        self.wm_file = track_dto['in_mask']
+        self.hp = self.hparams_class.from_dict(track_dto)
+        self.in_odf = self.hp.in_odf
+        self.wm_file = self.hp.in_mask
 
-        self.in_seed = track_dto['in_seed']
-        self.in_mask = track_dto['in_mask']
-        self.input_wm = track_dto['input_wm']
-        self.gm_mask = track_dto['gm_mask']
+        self.in_seed = self.hp.in_seed
+        self.in_mask = self.hp.in_mask
+        self.input_wm = self.hp.input_wm
+        self.gm_mask = self.hp.gm_mask
 
-        self.dataset_file = None
-        self.subject_id = None
-
-        self.reference_file = track_dto['in_mask']
-        self.out_tractogram = track_dto['out_tractogram']
-
-        self.noise = track_dto['noise']
-
-        self.binary_stopping_threshold = \
-            track_dto['binary_stopping_threshold']
-
-        self.n_actor = track_dto['n_actor']
-        self.npv = track_dto['npv']
-        self.min_length = track_dto['min_length']
-        self.max_length = track_dto['max_length']
-
-        self.compress = track_dto['compress'] or 0.0
+        self.noise = self.hp.noise
+        self.binary_stopping_threshold = self.hp.binary_stopping_threshold
+        self.n_actor = self.hp.n_actor
+        self.npv = self.hp.npv
+        self.min_length = self.hp.min_length
+        self.max_length = self.hp.max_length
+        self.compress = self.hp.compress
         (self.sh_basis, self.is_sh_basis_legacy) = parse_sh_basis_arg(argparse.Namespace(**track_dto))
-        self.save_seeds = track_dto['save_seeds']
-
-        # Tractometer parameters
-        self.tractometer_validator = False
-        self.scoring_data = None
-
+        self.save_seeds = self.hp.save_seeds
         self.compute_reward = False
-        self.use_classic_reward = False
-        self.render = False
-        self.reward_with_gt = False
 
         self.device = get_device()
 
         self.fa_map = None
-        if 'fa_map_file' in track_dto:
-            fa_image = nib.load(
-                track_dto['fa_map_file'])
+        if self.hp.fa_map_file is not None:
+            fa_image = nib.load(self.hp.fa_map_file)
             self.fa_map = MRIDataVolume(
                 data=fa_image.get_fdata(),
                 affine_vox2rasmm=fa_image.affine)
-
-        self.agent_checkpoint = track_dto['agent_checkpoint']
-        self.agent_checkpoint_dir = track_dto['agent_checkpoint_dir']
 
         def load_hyperparameters(hparams_path):
             with open(hparams_path, 'r') as f:
                 hparams = json.load(f)
             return hparams
         
-        checkpoint_dir = self.agent_checkpoint_dir or os.path.dirname(self.agent_checkpoint)
-        
+        checkpoint_dir = os.path.dirname(self.hp.agent_checkpoint)
         self.hparams = load_hyperparameters(os.path.join(
             checkpoint_dir, 'hyperparameters.json'))
-
-        self.algorithm = self.hparams['algorithm']
-        self.step_size = float(self.hparams['step_size'])
-        self.voxel_size = self.hparams.get('voxel_size', 2.0)
-        self.theta = self.hparams['max_angle']
-        self.hidden_dims = self.hparams['hidden_dims']
-        self.n_dirs = self.hparams['n_dirs']
-        self.target_sh_order = self.hparams['target_sh_order']
-
-        self.alignment_weighting = 0.0
-        # Oracle parameters
-        self.oracle_reward_checkpoint = None
-        self.oracle_crit_checkpoint = None
-        self.oracle_bonus = 0
-        self.oracle_validator = False
-        self.oracle_stopping_criterion = False
+        
+        self.hp.update_with_dict(self.hparams, overwrite=False)
 
         # Monte Carlo Oracle
-        self.mc_oracle_checkpoint = track_dto['mc_oracle_checkpoint']
+        self.mc_oracle_checkpoint = self.hp.mc_oracle_checkpoint
 
-        self.random_seed = track_dto['rng_seed']
-        torch.manual_seed(self.random_seed)
-        np.random.seed(self.random_seed)
-        random.seed(self.random_seed)
-        self.rng = np.random.RandomState(seed=self.random_seed)
+        torch.manual_seed(self.hp.rng_seed)
+        np.random.seed(self.hp.rng_seed)
+        random.seed(self.hp.rng_seed)
+        self.rng = np.random.RandomState(seed=self.hp.rng_seed)
 
         self.comet_experiment = None
 
-        self.big_neighborhood = track_dto['big_neighborhood']
+    @property
+    def hparams_class(self):
+        return TrackConfig
 
     def run(self):
         """
         Main method where the magic happens
         """
         # Presume iso vox
-        ref_img = nib.load(self.reference_file)
+        ref_img = nib.load(self.hp.reference_file)
         tracking_voxel_size = ref_img.header.get_zooms()[0]
 
         # # Set the voxel size so the agent traverses the same "quantity" of
         # # voxels per step as during training.
-        step_size_mm = self.step_size
-        if abs(float(tracking_voxel_size) - float(self.voxel_size)) >= 0.1:
+        step_size_mm = self.hp.step_size
+        if abs(float(tracking_voxel_size) - float(self.hp.voxel_size)) >= 0.1:
             step_size_mm = (
-                float(tracking_voxel_size) / float(self.voxel_size)) * \
+                float(tracking_voxel_size) / float(self.hp.voxel_size)) * \
                 self.step_size
 
             print("Agent was trained on a voxel size of {}mm and a "
@@ -173,44 +207,44 @@ class FineTrackTrack(Experiment):
         self.action_size = env.get_action_size()
 
         # Load agent
-        algs = {'SACAuto': CrossQ, 'PPO': PPO}
+        algs = {'SACAuto': SACAuto, 'CrossQ': CrossQ}
 
-        rl_alg = algs[self.algorithm]
-        print('Tracking with {} agent.'.format(self.algorithm))
+        rl_alg = algs[self.hp.algorithm]
+        print('Tracking with {} agent.'.format(self.hp.algorithm))
         # The RL training algorithm
         alg = rl_alg(
             self.input_size,
             self.action_size,
-            self.hidden_dims,
-            self.big_neighborhood,
+            self.hp,
             rng=self.rng,
             device=self.device)
 
         # Load pretrained policies
-        if self.agent_checkpoint_dir:
-            # Use the legacy method that loads the two files of weights
-            # for the policy and the critic.
-            alg.agent.load(self.agent_checkpoint_dir, 'last_model_state')
-        elif self.agent_checkpoint:
+        if self.hp.agent_checkpoint:
             # Load the bundled checkpoint file.
-            alg.load_checkpoint(self.agent_checkpoint)
+            alg.load_checkpoint(self.hp.agent_checkpoint)
+        else:
+            LOGGER.warning('No agent checkpoint provided. Exiting.')
+            return
 
         if self.mc_oracle_checkpoint:
             oracle = OracleSingleton(self.mc_oracle_checkpoint, device=self.device)
             utility_tracker = RolloutUtilityTracker(self.n_actor)
+            rollout_stats = RolloutStats()
             rollout_env = RolloutEnvironment(
                 ref_img, oracle,
                 min_streamline_steps=env.min_nb_steps + 1,
                 max_streamline_steps=env.max_nb_steps + 1,
+                rollout_stats=rollout_stats,
                 utility_tracker=utility_tracker)
             rollout_env.setup_rollout_agent(alg.agent)
 
         # Initialize Tracker, which will handle streamline generation
 
         tracker = Tracker(
-            alg, self.n_actor, compress=self.compress,
-            min_length=self.min_length, max_length=self.max_length,
-            save_seeds=self.save_seeds)
+            alg, self.hp.n_actor, compress=self.hp.compress,
+            min_length=self.hp.min_length, max_length=self.hp.max_length,
+            save_seeds=self.hp.save_seeds)
 
         # Run tracking
         env.load_subject()
@@ -218,17 +252,29 @@ class FineTrackTrack(Experiment):
         if self.mc_oracle_checkpoint:
             env.setup_rollout_env(rollout_env)
         
-        filetype = detect_format(self.out_tractogram)
-        tractogram = tracker.track(env, filetype)
+        filetype = detect_format(self.hp.out_tractogram)
+        # tractogram = tracker.track(env, filetype)
 
-        reference = get_reference_info(self.reference_file)
+        tractogram, _ = tracker.track_and_validate(env, True)
+        stopping_stats = self.stopping_stats(tractogram)
+        print(prettier_dict(stopping_stats, title='Stopping stats'))
+        print(prettier_dict(rollout_stats.get_stats(), title='Tracking Rollout Stats'))
+
+        reference = get_reference_info(self.hp.reference_file)
         header = create_tractogram_header(filetype, *reference)
 
         # Use generator to save the streamlines on-the-fly
-        nib.streamlines.save(tractogram, self.out_tractogram, header=header)
+        # nib.streamlines.save(tractogram, self.hp.out_tractogram, header=header)
+
+        from dipy.io.streamline import save_tractogram
+        sft = self.convert_to_rasmm_sft(tractogram, env.affine_vox2rasmm, env.reference)
+        print(dict(sft.data_per_streamline))
+        save_tractogram(sft, self.hp.out_tractogram, bbox_valid_check=False)
 
 
 def add_mandatory_options_tracking(p):
+    p.add_argument('algorithm', choices=['SACAuto', 'CrossQ'],
+                     help='The algorithm to use for tracking.')
     p.add_argument('in_odf',
                    help='File containing the orientation diffusion function \n'
                         'as spherical harmonics file (.nii.gz). Ex: ODF or '
@@ -249,7 +295,7 @@ def add_mandatory_options_tracking(p):
 
 def add_out_options(p):
     out_g = p.add_argument_group('Output options')
-    out_g.add_argument('--compress', type=float, metavar='thresh',
+    out_g.add_argument('--compress', type=float, metavar='thresh', default=0.0,
                        help='If set, will compress streamlines. The parameter '
                             'value is the \ndistance threshold. A rule of '
                             'thumb is to set it to 0.1mm for \ndeterministic '
@@ -270,8 +316,8 @@ def add_track_args(parser):
 
     basis_group = parser.add_argument_group('Basis options')
     add_sh_basis_args(basis_group)
+    
     add_out_options(parser)
-
     agent_group = parser.add_argument_group('Tracking agent options')
     agent_checkpoint_group = agent_group.add_mutually_exclusive_group(required=True)
     agent_checkpoint_group.add_argument('--agent_checkpoint_dir', type=str,
@@ -295,11 +341,11 @@ def add_track_args(parser):
     seed_group.add_argument('--npv', type=int, default=1,
                             help='Number of seeds per voxel [%(default)s].')
     track_g = parser.add_argument_group('Tracking options')
-    track_g.add_argument('--min_length', type=float, default=10.,
+    track_g.add_argument('--min_length', type=float, default=20.,
                          metavar='m',
                          help='Minimum length of a streamline in mm. '
                          '[%(default)s]')
-    track_g.add_argument('--max_length', type=float, default=300.,
+    track_g.add_argument('--max_length', type=float, default=200.,
                          metavar='M',
                          help='Maximum length of a streamline in mm. '
                          '[%(default)s]')

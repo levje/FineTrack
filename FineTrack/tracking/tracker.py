@@ -135,14 +135,17 @@ class Tracker(object):
                                 affine[:3, :3]) + \
                                 affine[:3, 3]
 
-                        # flag = item.data_for_streamline['flags']
-                        seed_dict = {}
+                        flag = item.data_for_streamline['flags']
+                        data_for_streamline = {
+                            'flags': flag,
+                        }
+
                         if self.save_seeds:
                             seed = item.data_for_streamline['seeds']
-                            seed_dict = {'seeds': seed-0.5}
+                            data_for_streamline['seeds'] = seed - 0.5
 
                         yield TractogramItem(
-                            streamline, seed_dict, {})
+                            streamline, data_for_streamline, {})
 
         tractogram = LazyTractogram.from_data_func(tracking_generator)
         tractogram.affine_to_rasmm = affine

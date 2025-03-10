@@ -21,7 +21,7 @@ LOGGER = get_logger(__name__)
 # TODO: Add the streamline sampler.
 class ExtractorFilterer(Filterer):
         
-    def __init__(self):
+    def __init__(self, end_space="mni", keep_intermediate_steps=False, quick_registration=False):
         super(ExtractorFilterer, self).__init__()
 
         # self.pipeline_path = "scilus/extractor_flow -r dev2023"
@@ -29,9 +29,19 @@ class ExtractorFilterer(Filterer):
         self.flow_configs = ["/home/local/USHERBROOKE/levj1404/Documents/FineTrack/configs/nextflow/extractor.config"] # TODO
         self.profiles = ['finetrack']
 
+        self.keep_intermediate_steps = keep_intermediate_steps
+        self.quick_registration = quick_registration
+        self.end_space = end_space
+        if end_space == "mni":
+            self.space_directory = "mni_space"
+        elif end_space == "orig":
+            self.space_directory = "orig_space"
+        else:
+            raise ValueError(f"Space {end_space} is not supported.")
+
     @property
     def ends_up_in_orig_space(self):
-        return False
+        return self.end_space == "orig"
 
     def _filter(self, tractogram, out_dir, scored_extension="trk"):
         pass
@@ -46,11 +56,14 @@ class ExtractorFilterer(Filterer):
         #       transformation matrices.
         #
         # TODO: Add a check to see if the T1w file is in the in_directory, otherwise raise an error.
+        assert os.path.exists(in_directory), f"In directory does not exist: {in_directory}"
+        assert os.path.exists(out_dir), f"Output directory does not exist: {out_dir}"
+        assert verify_root_structure(in_directory, requires_t1w=self.ends_up_in_orig_space)
         params = {
             "input": in_directory,
-            # "quick_registration": "true",
-            # "orig": "true", # This makes the pipeline 'fail'
-            "keep_intermediate_steps": "true"
+            "quick_registration": str(self.quick_registration).lower(),
+            "orig": str(self.ends_up_in_orig_space).lower(), 
+            "keep_intermediate_steps": str(self.keep_intermediate_steps).lower()
         }
         
         results_dir = self._run_pipeline(params, out_dir)
@@ -67,7 +80,7 @@ class ExtractorFilterer(Filterer):
                     params=params,
                     profiles=self.profiles):
             LOGGER.info("Running Extractor pipeline. ")
-            # LOGGER.info(execution.stdout)
+            LOGGER.info(execution.stdout)
         
         if execution.return_code == '0':
             LOGGER.info("Extractor pipeline executed successfully. "
@@ -114,18 +127,18 @@ class ExtractorFilterer(Filterer):
             if not subject_dir.is_dir():
                 continue
 
-            mni_space_dir = subject_dir / "mni_space"
+            mni_space_dir = subject_dir / self.space_directory
             if not mni_space_dir.exists():
                 LOGGER.warning(f"Subject directory {mni_space_dir} does not exist.")
                 continue
 
-            plausible = mni_space_dir / f"{subject_dir.name}__plausible_mni_space.trk"
+            plausible = mni_space_dir / f"{subject_dir.name}__plausible_{self.space_directory}.trk"
             if not plausible.exists():
                 LOGGER.warning(f"Plausible tractogram {plausible} does not exist.")
             else:
                 valid.append(str(plausible))
 
-            unplausible = mni_space_dir / f"{subject_dir.name}__unplausible_mni_space.trk"
+            unplausible = mni_space_dir / f"{subject_dir.name}__unplausible_{self.space_directory}.trk"
             if not unplausible.exists():
                 LOGGER.warning(f"Unplausible tractogram {unplausible} does not exist.")
             else:
@@ -156,3 +169,33 @@ class ExtractorFilterer(Filterer):
 
         save_tractogram(tractogram, tractogram_file, bbox_valid_check=False)
 
+def verify_root_structure(root_dir, requires_t1w=False):
+    # We need to make sure that the root_dir as the following structure:
+    # root_dir
+    # ├── subject1
+    # │   ├── *.trk
+    # │   └── *_t1.nii.gz
+    # ├── subject2
+    # │   ├── *.trk
+    # │   └── *_t1.nii.gz
+    # ├── ...
+    # └── subjectN
+    #     ├── *.trk
+    #     └── *_t1.nii.gz
+    print("Verifying root structure...")
+    for subject in os.listdir(root_dir):
+        subject_path = os.path.join(root_dir, subject)
+        if os.path.isdir(subject_path):
+            trk_files = list(Path(subject_path).glob("*.trk"))
+            nii_files = list(Path(subject_path).glob("*_t1.nii.gz"))
+            if requires_t1w and not nii_files:
+                print(f"Warning: Subject {subject} is missing the T1w file.")
+                return False
+            if not trk_files:
+                print(f"Warning: Subject {subject} is missing a *.trk file.")
+                return False
+        else:
+            print(f"Warning: {subject_path} is not a directory.")
+            return False
+    print("Root structure is valid.")
+    return True

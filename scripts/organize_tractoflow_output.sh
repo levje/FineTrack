@@ -124,6 +124,18 @@ manage_masks_directory() {
     $MOVE_CMD $1/$subid/Segment_Tissues/${subid}__mask_gm.nii.gz $sub_out_dir/masks/
 }
 
+manage_tracking_directory() {
+    # $1: the subject directory from the tractoflow output
+    # $2: the subject ID
+    subid=$2
+    sub_out_dir=$3/$subid
+
+    # Create the tracking directory
+    mkdir -p $sub_out_dir/tracking
+
+    $MOVE_CMD $1/$subid/Tracking/${subid}__tracking_filteredLength.trk $sub_out_dir/tracking/
+}
+
 organize_tractoflow_output() {
     # $1: the directory containing the tractoflow output
     # $2: the directory where the organized output should be stored
@@ -155,6 +167,9 @@ organize_tractoflow_output() {
 
         # Manage the masks directory
         manage_masks_directory $1 $subject $2
+
+        # Manage the tracking directory
+        manage_tracking_directory $1 $subject $2
     done
 }
 

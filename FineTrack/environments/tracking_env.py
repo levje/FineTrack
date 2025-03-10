@@ -209,8 +209,7 @@ class TrackingEnvironment(BaseEnv):
                     self.length,
                     self.stopping_criteria,
                     self._format_state,
-                    self._format_actions,
-                    prob=1.1)
+                    self._format_actions)
 
             self.streamlines = new_streamlines
 

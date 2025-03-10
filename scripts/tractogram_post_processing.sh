@@ -8,6 +8,8 @@ DEST_FOLDER=$1
 DATASETDIR=$2
 FORCE=$3
 
+EXTENSION="trk"
+
 if [ -z "${DEST_FOLDER}" ] || [ ! -d "${DEST_FOLDER}" ]; then
     echo "Please provide a valid destination folder."
     echo "Usage: $0 <destination_folder> <dataset_directory>"
@@ -27,13 +29,31 @@ fi
 
 # If FORCE is not empty, make sure it is the -f flag
 force_args=()
-if [ ! -z "${FORCE}" ] && [ "${FORCE}" != "-f" ]; then
+if [ ! -z "$3" ] && [ "$3" != "-f" ]; then
     echo "The FORCE argument must be -f."
     exit 1
 else
-    if [ "${FORCE}" == "-f" ]; then
+    EXTENSION="trk"
+    if [ "$3" == "-f" ]; then
         force_args+=("-f")
+        
+        # If there's a 4th argument, it should be the extension
+        if [ ! -z "$4" ]; then
+            EXTENSION=$4
+        fi
+    else
+        # If there's a 3rd argument, it should be the extension
+        if [ ! -z "$3" ]; then
+            EXTENSION=$3
+        fi
     fi
+fi
+
+
+if [[ ! "$EXTENSION" =~ ^(trk|tck)$ ]]; then
+    echo "Invalid extension. Please use 'trk' or 'tck'."
+    echo "Got: ${EXTENSION}"
+    exit 1
 fi
 
 # Depending on the version of scilpy,
@@ -56,7 +76,8 @@ echo "Using the ${SCORING_SCRIPT} script."
 # Create a folder to store the post-processed tractograms
 mkdir -p ${DEST_FOLDER}/postproc
 
-files=(${DEST_FOLDER}/*.trk)
+files=(${DEST_FOLDER}/*.${EXTENSION})
+echo "Found ${#files[@]} tractograms to post-process."
 for f in "${files[@]}"
 do
     echo "========================================="

@@ -19,6 +19,7 @@ class StoppingFlags(Enum):
     STOPPING_LOOP = int('00010000', 2)
     STOPPING_ANGULAR_ERROR = int('00100000', 2)
     STOPPING_ORACLE = int('01000000', 2)
+    STOPPING_CSF = int('10000000', 2)
 
 
 def is_flag_set(flags, ref_flag):

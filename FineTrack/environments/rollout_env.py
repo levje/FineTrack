@@ -8,6 +8,7 @@ from dipy.tracking.streamline import set_number_of_points
 from FineTrack.algorithms.shared.offpolicy import ActorCritic
 from FineTrack.environments.stopping_criteria import (StoppingFlags)
 from FineTrack.oracles.transformer_oracle import LightningLikeModule
+from fury import actor, window
 
 class RolloutStats(object):
     """
@@ -37,13 +38,14 @@ class RolloutStats(object):
         self.stats["perc_reach_gm"].append(kwargs.get("perc_reach_gm", None))
         self.stats["perc_not_saved"].append(kwargs.get("perc_not_saved", None))
         self.stats["rdist"].append(kwargs.get("rdist", None))
+        self.stats["action_variance"] = kwargs.get("action_variance", None)
 
     def get_stats(self, reduce='mean'):
         # Round everything to 2 decimals
         if reduce == 'mean':
-            reduced_stats = {k: np.round(np.mean(v), 2) for k, v in self.stats.items()}
+            reduced_stats = {k: np.round(np.mean(v), 6) for k, v in self.stats.items()}
         elif reduce == 'sum':
-            reduced_stats = {k: np.round(np.sum(v), 2) for k, v in self.stats.items()}
+            reduced_stats = {k: np.round(np.sum(v), 6) for k, v in self.stats.items()}
         else:
             raise ValueError("Invalid reduce argument. Please use 'mean' or 'sum'.")
 
@@ -145,9 +147,9 @@ class RolloutEnvironment(object):
     def __init__(self,
                  reference: nib.Nifti1Image,
                  oracle: LightningLikeModule,
-                 n_rollouts: int = 5,  # Nb of rollouts to try
-                 backup_size: int = 2,  # Nb of steps we are backtracking
-                 extra_n_steps: int = 4,  # Nb of steps further we need to compare the different rollouts
+                 n_rollouts: int = 20,  # Nb of rollouts to try
+                 backup_size: int = 3,  # Nb of steps we are backtracking
+                 extra_n_steps: int = 2,  # Nb of steps further we need to compare the different rollouts
                  min_streamline_steps: int = 1,  # Min length of a streamline
                  max_streamline_steps: int = 256,  # Max length of a streamline
                  rollout_stats: RolloutStats = RolloutStats(),
@@ -221,11 +223,10 @@ class RolloutEnvironment(object):
             current_length: int,
             stopping_criteria: dict[StoppingFlags, Callable],
             format_state_func: Callable[[np.ndarray], np.ndarray],
-            format_action_func: Callable[[np.ndarray], np.ndarray],
-            prob: float = 1.1
+            format_action_func: Callable[[np.ndarray], np.ndarray]
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         self._verify_rollout_agent()
-        INITIAL_FLAGS = in_stopping_flags.copy()
+
         assert self.max_streamline_steps == streamlines.shape[1]
 
         # Backtrack streamline length
@@ -267,6 +268,8 @@ class RolloutEnvironment(object):
         flags = np.zeros((self.n_rollouts, b_streamlines.shape[0]), dtype=np.int32) # (n_rollouts, n_streamlines)
         true_lengths = np.full((self.n_rollouts, b_streamlines.shape[0]), backup_length - 1, dtype=np.int32) # (n_rollouts, n_streamlines)
 
+        actions_per_rollout = np.zeros((rollouts.shape[0], rollouts.shape[1], 20, 3), dtype=np.float32) # TODO: This might be missing a dimension.
+        action_number = 0
         while backup_length < max_rollout_length and not all(np.size(arr) == 0 for arr in rollouts_continue_idx):
 
             for rollout in range(self.n_rollouts):
@@ -281,13 +284,17 @@ class RolloutEnvironment(object):
                     rollouts[rollout, r_continue_idx, :backup_length, :])
 
                 with torch.no_grad():
-                    actions = self.rollout_agent.select_action(state, prob)
+                    actions = self.rollout_agent.select_action(state, probabilistic=(rollout//2)+1) # Each rollout get progressively more probabilistic
                     actions = actions.cpu().numpy()
+
+                    actions_per_rollout[rollout, r_continue_idx, action_number] = actions
+
                 new_directions = format_action_func(actions)
 
                 # Step forward
                 rollouts[rollout, r_continue_idx, backup_length, :] = \
                     rollouts[rollout, r_continue_idx, backup_length - 1, :] + new_directions
+                true_lengths[rollout, r_continue_idx] = backup_length # TODO: Originally, only the continuing streamline were incremented.
 
                 # Get continuing streamlines that should stop and their stopping flag
                 should_stop, new_flags = self._compute_stopping_flags(
@@ -299,7 +306,6 @@ class RolloutEnvironment(object):
                 new_continue_idx, stopping_idx = (r_continue_idx[~should_stop],
                                                   r_continue_idx[should_stop])
 
-                true_lengths[rollout, r_continue_idx] = backup_length
 
                 rollouts_continue_idx[rollout] = new_continue_idx
 
@@ -319,6 +325,17 @@ class RolloutEnvironment(object):
                 axis=-1
             )
         )
+
+        # Compute the variance of the actions taken by the agent. The variance should be between each action
+        # corresponding to the same streamline. We want to make sure that each action for a different rollout is
+        # different enough to explore the space efficiently.
+        action_variances = np.var(actions_per_rollout, axis=0) # (n_streamlines, 20, 3)
+        action_variances = np.mean(action_variances, axis=(1, 2)) # (n_streamlines,)
+        mean_action_variance = np.mean(action_variances)
+
+        # Visualize the rollouts
+        if current_length > 10:
+            self.visualize_rollouts(rollouts[:, 0], true_lengths[:, 0], current_length - self.backup_size)
 
         # Get the best rollout for each streamline.
         best_rollouts, new_flags, best_true_lengths = \
@@ -362,7 +379,8 @@ class RolloutEnvironment(object):
             self.rollout_stats.update_step(rdist=mean_rollout_distance,
                                            perc_saved=n_saved/n_streamlines,
                                            perc_reach_gm=n_reached_target/n_streamlines,
-                                           perc_not_saved=n_not_saved/n_streamlines)
+                                           perc_not_saved=n_not_saved/n_streamlines,
+                                           action_variance=mean_action_variance)
 
 
         if self.utility_tracker:
@@ -411,7 +429,57 @@ class RolloutEnvironment(object):
         array_seq_streamlines._lengths = _lengths
 
         return array_seq_streamlines
+    
+    def visualize_rollouts(self, streamline_rollouts: np.ndarray, streamline_lengths: np.ndarray, backtrack_start_idx: int):
+        """
+        This function uses Fury to visualize the rollouts of the streamline i.
 
+        streamline_rollouts: np.ndarray of shape (n_rollouts, max_n_points, 3)
+        streamline_lengths: np.ndarray of shape (n_rollouts,) containing the true length of each streamline.
+        """
+
+
+        original_streamline = streamline_rollouts[0, :backtrack_start_idx, :] # (nb_points, 3)
+        rollouts_only = self._trim_zeros(streamline_rollouts, streamline_lengths, backtrack_start_idx) # (n_rollouts, nb_points, 3) # Different length for each rollout
+
+        # backtracking_streamlines = streamlines[backtrackable_idx, :backtracked_length, :]
+        # backtracking_rollouts = rollouts[:, backtrackable_idx, :rollout_length, :]
+        # chosen_streamline = self._trim_zeros(backtracking_rollouts[:, 0, ...], true_lengths[:, 0])
+        # chosen_streamline_scores = rollout_scores[:, 0]
+        # max_score_idx = np.argmax(chosen_streamline_scores)
+        # best_streamline = [chosen_streamline[max_score_idx]]
+        # chosen_streamline.pop(max_score_idx)
+
+        # fa_actor = actor.slicer(self.reference_data, opacity=0.7, interpolation='nearest')
+
+        # original_reference_streamline = original_streamline[None, 0, ...]
+        # reference_streamline = backtracking_streamlines[None, 0, ...]
+        original_actor = actor.line(original_streamline, colors=(65/255, 143/255, 205/255), linewidth=3)
+        # reference_actor = actor.line(reference_streamline, (65/255, 143/255, 205/255), linewidth=3)
+        rollouts_actor = actor.line(rollouts_only, colors=(1, 0, 0), linewidth=3)
+        # best_rollout_actor = actor.line(best_streamline, (0, 1, 0), linewidth=3)
+
+        scene = window.Scene()
+        # scene.add(fa_actor)
+        scene.add(original_actor)
+        scene.add(rollouts_actor)
+        # scene.add(best_rollout_actor)
+        # scene.add(reference_actor)
+
+        # window.show(scene, size=(600, 600), reset_camera=False)
+        window.record(scene, out_path='rollouts.png', size=(600, 600))
+
+
+    def _trim_zeros(self, rollouts, lengths, backtrack_start_idx):
+        """ Trim the zeros from the rollouts to the true length of the streamlines.
+        """
+        trimmed_rollouts = []
+        for i, (rollout, length) in enumerate(zip(rollouts, lengths)):
+            if length > backtrack_start_idx:
+                trimmed_streamline = rollout[backtrack_start_idx:length]
+                trimmed_rollouts.append(trimmed_streamline)
+
+        return trimmed_rollouts
 
     def _filter_best_rollouts(self,
                               rollouts: np.ndarray,
@@ -433,7 +501,7 @@ class RolloutEnvironment(object):
                 self._padded_streamlines_to_array_sequence(
                     rollouts[rollout], true_lengths[rollout])
             
-            array_seq_streamlines = set_number_of_points(array_seq_streamlines, 128)
+            array_seq_streamlines = set_number_of_points(array_seq_streamlines, 32)
 
             scores = self.oracle.predict(array_seq_streamlines)
             rollouts_scores[rollout] = scores

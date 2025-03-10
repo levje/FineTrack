@@ -326,9 +326,18 @@ class BaseEnv(object):
             functools.partial(is_too_curvy, max_theta=self.theta)
         
         # GM criterion
-        #self.stopping_criteria[
-        #    StoppingFlags.STOPPING_TARGET] = \
-        #    functools.partial(has_reached_gm, mask=self.gm_data, threshold=0.5)
+        # if self.gm_data is not None:
+        #     self.stopping_criteria[
+        #         StoppingFlags.STOPPING_TARGET] = \
+        #             functools.partial(has_reached_gm, mask=self.gm_data, threshold=0.5)
+            
+        # # CSF criterion
+        # import nibabel as nib
+        # csf_path = "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/dipy_segment_tissues_new_b02/t1_csf.nii.gz"
+        # self.csf_data = nib.load(csf_path).get_fdata()
+        # self.stopping_criteria[
+        #     StoppingFlags.STOPPING_CSF] = \
+        #         functools.partial(has_reached_gm, mask=self.csf_data, threshold=0.5)
 
         # Stopping criterion according to an oracle
         if self.oracle_crit_checkpoint and self.oracle_stopping_criterion:
@@ -438,7 +447,7 @@ class BaseEnv(object):
         target_sh_order = env_dto['target_sh_order']
 
         (input_volume, peaks_volume, tracking_mask, seeding_mask,
-         gm_mask) = BaseEnv._load_files(
+         gm_mask, transformation, deformation) = BaseEnv._load_files(
              in_odf,
              in_seed,
              in_mask,
@@ -448,7 +457,7 @@ class BaseEnv(object):
              gm_mask=gm_mask)
 
         subj_files = (input_volume, tracking_mask, seeding_mask,
-                      peaks_volume, reference, gm_mask)
+                      peaks_volume, reference, gm_mask, transformation, deformation)
 
         return cls(subj_files, 'testing', env_dto)
 
@@ -561,7 +570,11 @@ class BaseEnv(object):
             gm_volume = MRIDataVolume(
                 gm.get_fdata(), gm.affine)
         
-        return (signal_volume, peaks_volume, tracking_volume, seeding_volume, gm_volume)
+        transformation = None
+        deformation = None
+
+        return (signal_volume, peaks_volume, tracking_volume,
+                seeding_volume, gm_volume, transformation, deformation)
 
     def get_state_size(self):
         """ Returns the size of the state space by computing the size of
