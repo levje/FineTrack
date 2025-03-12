@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Union
 
 from FineTrack.utils.logging import get_logger
+from FineTrack.utils.utils import get_project_root_dir
 
 LOGGER = get_logger(__name__)
 
@@ -26,7 +27,7 @@ class ExtractorFilterer(Filterer):
 
         # self.pipeline_path = "scilus/extractor_flow -r dev2023"
         self.pipeline_path = "levje/extractor_flow"
-        self.flow_configs = ["/home/local/USHERBROOKE/levj1404/Documents/FineTrack/configs/nextflow/extractor.config"] # TODO
+        self.flow_configs = [ str(get_project_root_dir() / "configs/nextflow/extractor.config") ] # TODO
         self.profiles = ['finetrack']
 
         self.keep_intermediate_steps = keep_intermediate_steps

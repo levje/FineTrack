@@ -22,8 +22,8 @@ def main():
     # out_dir = "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/hcp/extractor/output"
 
     extractor = ExtractorFilterer(end_space="orig",
-                                keep_intermediate_steps=False,
-                                quick_registration=False)
+                                keep_intermediate_steps=args.keep_intermediate_steps,
+                                quick_registration=args.quick_registration)
     extractor(args.root_dir, [], out_dir=args.out_dir)
 
     print("Done.")

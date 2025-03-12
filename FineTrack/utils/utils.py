@@ -3,6 +3,7 @@ import math
 import os
 import sys
 import hashlib
+from pathlib import Path
 
 from dipy.core.geometry import sphere2cart
 from os.path import join as pjoin
@@ -522,3 +523,9 @@ def assert_same_weights(model1, model2):
 def count_parameters(model):
     # Parameters should have requires_grad=True to be counted properly.
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+def get_project_root_dir(as_str: bool = False):
+    if as_str:
+        return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    else:
+        return Path(__file__).parents[2]
