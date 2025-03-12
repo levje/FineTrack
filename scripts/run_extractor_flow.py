@@ -12,7 +12,7 @@ def parse_args():
     parser.add_argument("--out_dir", required=True, type=str, help="The output directory.")
     parser.add_argument("--quick_registration", action="store_true", help="Use quick registration.")
     parser.add_argument("--keep_intermediate_steps", action="store_true", help="Keep intermediate steps.")
-    parser.add_argument("--singularity", type=bool, action='store_true', help="The path to the singularity image.")
+    parser.add_argument("--singularity", action='store_true', help="The path to the singularity image.")
     add_logging_args(parser)
     return parser.parse_args()
 
