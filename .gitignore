@@ -95,3 +95,6 @@ nf_output_dir/
 results_rbx/
 flows_runs/
 results/
+output/
+*.pth
+*.png

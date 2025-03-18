@@ -47,9 +47,9 @@ def check_for_nulls(streamlines: np.ndarray, scores: np.ndarray):
     print(f"Scores of streamlines where all points are zeros ({full_zero_streamlines_scores.sum()} positive, {len(full_zero_streamlines_scores) - full_zero_streamlines_scores.sum()} negative): {full_zero_streamlines_scores}")
 
 
-def print_balance(streamlines: np.ndarray, scores: np.ndarray):
+def print_balance(scores: np.ndarray):
     # Print the number of streamlines
-    print(f"Number of streamlines: {len(streamlines)}")
+    print(f"Number of streamlines: {len(scores)}")
 
     # Compute the number of positive and negative samples
     num_positives = np.sum(scores)
@@ -85,7 +85,7 @@ def main(file, operation, datagroup):
         scores = hdf5_file[f"{datagroup}/scores"]
 
         if operation == "balance":
-            print_balance(np.asarray(streamlines), np.asarray(scores))
+            print_balance(np.asarray(scores))
         elif operation == "scores":
             check_scores(np.asarray(scores))
         elif operation == "zeros":

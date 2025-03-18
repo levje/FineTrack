@@ -59,7 +59,8 @@ class CrossQFineTrackTraining(FineTrackTraining):
 
 def add_cross_q_auto_args(parser):
     # So far, arguments are identical to SACAuto
-    pass
+    parser.add_argument("--batch_renorm", action="store_true",
+                        help="Use batch renormalization")
 
 
 def parse_args():

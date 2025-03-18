@@ -344,6 +344,8 @@ def main():
             extra_flags_manager.add_flag("--scoring_data", os.path.join(ds_dir, config_manager.data_config[dataset_name]['scoring_data']))
         if config.get("exclude_direct_neigh", False):
             extra_flags_manager.add_flag("--exclude_direct_neigh")
+        if config.get("batch_renorm", False):
+            extra_flags_manager.add_flag("--batch_renorm")
 
         # SLURM script content
         script_path = os.path.join(config_manager.SOURCEDIR, config["launch_script"])

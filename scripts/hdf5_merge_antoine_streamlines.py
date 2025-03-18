@@ -76,7 +76,7 @@ def main():
     # Assert all the files exist
     assert os.path.exists(train_file), f'Train file {train_file} does not exist'
     assert os.path.exists(valid_file), f'Validation file {valid_file} does not exist'
-    assert os.path.exists(test_file), f'Test file {test_file} does not exist
+    assert os.path.exists(test_file), f'Test file {test_file} does not exist'
 
     create_out_file(train_file, out_file)
 

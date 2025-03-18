@@ -140,7 +140,8 @@ class CrossQActorCritic(SACActorCritic):
             state_dim: StateShape,
             action_dim,
             hidden_dims,
-            device
+            device,
+            batch_renorm=False
     ):
         self.device = device
         self.actor = MaxEntropyActor(
@@ -148,5 +149,5 @@ class CrossQActorCritic(SACActorCritic):
         ).to(device)
 
         self.critic = CrossQDoubleCritic(
-            state_dim, action_dim, hidden_dims,
+            state_dim, action_dim, hidden_dims, batch_renorm=batch_renorm
         ).to(device)
