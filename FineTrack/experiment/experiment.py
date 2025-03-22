@@ -133,6 +133,7 @@ class Experiment(object):
             'neighborhood_radius': self.hp.neighborhood_radius,
             'neighborhood_type': self.hp.neighborhood_type,
             'flatten_state': self.hp.flatten_state,
+            'conv_state': self.hp.conv_state,
             'fodf_encoder_ckpt': self.hp.fodf_encoder_ckpt,
             'interpolation': self.hp.interpolation,
             'extractor_target': self.hp.extractor_target if hasattr(self.hp, 'extractor_target') else None,

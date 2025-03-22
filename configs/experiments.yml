@@ -148,19 +148,18 @@ experiments:
   #   lr: 0.0005
   #   max_ep: 1000
 
-  # - exp_name: "CrossQ_FODF_Encoder_1"
-  #   project_name: "TrackToLearn-CrossQ-FODF"
-  #   dataset: "ismrm2015"
-  #   lr: 0.0005
-  #   max_ep: 1000
-  #   log_interval: 100
-  #   neighborhood_type: "grid"
-  #   neighborhood_radius: 16
-  #   flatten_state: False
-  #   time: "3-00:00:00"
-  #   fodf_encoder_ckpt:
-  #     local: "~/Documents/FineTrack/test_ae/best_model_convs_2048_encoder_only.pth"
-  #     cluster: "encoders/best_model_convs_2048_encoder_only.pth"
+  - exp_name: "CrossQ_FODF_Encoder_1"
+    project_name: "TrackToLearn-CrossQ-FODF"
+    dataset: "ismrm2015"
+    lr: 0.0005
+    max_ep: 1000
+    log_interval: 100
+    neighborhood_type: "grid"
+    neighborhood_radius: 2 # Grid of 5x5x5
+    flatten_state: False
+    conv_state: True
+    time: "3-00:00:00"
+    launch_script: "FineTrack/trainers/sac_auto_train.py"
 
   # - exp_name: "CrossQ_FODF_Encoder_9x9x9_1"
   #   project_name: "TrackToLearn-CrossQ-FODF"
@@ -205,17 +204,17 @@ experiments:
   #     local: "~/Documents/FineTrack/test_ae/best_model_9x9x9_encoder.pth"
   #     cluster: "~/projects/def-pmjodoin/levje/encoders/best_model_9x9x9_encoder.pth"
 
-  - exp_name: "CrossQ_BatchRenorm"
-    project_name: "TrackToLearn-CrossQ"
-    dataset: "ismrm2015"
-    lr: 0.0005
-    max_ep: 3000
-    log_interval: 50
-    neighborhood_type: "axes"
-    neighborhood_radius: 1 # Grid of 9x9x9
-    flatten_state: True
-    time: "0-40:00:00"
-    batch_renorm: True
+  # - exp_name: "CrossQ_BatchRenorm"
+  #   project_name: "TrackToLearn-CrossQ"
+  #   dataset: "ismrm2015"
+  #   lr: 0.0005
+  #   max_ep: 3000
+  #   log_interval: 50
+  #   neighborhood_type: "axes"
+  #   neighborhood_radius: 1 # Grid of 9x9x9
+  #   flatten_state: True
+  #   time: "0-40:00:00"
+  #   batch_renorm: True
 
 
 ## RLHF experiments

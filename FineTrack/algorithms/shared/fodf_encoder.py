@@ -832,3 +832,21 @@ class SmallWorkingFodfDecoder(nn.Module):
     def forward(self, x):
         return self.layers(x)
 
+
+def encoding_layers(in_channels, norm_func=nn.Identity, **kwargs):
+    # Assume that the input is of size 5x5x5
+    return nn.Sequential(
+        nn.Conv3d(in_channels=in_channels, out_channels=32, kernel_size=3, stride=1, padding=1), # 5x5x5
+        norm_func(32, **kwargs),
+        nn.ReLU(),
+        nn.Conv3d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=0), # 3x3x3
+        norm_func(64, **kwargs),
+        nn.ReLU(),
+        nn.Conv3d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1), # 3x3x3
+        norm_func(64, **kwargs),
+        nn.ReLU(),
+        nn.Conv3d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=0), # 1x1x1
+        norm_func(128, **kwargs),
+        nn.ReLU(),
+        nn.Flatten()
+    ), 128

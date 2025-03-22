@@ -5,7 +5,7 @@ from FineTrack.algorithms.shared.utils import (
     format_widths, make_fc_network, make_conv_network)
 from FineTrack.environments.state import State, StateShape
 from FineTrack.algorithms.shared.batch_renorm import BatchRenorm1d, BatchRenorm3d
-from FineTrack.algorithms.shared.fodf_encoder import FodfEncoder
+from FineTrack.algorithms.shared.fodf_encoder import FodfEncoder, encoding_layers
 
 class CrossQCritic(nn.Module):
     def __init__(
@@ -45,8 +45,7 @@ class CrossQCritic(nn.Module):
         else:
             conv_state_shape = (state_dim.nb_sh_coefs, state_dim.depth,
                         state_dim.height, state_dim.width)
-            self.q_neighbor_encoder = FodfEncoder(n_coeffs=conv_state_shape[0], renorm=batch_renorm)
-            flat_neigh_size = self.q_neighbor_encoder.flat_output_size
+            self.encoder, flat_neigh_size = encoding_layers(conv_state_shape[0], norm_func=self.norm_func_3d, **batch_norm_kwargs)
         
         full_fc_state_dim = flat_neigh_size + state_dim.prev_dirs_size
         print("Full FC state dim: ", full_fc_state_dim)
@@ -88,7 +87,7 @@ class CrossQCritic(nn.Module):
                 encoded_neighborhood_1 = torch.cat([state.neighborhood, next_state.neighborhood], dim=0)
             else:
                 encoder_states_input = torch.cat([state.neighborhood, next_state.neighborhood]) # concat batch dimension
-                encoded_neighborhood_1 = self.q_neighbor_encoder(encoder_states_input, flatten=True)
+                encoded_neighborhood_1 = self.encoder(encoder_states_input)
 
             all_prev_dirs = torch.cat([state.prev_dirs, next_state.prev_dirs]) # concat batch-wise
             
@@ -106,7 +105,7 @@ class CrossQCritic(nn.Module):
             if self.state_is_flat:
                 encoded_neighborhood_1 = state.neighborhood
             else:
-                encoded_neighborhood_1 = self.q_neighbor_encoder(state.neighborhood, flatten=True)
+                encoded_neighborhood_1 = self.encoder(state.neighborhood)
             q1_states_input = torch.cat([encoded_neighborhood_1, state.prev_dirs], -1)
             q1_input = torch.cat([q1_states_input, action], -1)
             pred = self.q1(q1_input).squeeze(-1)

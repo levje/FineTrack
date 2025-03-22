@@ -163,6 +163,7 @@ class BaseEnv(object):
         self.neighborhood_radius = env_dto['neighborhood_radius']
         self.neighborhood_type = env_dto['neighborhood_type']
         self.flatten_state = env_dto['flatten_state'] or env_dto['fodf_encoder_ckpt'] is not None
+        self.conv_state = env_dto['conv_state']
         self.fodf_encoder_ckpt = env_dto['fodf_encoder_ckpt']
         self.interpolation = env_dto['interpolation']
 
@@ -707,6 +708,8 @@ class BaseEnv(object):
                     signal = encoded_neighborhood
                 else:
                     signal = torch.cat([signal, encoded_neighborhood], dim=1)
+            elif self.conv_state:
+                signal = self.neigh_manager.get(coords, torch_convention=True)
             else:
                 signal = self.direct_neigh_manager.get(coords)
 
