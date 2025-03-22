@@ -535,7 +535,7 @@ class BaseEnv(object):
         for idx in np.argwhere(np.sum(data, axis=-1)):
             idx = tuple(idx)
             directions, values, indices = get_maximas(data[idx],
-                                                      sphere, b_matrix,
+                                                      sphere, b_matrix.T,
                                                       0.1, 0)
             if values.shape[0] != 0:
                 n = min(npeaks, values.shape[0])
