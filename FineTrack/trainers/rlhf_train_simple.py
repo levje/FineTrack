@@ -535,7 +535,7 @@ class RlhfTraining(FineTrackTraining):
             # Track on the current subject.
             LOGGER.info("Tracking on subject: {}".format(env.subject_id))
             tractogram, _ = tracker.track_and_validate(env) # TODO: Change to only track(), no need to validate.
-            sft = self.convert_to_rasmm_sft(tractogram, env.affine_vox2rasmm, env.reference)
+            sft = self.convert_to_rasmm_sft(tractogram, env.affine_vox2rasmm, env.reference, discard_dps=True)
 
             # If we're using extractor_flow, we need to transform the tractogram
             # to MNI space.
