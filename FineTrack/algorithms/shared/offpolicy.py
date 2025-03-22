@@ -7,7 +7,7 @@ from os.path import join as pjoin
 from torch import nn
 from torch.distributions.normal import Normal
 
-from FineTrack.algorithms.shared.fodf_encoder import FodfEncoder
+from FineTrack.algorithms.shared.fodf_encoder import FodfEncoder, encoding_layers
 from FineTrack.environments.state import State, StateShape
 from FineTrack.algorithms.shared.utils import (
     format_widths, make_fc_network, make_conv_network)
@@ -102,11 +102,8 @@ class MaxEntropyActor(nn.Module):
             # Large neighborhood will be encoded by some CNN layers.
             conv_state_shape = (state_dim.nb_sh_coefs, state_dim.depth,
                                 state_dim.height, state_dim.width)
-            # self.conv_layers = make_conv_network(input_size=conv_state_shape,
-            #     output_size=flat_neigh_size)
-            self.encoder = FodfEncoder(
-                conv_state_shape[0])
-            flat_neigh_size = self.encoder.flat_output_size
+
+            self.encoder, flat_neigh_size = encoding_layers(conv_state_shape[0])
 
         self.action_dim = action_dim
         self.hidden_layers = format_widths(hidden_dims)
@@ -139,7 +136,7 @@ class MaxEntropyActor(nn.Module):
         if self.state_is_flat:
             flat_neighborhood = state.neighborhood
         else:
-            flat_neighborhood = self.encoder(state.neighborhood, flatten=True)
+            flat_neighborhood = self.encoder(state.neighborhood)
 
         # Concatenate the encoded neighborhood with the previous directions")
         state = torch.cat([flat_neighborhood, state.prev_dirs], dim=1)
@@ -259,12 +256,10 @@ class DoubleCritic(Critic):
         else:
             conv_state_shape = (state_dim.nb_sh_coefs, state_dim.depth,
                         state_dim.height, state_dim.width)
-            self.q1_neighbor_encoder = FodfEncoder(
-                conv_state_shape[0])
-            self.q2_neighbor_encoder = FodfEncoder(
-                conv_state_shape[0])
+            self.q1_neighbor_encoder, flat_neigh_size = encoding_layers(conv_state_shape[0])
+            self.q2_neighbor_encoder, flat_neigh_size = encoding_layers(conv_state_shape[0])
             
-            flat_neigh_size = self.q1_neighbor_encoder.flat_output_size
+            # flat_neigh_size = self.q1_neighbor_encoder.flat_output_size
         
         full_fc_state_dim = flat_neigh_size + state_dim.prev_dirs_size
         self.hidden_layers = format_widths(
@@ -285,8 +280,8 @@ class DoubleCritic(Critic):
             encoded_neighborhood_1 = state.neighborhood
             encoded_neighborhood_2 = state.neighborhood
         else:
-            encoded_neighborhood_1 = self.q1_neighbor_encoder(state.neighborhood, flatten=True)
-            encoded_neighborhood_2 = self.q2_neighbor_encoder(state.neighborhood, flatten=True)
+            encoded_neighborhood_1 = self.q1_neighbor_encoder(state.neighborhood)
+            encoded_neighborhood_2 = self.q2_neighbor_encoder(state.neighborhood)
 
         q1_input = torch.cat([encoded_neighborhood_1, state.prev_dirs, action], -1)
         q2_input = torch.cat([encoded_neighborhood_2, state.prev_dirs, action], -1)
