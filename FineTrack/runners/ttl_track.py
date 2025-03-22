@@ -170,6 +170,7 @@ class FineTrackTrack(Experiment):
         self.rng = np.random.RandomState(seed=self.hp.rng_seed)
 
         self.comet_experiment = None
+        self.discard_dps = True
 
     @property
     def hparams_class(self):
@@ -258,7 +259,9 @@ class FineTrackTrack(Experiment):
         tractogram, _ = tracker.track_and_validate(env, True)
         stopping_stats = self.stopping_stats(tractogram)
         print(prettier_dict(stopping_stats, title='Stopping stats'))
-        print(prettier_dict(rollout_stats.get_stats(), title='Tracking Rollout Stats'))
+
+        if self.mc_oracle_checkpoint:
+            print(prettier_dict(rollout_stats.get_stats(), title='Tracking Rollout Stats'))
 
         reference = get_reference_info(self.hp.reference_file)
         header = create_tractogram_header(filetype, *reference)
@@ -267,8 +270,7 @@ class FineTrackTrack(Experiment):
         # nib.streamlines.save(tractogram, self.hp.out_tractogram, header=header)
 
         from dipy.io.streamline import save_tractogram
-        sft = self.convert_to_rasmm_sft(tractogram, env.affine_vox2rasmm, env.reference)
-        print(dict(sft.data_per_streamline))
+        sft = self.convert_to_rasmm_sft(tractogram, env.affine_vox2rasmm, env.reference, discard_dps=self.discard_dps)
         save_tractogram(sft, self.hp.out_tractogram, bbox_valid_check=False)
 
 

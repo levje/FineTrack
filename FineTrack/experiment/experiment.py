@@ -315,7 +315,8 @@ class Experiment(object):
         self,
         tractogram,
         affine: np.ndarray,
-        reference: nib.Nifti1Image
+        reference: nib.Nifti1Image,
+        discard_dps: bool = False
     ) -> StatefulTractogram:
         """
         Converts a tractogram to RASMM space.
@@ -331,13 +332,20 @@ class Experiment(object):
         data_per_streamline = tractogram.data_per_streamline[indices]
         data_per_point = tractogram.data_per_point[indices]
 
-        sft = StatefulTractogram(
-            streamlines,
-            reference,
-            Space.RASMM,
-            origin=Origin.TRACKVIS,
-            data_per_streamline=data_per_streamline,
-            data_per_point=data_per_point)
+        if discard_dps:
+            sft = StatefulTractogram(
+                streamlines,
+                reference,
+                Space.RASMM,
+                origin=Origin.TRACKVIS)
+        else:
+            sft = StatefulTractogram(
+                streamlines,
+                reference,
+                Space.RASMM,
+                origin=Origin.TRACKVIS,
+                data_per_streamline=data_per_streamline,
+                data_per_point=data_per_point)
 
         sft.to_rasmm()
         return sft

@@ -50,7 +50,6 @@ class DroQFineTrackTraining(FineTrackTraining):
         alg = DroQ(
             self.input_size,
             self.action_size,
-            neighborhood_manager,
             self.hp,
             self.rng,
             device)
