@@ -296,7 +296,7 @@ def get_prepare_dataset_command(dataset_name, data_config, data_dir, is_local):
 
         return f"tar xf {archive_path} -C {output_path}", slurm_dataset_dir, hdf5_path
     elif dataset_type == "hdf5":
-        hdf5_path = Path(dataset_dir) / Path(dataset_path).name
+        hdf5_path = Path(dataset_dir) / f"{dataset_name}.hdf5"
         return f"cp {dataset_path} {dataset_dir}/{dataset_name}.hdf5", dataset_dir, str(hdf5_path)
     else:
         raise ValueError(f"Unknown dataset format: {dataset_path}")
