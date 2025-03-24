@@ -28,6 +28,8 @@ def main():
         for i in results[k]['indices']:
             all_recognized_indices.add(i)
     
+    sft = load_tractogram(tractogram_in, reference)
+    
     all_recognized_indices = list(all_recognized_indices)
     all_recognized_indices.sort()
     all_recognized_indices = np.array(all_recognized_indices, dtype=int)
@@ -36,7 +38,6 @@ def main():
 
     assert len(all_recognized_indices) + len(unrecognized_indices) == len(sft)
 
-    sft = load_tractogram(tractogram_in, reference)
     recognized_sft = sft[all_recognized_indices]
     unrecognized_sft = sft[unrecognized_indices]
 

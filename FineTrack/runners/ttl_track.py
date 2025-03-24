@@ -22,6 +22,7 @@ from scilpy.tracking.utils import verify_streamline_length_options
 
 from FineTrack.algorithms.sac_auto import SACAuto
 from FineTrack.algorithms.cross_q import CrossQ
+from FineTrack.algorithms.dro_q import DroQ
 from FineTrack.algorithms.ppo import PPO
 from FineTrack.datasets.utils import MRIDataVolume
 
@@ -208,17 +209,26 @@ class FineTrackTrack(Experiment):
         self.action_size = env.get_action_size()
 
         # Load agent
-        algs = {'SACAuto': SACAuto, 'CrossQ': CrossQ}
+        algs = {'SACAuto': SACAuto, 'CrossQ': CrossQ, 'DroQ': DroQ}
 
         rl_alg = algs[self.hp.algorithm]
         print('Tracking with {} agent.'.format(self.hp.algorithm))
         # The RL training algorithm
-        alg = rl_alg(
-            self.input_size,
-            self.action_size,
-            self.hp,
-            rng=self.rng,
-            device=self.device)
+        if rl_alg == CrossQ:
+            alg = rl_alg(
+                self.input_size,
+                self.action_size,
+                None,
+                self.hp,
+                rng=self.rng,
+                device=self.device)
+        else:
+            alg = rl_alg(
+                self.input_size,
+                self.action_size,
+                self.hp,
+                rng=self.rng,
+                device=self.device)
 
         # Load pretrained policies
         if self.hp.agent_checkpoint:
