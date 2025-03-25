@@ -1,0 +1,203 @@
+######################################
+# Experiment configuration file for TractOracle-V2
+# This file contains the configuration for the experiments
+# to be run. This is used by submit_experiments.py to 
+# generate SLURM-compatible scripts for running the experiments
+# with different parameters.
+# 
+# Now, we also aim to support using this method locally.
+# Everytime you wanna specify a path in the configuration below,
+# you can use the following formats:
+# 
+# 1. If you have the same path for LOCAL and CLUSTER nodes:
+#   some_dict:
+#     location: "~/path/to/file/common/to/both"
+#     ...
+#   ...
+# 
+# 2. If you have different paths for LOCAL and CLUSTER nodes:
+#   some_dict:
+#     location:
+#       local: "~/path/to/file/for/local"
+#       cluster: "~/path/to/file/for/cluster"
+#     ...
+#   ...
+# 
+# Depending on the node you are building the script for, only
+# the corresponding path will be used in the bash script generated.
+
+######################################
+## Data configuration
+## Bunch of paths pointing to where the data is stored
+## or where it should be stored.
+######################################  
+data: 
+  SOURCEDIR:
+    local: "~/Documents/FineTrack"
+    cluster: "~/FineTrack"
+  DATADIR:
+    local: "~/Documents/FineTrack/data/datasets"
+    cluster: "$SLURM_TMPDIR/data"
+  EXPDIR:
+    local: "~/Documents/FineTrack/data/experiments"
+    cluster: "$SLURM_TMPDIR/experiments"
+  LOGSDIR:
+    local: "~/Documents/FineTrack/data/logs"
+    cluster: "$SLURM_TMPDIR/logs"
+  PROJECTS_DIR:
+    local:
+    cluster: "~/projects/def-pmjodoin/levje"
+
+  ismrm2015:
+    name: "ismrm2015"
+    location:
+      local: "~/Documents/FineTrack/data/datasets/ismrm2015_2mm/ismrm2015.hdf5"
+      cluster: "~/projects/def-pmjodoin/levje/datasets/ismrm2015_2mm_ttl.tar.gz"
+    tractometer_reference:
+      local: "~/Documents/FineTrack/data/datasets/ismrm2015_2mm/scoring_data/t1.nii.gz" # Path within the dataset directory
+      cluster: "scoring_data/t1.nii.gz"
+    scoring_data:
+      local: "~/Documents/FineTrack/data/datasets/ismrm2015_2mm/scoring_data/" # Path within the dataset directory
+      cluster: "scoring_data/"
+  tractoinferno: 
+    name: "tractoinferno"
+    location:
+      local: "~/Documents/FineTrack/data/datasets/TractoInferno/tractoinferno_single.hdf5"
+      cluster: "projects/rrg-descotea/levje/datasets/tractoinferno/tractoinferno_td.hdf5"
+  hcp: 
+    name: "hcp"
+    location:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/datasets/hcp_full_100/hcp_full_100.hdf5"
+
+######################################
+## Global configuration
+## These configurations are shared across all experiments
+## These parameters can be overridden by the experiment
+## configurations below.
+######################################  
+global:
+  project_name: "SAC-InVivo"
+  reward_ckpt:
+    local: "custom_models/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Classif/_best_vc_epoch.ckpt"
+    cluster: "~/projects/def-pmjodoin/levje/oracles/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Classif/_best_vc_epoch.ckpt"
+  crit_ckpt:
+    local: "~/Documents/FineTrack/custom_models/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Dense/_best_vc_epoch.ckpt"
+    cluster: "~/projects/def-pmjodoin/levje/oracles/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Dense/_best_vc_epoch.ckpt"
+  launch_script: "FineTrack/trainers/sac_auto_train.py"
+  use_comet: True
+  hidden_dims: "1024-1024-1024"
+  npv: 2
+  min_length: 20
+  max_length: 200
+  noise: 0.0
+  replay_size: 1000000
+  binary_stopping_threshold: 0.1
+  theta: 30
+  n_dirs: 100
+  gamma: 0.95
+  n_actors: 4096
+  batch_size: 4096
+  seed: 1111
+  utd: 1
+  oracle_bonus: 10
+  
+  # Neighborhood
+  neighborhood_type: "axes"
+  neighborhood_radius: 1
+  flatten_state: True
+  fodf_encoder_ckpt: null
+  conv_state: False
+
+  # Misc
+  log_interval: 50
+  workspace: "ext-med-ia"
+  time: "3-00:00:00"
+  mem: "40000M"
+
+# Extra configuration parameters
+# These parameters can be added to an experiment configuration
+# identifying its category in the extras-type field.
+# End the name by _ to avoid putting this parameter when its null.
+extras:
+  rlhf:
+    pretrain_max_ep: 0
+    warmup_agent_steps: 200
+    agent_train_steps: 50
+    oracle_train_steps: 4
+    oracle_lr: 0.0001
+    dataset_to_augment_: null
+    nb_new_streamlines_per_iter: 50000
+    alg: "CrossQ"
+  other:
+
+
+
+######################################
+## Experiment configurations
+## 
+## You can add extra configuration parameters
+## to the experiment configurations by adding
+## extras-type: "rlhf"
+######################################  
+
+experiments:
+  - exp_name: "HCP-SAC-3K"
+    dataset: "hcp"
+    lr: 0.0005
+    max_ep: 3000
+    launch_script: "FineTrack/trainers/sac_auto_train.py"
+    reward_ckpt:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt"
+    crit_ckpt:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt"
+    time: "0-50:00:00"
+    project_name: "finetrack-hcp-rbx"
+
+  - exp_name: "HCP-DroQ-1K"
+    dataset: "hcp"
+    lr: 0.0005
+    max_ep: 1000
+    launch_script: "FineTrack/trainers/dro_q_train.py"
+    reward_ckpt:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt"
+    crit_ckpt:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt"
+    time: "0-71:00:00"
+    project_name: "finetrack-hcp-rbx"
+
+  - exp_name: "HCP-CrossQ-3K"
+    dataset: "hcp"
+    lr: 0.0005
+    max_ep: 3000
+    launch_script: "FineTrack/trainers/cross_q_train.py"
+    reward_ckpt:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt"
+    crit_ckpt:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt"
+    time: "0-50:00:00"
+    project_name: "finetrack-hcp-rbx"
+
+  - exp_name: "HCP-CrossQ-Convs-3K"
+    dataset: "hcp"
+    lr: 0.0005
+    max_ep: 3000
+    launch_script: "FineTrack/trainers/cross_q_train.py"
+    reward_ckpt:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt"
+    crit_ckpt:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt"
+    time: "0-71:00:00"
+    project_name: "finetrack-hcp-rbx"
+    neighborhood_type: "grid"
+    neighborhood_radius: 2
+    flatten_state: False
+    conv_state: True
