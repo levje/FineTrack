@@ -148,7 +148,7 @@ extras:
 ######################################  
 
 experiments:
-  - exp_name: "Inferno-SAC-RLHF-3K"
+  - exp_name: "RLHF-Inferno-SAC-3K"
     dataset: "tractoinferno"
     lr: 0.0005
     max_ep: 3000
@@ -164,7 +164,7 @@ experiments:
     extra_type: "rlhf"
     alg: "SACAuto"
 
-  - exp_name: "Inferno-CrossQ-RLHF-3K"
+  - exp_name: "RLHF-Inferno-CrossQ-3K"
     dataset: "tractoinferno"
     lr: 0.0005
     max_ep: 3000
@@ -179,7 +179,7 @@ experiments:
     project_name: "finetrack-tractoinferno-rlhf"
     extra_type: "rlhf"
 
-  - exp_name: "Inferno-X-HCP-Oracle"
+  - exp_name: "RLHF-Inferno-X-HCP-Oracle"
     dataset: "tractoinferno"
     lr: 0.0005
     max_ep: 3000
@@ -194,7 +194,7 @@ experiments:
     project_name: "finetrack-tractoinferno-rlhf"
     extra_type: "rlhf"
 
-  - exp_name: "HCP-X-Inferno-Oracle"
+  - exp_name: "RLHF-HCP-X-Inferno-Oracle"
     dataset: "hcp"
     lr: 0.0005
     max_ep: 3000
@@ -209,7 +209,7 @@ experiments:
     project_name: "finetrack-hcp-rlhf"
     extra_type: "rlhf"
 
-  - exp_name: "HCP-CrossQ-RLHF-3K"
+  - exp_name: "RLHF-HCP-CrossQ-3K"
     dataset: "hcp"
     lr: 0.0005
     max_ep: 3000
@@ -225,7 +225,7 @@ experiments:
     extra_type: "rlhf"
     alg: "CrossQ"
 
-  - exp_name: "HCP-SAC-RLHF-3K"
+  - exp_name: "RLHF-HCP-SAC-3K"
     dataset: "hcp"
     lr: 0.0005
     max_ep: 3000
@@ -239,4 +239,38 @@ experiments:
     time: "0-71:00:00"
     project_name: "finetrack-hcp-rlhf"
     extra_type: "rlhf"
+    alg: "SACAuto"
+
+  - exp_name: "NoRLHF-HCP-SAC-3K"
+    dataset: "hcp"
+    lr: 0.0005
+    max_ep: 3000
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    reward_ckpt:
+      local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt" # TODO: Wrong
+      cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt"
+    crit_ckpt:
+      local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt" # TODO: Wrong
+      cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt"
+    time: "0-71:00:00"
+    project_name: "finetrack-hcp-rlhf"
+    extra_type: "rlhf"
+    disable_oracle_training: True
+    alg: "SACAuto"
+
+  - exp_name: "NoRLHF-Inferno-SAC-3K"
+    dataset: "tractoinferno"
+    lr: 0.0005
+    max_ep: 3000
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    reward_ckpt:
+      local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt" # TODO: Wrong
+      cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt" # INFERNO ORACLE
+    crit_ckpt:
+      local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt" # TODO: Wrong
+      cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt" # INFERNO ORACLE
+    time: "0-71:00:00"
+    project_name: "finetrack-tractoinferno-rlhf"
+    extra_type: "rlhf"
+    disable_oracle_training: True
     alg: "SACAuto"

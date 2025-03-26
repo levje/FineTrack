@@ -367,7 +367,7 @@ class OracleTrainer(object):
 
         self.oracle_model.train()
 
-    def test(self, test_dataloader, compute_histogram_metrics=False):
+    def test(self, test_dataloader, compute_histogram_metrics=False, step=None, epoch=None):
         self.hooks_manager.trigger_hooks(OracleHookEvent.ON_TEST_START)
 
         self.oracle_model.eval()  # Set model to evaluation mode
@@ -382,6 +382,10 @@ class OracleTrainer(object):
             add_item_to_means(test_metrics, test_info)
 
         test_metrics = mean_losses(test_metrics)
+        
+        _step = step if step is not None else self._global_plotting_step
+        _epoch = epoch if epoch is not None else self._global_epoch
+        self.oracle_monitor.log_metrics(test_metrics, step=_step, epoch=_epoch)
         self.hooks_manager.trigger_hooks(OracleHookEvent.ON_TEST_END)
 
         if compute_histogram_metrics:

@@ -307,9 +307,12 @@ class RlhfTraining(FineTrackTraining):
                 ################################################
                 # Train the Oracles
                 ################################################
-                if not self.hp.disable_oracle_training:
+                if self.hp.disable_oracle_training:
                     self.train_reward()
                     self.train_stopping_criterion()
+                else:
+                    self.test_reward(step=i, epoch=0)
+                    self.test_stopping_criterion(step=1, epoch=0)
 
             ################################################
             # Train the RL agent
@@ -326,8 +329,7 @@ class RlhfTraining(FineTrackTraining):
                 max_ep=agent_nb_steps,
                 starting_ep=current_ep,
                 save_model_dir=self.model_dir,
-                test_before_training=False)
-                # test_before_training=do_warmup or i == 0)
+                test_before_training=do_warmup or i == 0)
 
             self.end_finetuning_epoch(i, do_warmup)
 
@@ -521,6 +523,30 @@ class RlhfTraining(FineTrackTraining):
         metrics_after = self.oracle_crit_trainer.test(test_dataloader=dm.test_dataloader())
         print(prettier_metrics(metrics_after, title="Test metrics after fine-tuning"))
         print(">>> Finished stopping criterion model training <<<")
+
+    def test_reward(self, step, epoch):
+        print(">>> Testing reward model <<<")
+        dm = StreamlineDataModule(self.dataset_manager.dataset_file_path,
+                                  batch_size=self.hp.oracle_batch_size,
+                                  num_workers=self.hp.num_workers,
+                                  nb_points=self.oracle_reward.nb_points)
+        
+
+        dm.setup('test', dense=False, partial=False)
+        metrics_after = self.oracle_reward_trainer.test(test_dataloader=dm.test_dataloader(), step=step, epoch=epoch)
+        print(prettier_metrics(metrics_after, title="Test metrics after fine-tuning"))
+        print(">>> Finished testing reward model step <<<")
+
+    def test_stopping_criterion(self, step, epoch):
+        print(">>> Testing stopping criterion model <<<")
+        dm = StreamlineDataModule(self.dataset_manager.dataset_file_path,
+                                  batch_size=self.hp.oracle_batch_size,
+                                  num_workers=self.hp.num_workers,
+                                  nb_points=self.oracle_crit.nb_points)
+        dm.setup('test', dense=False, partial=False)
+        metrics_before = self.oracle_crit_trainer.test(test_dataloader=dm.test_dataloader(), step=step, epoch=epoch)
+        print(prettier_metrics(metrics_before, title="Test metrics before fine-tuning (step: {}, epoch: {})".format(step, epoch)))
+        print(">>> Finished testing stopping criterion model <<<")
 
     def generate_and_save_tractograms(self, tracker: Tracker, env: BaseEnv,
                                       save_dir: str,

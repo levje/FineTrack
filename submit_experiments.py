@@ -349,6 +349,8 @@ def main():
 
         if config.get('first_oracle_train_steps', None) is not None:
             extra_flags_manager.add_flag("--first_oracle_train_steps", config['first_oracle_train_steps'])
+        if config.get('disable_oracle_training', False):
+            extra_flags_manager.add_flag("--disable_oracle_training")
 
         # SLURM script content
         script_path = os.path.join(config_manager.SOURCEDIR, config["launch_script"])
