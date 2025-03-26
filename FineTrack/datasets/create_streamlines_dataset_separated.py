@@ -14,7 +14,7 @@ from tqdm import tqdm
 from dipy.io.streamline import load_tractogram
 from dipy.tracking.streamline import set_number_of_points
 from nibabel.streamlines import load
-
+import nibabel as nib
 """
 Script to process multiple subjects into a single .hdf5 file.
 """
@@ -159,10 +159,11 @@ def process_subjects(
         neg_streamlines_files = glob(expanduser(neg_strm_files[0]))        
         anat_path = glob(expanduser(anat))[0]
         for pos_bundle, neg_bundle in zip(pos_streamlines_files, neg_streamlines_files):
-            pos_len_p = load_streamlines(expanduser(pos_bundle), anat_path)
-            neg_len_p = load_streamlines(expanduser(neg_bundle), anat_path)
-
-            nb = min(max_strml, min(len(pos_len_p.streamlines), len(neg_len_p.streamlines)))
+            # pos_len_p = load_streamlines(expanduser(pos_bundle), anat_path)
+            # neg_len_p = load_streamlines(expanduser(neg_bundle), anat_path)
+            pos_len_p = nib.streamlines.load(expanduser(pos_bundle), lazy_load=True).header['nb_streamlines']
+            neg_len_p = nib.streamlines.load(expanduser(neg_bundle), lazy_load=True).header['nb_streamlines']
+            nb = min(max_strml, min(pos_len_p, neg_len_p))
             total += nb*2
 
     print('Dataset will have {} streamlines'.format(total))
@@ -285,9 +286,21 @@ def add_streamlines_to_hdf5(hdf_subject, sft, nb_points, total, idx):
     data_group = hdf_subject['data']
     scores_group = hdf_subject['scores']
 
-    for i, st, sc in zip(idx, streamlines, scores):
-        data_group[i] = st
-        scores_group[i] = sc
+    # for i, st, sc in zip(idx, streamlines, scores):
+    #     data_group[i] = st
+    #     scores_group[i] = sc
+    batch_size = 1000
+    num_batches = (len(idx) // batch_size) + (len(idx) % batch_size != 0)
+
+    for batch_start in tqdm(range(0, len(idx), batch_size), desc="", total=num_batches, leave=False):
+        batch_end = min(batch_start + batch_size, len(idx))
+        batch_idx = idx[batch_start:batch_end]
+        batch_streamlines = np.asarray(
+            streamlines[batch_start:batch_end], dtype=np.float32)
+        batch_scores = scores[batch_start:batch_end]
+
+        data_group[batch_idx] = batch_streamlines
+        scores_group[batch_idx] = batch_scores
 
 
 def parse_args():

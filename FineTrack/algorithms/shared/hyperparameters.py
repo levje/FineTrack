@@ -45,6 +45,11 @@ class HParams:
     extractor_validator: bool
     extractor_target: str
 
+    # RBX Filterer parameters
+    rbx_validator: bool
+    singularity_image: str
+    atlas_directory: str
+
     # Tracking parameters
     npv: int
     theta: float # Angular thresholds

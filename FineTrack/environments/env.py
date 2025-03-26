@@ -219,15 +219,16 @@ class BaseEnv(object):
 
             try:
                 (sub_id, input_volume, tracking_mask, seeding_mask,
-                 peaks, reference, gm_mask, transformation, deformation) = next(self.loader_iter)[0]
+                 peaks, reference, gm_mask, transformation, deformation, fa) = next(self.loader_iter)[0]
             except StopIteration:
                 self.loader_iter = iter(self.loader)
                 (sub_id, input_volume, tracking_mask, seeding_mask,
-                 peaks, reference, gm_mask, transformation, deformation) = next(self.loader_iter)[0]
+                 peaks, reference, gm_mask, transformation, deformation, fa) = next(self.loader_iter)[0]
 
             self.subject_id = sub_id
             # Affines
             self.reference = reference
+            self.fa = fa
             self.affine_vox2rasmm = input_volume.affine_vox2rasmm
             self.affine_rasmm2vox = np.linalg.inv(self.affine_vox2rasmm)
 
@@ -235,7 +236,7 @@ class BaseEnv(object):
             self.data_volume = input_volume.data
         else:
             (input_volume, tracking_mask, seeding_mask, peaks,
-             reference, gm_mask, transformation, deformation) = self.subject_data
+             reference, gm_mask, transformation, deformation, fa) = self.subject_data
 
             self.affine_vox2rasmm = input_volume.affine_vox2rasmm
             self.affine_rasmm2vox = np.linalg.inv(self.affine_vox2rasmm)
@@ -243,6 +244,7 @@ class BaseEnv(object):
             # Volumes and masks
             self.data_volume = input_volume.data
             self.reference = reference
+            self.fa = fa
 
         # The SH target order is taken from the hyperparameters in the case of tracking.
         # Otherwise, the SH target order is taken from the input volume by default.
@@ -908,3 +910,9 @@ class BaseEnv(object):
         Save the anat file with its associated affine to a directory.
         """
         nib.save(self.reference, os.path.join(out_dir, filename))
+
+    def save_fa_to(self, out_dir, filename):
+        """
+        Save the FA file with its associated affine to a directory.
+        """
+        nib.save(self.fa, os.path.join(out_dir, filename))

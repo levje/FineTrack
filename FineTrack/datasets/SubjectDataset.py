@@ -51,6 +51,7 @@ class SubjectDataset(Dataset):
         seeding = tracto_data.seeding
 
         reference = tracto_data.reference
+        fa = tracto_data.fa
         gm_mask = tracto_data.gm
 
         transformation = tracto_data.transformation
@@ -58,7 +59,7 @@ class SubjectDataset(Dataset):
 
         return (subject_id, input_volume, tracking_mask,
                 seeding, peaks, reference, gm_mask,
-                transformation, deformation)
+                transformation, deformation, fa)
 
     def __len__(self):
         """

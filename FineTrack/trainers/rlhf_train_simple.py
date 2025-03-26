@@ -24,6 +24,7 @@ from FineTrack.environments.env import BaseEnv
 from FineTrack.tracking.tracker import Tracker
 from FineTrack.filterers.tractometer_filterer import TractometerFilterer
 from FineTrack.filterers.extractor.extractor_filterer import ExtractorFilterer
+from FineTrack.filterers.rbx.rbx_filterer import RbxFilterer
 from FineTrack.oracles.oracle import OracleSingleton
 from FineTrack.trainers.oracle.oracle_trainer import OracleTrainer
 from FineTrack.trainers.oracle.data_module import StreamlineDataModule
@@ -246,7 +247,7 @@ class RlhfTraining(FineTrackTraining):
             # We keep a copy of the initial model state just as a reference.
             # This has no real use in the training process.
             ckpt_path = Path(self.ref_model_dir) / "init_model_state.ckpt"
-            shutil.copyfile(self.agent_checkpoint, ckpt_path)
+            shutil.copyfile(self.hp.agent_checkpoint, ckpt_path)
 
             LOGGER.info("Done.")
 
@@ -274,6 +275,10 @@ class RlhfTraining(FineTrackTraining):
                 ExtractorFilterer())
             
             self.extractor_filterer = self.filterers[-1]
+        
+        if self.hp.rbx_validator:
+            self.filterers.append(
+                RbxFilterer(self.hp.singularity_image, self.hp.atlas_directory))
 
         do_warmup = self.hp.warmup_agent_steps and current_ep < self.hp.warmup_agent_steps - 1
 
@@ -339,8 +344,10 @@ class RlhfTraining(FineTrackTraining):
             with tempfile.TemporaryDirectory() as tmpdir:
                 # Those will hold the streamlines we are collecting
                 # to add to the dataset once we have enough.
-                sft_valid = None
-                sft_invalid = None
+                # sft_valid = None
+                # sft_invalid = None
+
+                sfts_to_add = []
 
                 max_nb_of_tries = 10
                 nb_tries = 0
@@ -398,13 +405,14 @@ class RlhfTraining(FineTrackTraining):
                                 _valid, _invalid)
 
                             if len(_valid) > 0 or len(_invalid) > 0:
-                                if sft_valid is None:
-                                    sft_valid = _valid
-                                    sft_invalid = _invalid
-                                else:
-                                    sft_valid += _valid
-                                    sft_invalid += _invalid
+                                # if sft_valid is None:
+                                #     sft_valid = _valid
+                                #     sft_invalid = _invalid
+                                # else:
+                                #     sft_valid += _valid
+                                #     sft_invalid += _invalid
 
+                                sfts_to_add.append((_valid, _invalid))
                                 nb_new_streamlines += len(_valid) + len(_invalid)
 
                         total_added += nb_new_streamlines
@@ -414,7 +422,7 @@ class RlhfTraining(FineTrackTraining):
                 LOGGER.info(
                     "Adding filtered tractograms to the dataset...")
                 self.dataset_manager.add_tractograms_to_dataset(
-                    [(sft_valid, sft_invalid)])
+                    sfts_to_add)
             
         # Print dataset stats
         data_stats = self.dataset_manager.fetch_dataset_stats()
@@ -534,7 +542,7 @@ class RlhfTraining(FineTrackTraining):
 
             # Track on the current subject.
             LOGGER.info("Tracking on subject: {}".format(env.subject_id))
-            tractogram, _ = tracker.track_and_validate(env) # TODO: Change to only track(), no need to validate.
+            tractogram, _ = tracker.track_and_validate(env, enable_pbar=True) # TODO: Change to only track(), no need to validate.
             sft = self.convert_to_rasmm_sft(tractogram, env.affine_vox2rasmm, env.reference, discard_dps=True)
 
             # If we're using extractor_flow, we need to transform the tractogram
@@ -548,6 +556,12 @@ class RlhfTraining(FineTrackTraining):
                 LOGGER.info("Copying T1w file to the subject's directory.")
                 t1_filename = f"{env.subject_id}_t1.nii.gz"
                 env.save_anat_to(subject_save_path, t1_filename)
+            
+            # If we're using RBX, we need to save the FA.
+            if self.hp.rbx_validator:
+                LOGGER.info("Saving FA map to the subject's directory.")
+                fa_filename = f"{env.subject_id}__fa.nii.gz"
+                env.save_fa_to(subject_save_path, fa_filename)
 
             filename = self.save_sft(sft, env.subject_id,
                                      subject_save_path, extension='trk')

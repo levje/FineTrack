@@ -21,7 +21,7 @@ LOG_STD_MIN = -20
 class CrossQHParams(SACAutoHParams):
     # So far, the hyperparameters for CrossQ are the same as SACAuto
     algorithm: str = field(default="CrossQ", init=False, repr=False)
-    batch_renorm: bool
+    # batch_renorm: bool
 
 class CrossQ(SACAuto):
     """
@@ -96,7 +96,7 @@ class CrossQ(SACAuto):
         # Initialize main agent
         self.agent = CrossQActorCritic(
             input_shape, action_size, self.hp.hidden_dims, device,
-            batch_renorm=self.hp.batch_renorm)
+            batch_renorm=False)
 
         # Auto-temperature adjustment
         # SAC automatically adjusts the temperature to maximize entropy and

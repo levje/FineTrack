@@ -305,7 +305,7 @@ class Experiment(object):
         # and more
         filename = pjoin(
             path_prefix,
-            "tractogram_{}_{}_{}.{}".format(self.hp.experiment,
+            "{}_{}_{}_tracking.{}".format(self.hp.experiment,
                                             self.hp.experiment_id,
                                             subject_id, extension))
         
@@ -561,6 +561,16 @@ def add_extractor_args(parser: ArgumentParser):
                            ' how the training is doing w.r.t. ground truth.')
     extractor.add_argument('--extractor_target', type=str, default=None,
                            help='Target file for the extractor.')
+    
+def add_rbx_args(parser: ArgumentParser):
+    rbx = parser.add_argument_group('RBX Filterer')
+    rbx.add_argument('--rbx_validator', action='store_true',
+                     help='Run the RBX filterer during validation to monitor '
+                     'how the training is doing.')
+    rbx.add_argument('--singularity_image', type=str, default=None,
+                     help='Singularity image to use for the RBX filterer.')
+    rbx.add_argument('--atlas_directory', type=str, default=None,
+                     help='Directory containing the atlas for the RBX filterer.')
 
 def add_oracle_args(parser: ArgumentParser):
     oracle = parser.add_argument_group('Oracle')

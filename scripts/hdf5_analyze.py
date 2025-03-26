@@ -1,6 +1,6 @@
 import h5py
 import numpy as np
-
+from tqdm import tqdm
 
 # This script will load an HDF5 file containing a dataset of streamlines and their associated scores.
 # The data is organized as follows:
@@ -78,6 +78,24 @@ def check_scores(scores: np.ndarray):
     # Save the figure as check_scores.png
     plt.savefig("check_scores.png")
     
+def count_zeros(streamlines: h5py.Dataset):
+    total_count = 0
+    
+    # Count the number of zeros in the streamlines
+    # by processing in batches
+    batch_size = 1000
+    nb_batches = len(streamlines) // batch_size
+    for i in tqdm(range(nb_batches)):
+        start = i*batch_size
+        end = min((i+1)*batch_size, len(streamlines))
+        batch = streamlines[start: end]
+
+        # Count the number of streamlines with zeros
+        count = np.sum(np.all(batch == 0, axis=(1, 2)))
+        total_count += count
+
+    print("Number of streamlines with zeros:", total_count)
+    
 
 def main(file, operation, datagroup):
     with h5py.File(file, "r") as hdf5_file:
@@ -90,6 +108,8 @@ def main(file, operation, datagroup):
             check_scores(np.asarray(scores))
         elif operation == "zeros":
             check_for_nulls(np.asarray(streamlines), np.asarray(scores))
+        elif operation == "count_zeros":
+            count_zeros(streamlines)
         else:
             print("Operation not supported. Please use 'balance'.")
 
