@@ -50,6 +50,7 @@ class RlhfHParams(CrossQHParams):
 
     oracle_lr: float
     oracle_train_steps: int
+    first_oracle_train_steps: int
     agent_train_steps: int
     num_workers: int
     rlhf_inter_npv: int
@@ -138,7 +139,8 @@ class RlhfTraining(FineTrackTraining):
             val_interval=1,
             device=self.device,
             grad_accumulation_steps=self.hp.grad_accumulation_steps,
-            metrics_prefix='reward'
+            metrics_prefix='reward',
+            first_oracle_train_steps=self.hp.first_oracle_train_steps
         )
 
         self.oracle_crit_trainer = OracleTrainer(
@@ -150,7 +152,8 @@ class RlhfTraining(FineTrackTraining):
             val_interval=1,
             device=self.device,
             grad_accumulation_steps=self.hp.grad_accumulation_steps,
-            metrics_prefix='crit'
+            metrics_prefix='crit',
+            first_oracle_train_steps=self.hp.first_oracle_train_steps
         )
 
         # Load reward oracle
@@ -349,7 +352,7 @@ class RlhfTraining(FineTrackTraining):
 
                 sfts_to_add = []
 
-                max_nb_of_tries = 10
+                max_nb_of_tries = 6
                 nb_tries = 0
                 while total_added < self.hp.nb_new_streamlines_per_iter and nb_tries < max_nb_of_tries:
                     with tempfile.TemporaryDirectory(dir=tmpdir) as sub_tmpdir:
@@ -647,6 +650,8 @@ def add_rlhf_training_args(parser: argparse.ArgumentParser):
     oracle_group.add_argument('--oracle_lr', type=float,
                               help='Learning rate to use for training the oracle.\n'
                               'If not set, the lr stored in the checkpoint will be used.')
+    oracle_group.add_argument('--first_oracle_train_steps', type=int, 
+                              help='Number of steps to train the oracle on the first training sequence, this is kinda of a warm-up to be able to quickly align the oracles to the dataset.')
     oracle_group.add_argument('--oracle_train_steps', type=int, required=True,
                               help='Number of steps to fine-tune the oracle during RLHF training.')
     oracle_group.add_argument('--oracle_batch_size', type=int, default=2816,

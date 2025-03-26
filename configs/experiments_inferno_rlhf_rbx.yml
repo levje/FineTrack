@@ -40,7 +40,7 @@ data:
     cluster: "$SLURM_TMPDIR/data"
   EXPDIR:
     local: "~/Documents/FineTrack/data/experiments"
-    cluster: "$SLURM_TMPDIR/experiments"
+    cluster: "/home/levj1404/scratch/FineTrack-RLHF"
   LOGSDIR:
     local: "~/Documents/FineTrack/data/logs"
     cluster: "$SLURM_TMPDIR/logs"
@@ -63,12 +63,12 @@ data:
     name: "tractoinferno"
     location:
       local: "~/Documents/FineTrack/data/datasets/TractoInferno/tractoinferno_single.hdf5"
-      cluster: "~/projects/def-pmjodoin/levje/datasets/tractoinferno.hdf5"
+      cluster: "~/projects/rrg-descotea/levje/datasets/tractoinferno/tractoinferno_fa.hdf5"
   hcp: 
     name: "hcp"
     location:
-      local: "~/Documents/FineTrack/data/datasets/hcp"
-      cluster: "~/projects/def-pmjodoin/levje/datasets/hcp.hdf5"
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/datasets/hcp_full_100/hcp_full_100_fa.hdf5"
 
 ######################################
 ## Global configuration
@@ -77,17 +77,17 @@ data:
 ## configurations below.
 ######################################  
 global:
-  project_name: "TrackToLearn-CrossQ"
+  project_name: "SAC-InVivo-RLHF"
   reward_ckpt:
     local: "custom_models/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Classif/_best_vc_epoch.ckpt"
     cluster: "~/projects/def-pmjodoin/levje/oracles/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Classif/_best_vc_epoch.ckpt"
   crit_ckpt:
     local: "~/Documents/FineTrack/custom_models/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Dense/_best_vc_epoch.ckpt"
     cluster: "~/projects/def-pmjodoin/levje/oracles/ismrm_oracles_nb_points/OracleNet-Transformer-Crit-32-Dense/_best_vc_epoch.ckpt"
-  launch_script: "FineTrack/trainers/cross_q_train.py"
+  launch_script: "FineTrack/trainers/sac_auto_train.py"
   use_comet: True
   hidden_dims: "1024-1024-1024"
-  npv: 20
+  npv: 2
   min_length: 20
   max_length: 200
   noise: 0.0
@@ -111,8 +111,8 @@ global:
 
   # Misc
   log_interval: 50
-  workspace: "mrzarfir"
-  time: "0-40:00:00"
+  workspace: "ext-med-ia"
+  time: "3-00:00:00"
   mem: "40000M"
 
 # Extra configuration parameters
@@ -122,16 +122,14 @@ global:
 extras:
   rlhf:
     pretrain_max_ep: 0
-    warmup_agent_steps: 200
+    warmup_agent_steps: 300
     agent_train_steps: 50
+    first_oracle_train_steps: 15
     oracle_train_steps: 4
     oracle_lr: 0.0001
     dataset_to_augment_: null
-    nb_new_streamlines_per_iter: 50000
-    alg: "CrossQ"
-    rlhf_inter_npv: 4
-    extractor_validator: true
-    extractor_target: "~/Documents/FineTrack/data/mni_template/JHU_MNI_SS_T1_brain_182x218x182_conv_f.nii.gz"
+    nb_new_streamlines_per_iter: 100000
+    alg: "SACAuto"
   other:
 
 
@@ -145,68 +143,95 @@ extras:
 ######################################  
 
 experiments:
-  # - exp_name: "CrossQ_TractoInferno"
-  #   dataset: "tractoinferno"
-  #   lr: 0.0005
-  #   max_ep: 1000
-
-  # - exp_name: "CrossQ_FODF_Encoder_1"
-  #   project_name: "TrackToLearn-CrossQ-FODF"
-  #   dataset: "ismrm2015"
-  #   lr: 0.0005
-  #   max_ep: 1000
-  #   log_interval: 100
-  #   neighborhood_type: "grid"
-  #   neighborhood_radius: 16
-  #   flatten_state: False
-  #   time: "3-00:00:00"
-  #   fodf_encoder_ckpt:
-  #     local: "~/Documents/FineTrack/test_ae/best_model_convs_2048_encoder_only.pth"
-  #     cluster: "encoders/best_model_convs_2048_encoder_only.pth"
-
-  # - exp_name: "CrossQ_FODF_Encoder_2"
-  #   project_name: "TrackToLearn-CrossQ-FODF"
-  #   dataset: "ismrm2015"
-  #   lr: 0.00005
-  #   max_ep: 1000
-  #   log_interval: 100
-  #   neighborhood_type: "grid"
-  #   neighborhood_radius: 16
-  #   flatten_state: False
-  #   time: "3-00:00:00"
-  #   fodf_encoder_ckpt:
-  #     local: "~/Documents/FineTrack/test_ae/best_model_convs_2048_encoder_only.pth"
-  #     cluster: "encoders/best_model_convs_2048_encoder_only.pth"
-
-  - exp_name: "CrossQ_Inferno_1"
-    extra_type: "rlhf"
-    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-    project_name: "CrossQ_RLHF"
+  - exp_name: "Inferno-SAC-RLHF-3K"
     dataset: "tractoinferno"
     lr: 0.0005
     max_ep: 3000
-    npv: 2
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     reward_ckpt:
-      local: "~/Documents/FineTrack/data/experiments/OracleNet-TractoInferno/OracleNet-TractoInferno/OracleNet-TractoInferno-32-Classif/_best_epoch.ckpt"
-      cluster: ""
-    crit_ckpt: 
-      local: "~/Documents/FineTrack/data/experiments/OracleNet-TractoInferno/OracleNet-TractoInferno/OracleNet-TractoInferno-32-Classif/_best_epoch.ckpt"
-      cluster: ""
-    use_comet: false
+      local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt"
+      cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt"
+    crit_ckpt:
+      local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt"
+      cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt"
+    time: "0-71:00:00"
+    project_name: "finetrack-tractoinferno-rlhf"
+    extra_type: "rlhf"
+    alg: "SACAuto"
 
-## RLHF experiments
-  # - exp_name: "CrossQ_RLHF_Inferno_1"
-  #   extra_type: "rlhf"
-  #   project_name: "CrossQ_RLHF"
-  #   dataset: "tractoinferno"
-  #     #    reward_ckpt:
-  #     #local:
-  #     #cluster:
-  #   lr: 0.0005
-  #   oracle_lr: 0.0001
-  #   oracle_train_steps: 5
-  #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-  #   max_ep: 20
-  #   extractor_validator: true
-  #   extractor_target: "~/Documents/FineTrack/data/mni_template/JHU_MNI_SS_T1_brain_182x218x182_conv_f.nii.gz"
-    
+  - exp_name: "Inferno-CrossQ-RLHF-3K"
+    dataset: "tractoinferno"
+    lr: 0.0005
+    max_ep: 3000
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    reward_ckpt:
+      local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt"
+      cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt"
+    crit_ckpt:
+      local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt"
+      cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt"
+    time: "0-71:00:00"
+    project_name: "finetrack-tractoinferno-rlhf"
+    extra_type: "rlhf"
+
+  - exp_name: "Inferno-X-HCP-Oracle"
+    dataset: "tractoinferno"
+    lr: 0.0005
+    max_ep: 3000
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    reward_ckpt:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt" # HCP ORACLE
+    crit_ckpt:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt" # HCP ORACLE
+    time: "0-71:00:00"
+    project_name: "finetrack-tractoinferno-rlhf"
+    extra_type: "rlhf"
+
+  - exp_name: "HCP-X-Inferno-Oracle"
+    dataset: "hcp"
+    lr: 0.0005
+    max_ep: 3000
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    reward_ckpt:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt" # INFERNO ORACLE
+    crit_ckpt:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt" # INFERNO ORACLE
+    time: "0-71:00:00"
+    project_name: "finetrack-hcp-rlhf"
+    extra_type: "rlhf"
+
+  - exp_name: "HCP-CrossQ-RLHF-3K"
+    dataset: "hcp"
+    lr: 0.0005
+    max_ep: 3000
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    reward_ckpt:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt" # INFERNO ORACLE
+    crit_ckpt:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt" # INFERNO ORACLE
+    time: "0-71:00:00"
+    project_name: "finetrack-hcp-rlhf"
+    extra_type: "rlhf"
+    alg: "CrossQ"
+
+  - exp_name: "HCP-SAC-RLHF-3K"
+    dataset: "hcp"
+    lr: 0.0005
+    max_ep: 3000
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    reward_ckpt:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt" # INFERNO ORACLE
+    crit_ckpt:
+      local: ""
+      cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt" # INFERNO ORACLE
+    time: "0-71:00:00"
+    project_name: "finetrack-hcp-rlhf"
+    extra_type: "rlhf"
+    alg: "SACAuto"

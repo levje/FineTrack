@@ -347,6 +347,9 @@ def main():
         if config.get("batch_renorm", False):
             extra_flags_manager.add_flag("--batch_renorm")
 
+        if config.get('first_oracle_train_steps', None) is not None:
+            extra_flags_manager.add_flag("--first_oracle_train_steps", config['first_oracle_train_steps'])
+
         # SLURM script content
         script_path = os.path.join(config_manager.SOURCEDIR, config["launch_script"])
         extra_flags_string = extra_flags_manager.compile_flags(linebreak=True, indent=1, start_with_linebreak=True)

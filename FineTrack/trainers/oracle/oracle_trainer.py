@@ -78,6 +78,7 @@ class OracleTrainer(object):
                  grad_accumulation_steps=1,
                  device=get_device(),
                  metrics_prefix=None,
+                 first_oracle_train_steps=None
                  ):
         self.experiment = experiment
         self.saving_path = saving_path
@@ -86,6 +87,13 @@ class OracleTrainer(object):
         self.checkpoint_prefix = checkpoint_prefix
         self.device = device
         self.max_epochs = max_epochs
+        self.first_oracle_train_steps = first_oracle_train_steps
+
+        if self.first_oracle_train_steps is not None:
+            self.is_first_training_loop = True
+        else:
+            self.is_first_training_loop = False # Proceed as usual, there's nothing different about the first fit_iter called.
+        
         self.val_interval = val_interval
 
         self._global_epoch = 0
@@ -108,6 +116,7 @@ class OracleTrainer(object):
         hyperparameters.update({
             'saving_path': self.saving_path,
             'max_epochs': self.max_epochs,
+            'first_oracle_train_steps': self.first_oracle_train_steps,
             'val_interval': self.val_interval,
             'log_interval': self.log_interval,
             'grad_accumulation_steps': self.grad_accumulation_steps
@@ -197,9 +206,12 @@ class OracleTrainer(object):
         nb_of_full_batches = len(
             train_dataloader) // self.grad_accumulation_steps
 
+        nb_epochs = self.first_oracle_train_steps if self.is_first_training_loop else self.max_epochs
+        self.is_first_training_loop = False # Make sure we only use the first steps for the first training loop
+
         best_loss = float('inf')
         with tqdm(range(nb_of_full_batches + has_non_complete_batch)) as pbar:
-            for epoch in range(self.max_epochs):
+            for epoch in range(nb_epochs):
                 pbar.set_description(f"Training oracle epoch {epoch}")
                 pbar.update()
 
