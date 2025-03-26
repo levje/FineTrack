@@ -23,19 +23,13 @@ LOGGER = get_logger(__name__)
 # TODO: Add the streamline sampler.
 class RbxFilterer(Filterer):
         
-    def __init__(self, singularity_image: str, atlas_directory: str):
+    def __init__(self, atlas_directory: str):
         super(RbxFilterer, self).__init__()
 
         # self.pipeline_path = "scilus/extractor_flow -r dev2023"
         self.pipeline_path = "levje/rbx_flow -r segregation"
         self.flow_configs = [ str(get_project_root_dir() / "configs/nextflow/rbx.config") ] # TODO
         self.atlas_directory = atlas_directory
-        self.singularity_image = singularity_image
-
-        if singularity_image is None:
-            raise ValueError("Singularity image must be provided.")
-        elif not os.path.exists(singularity_image):
-            raise ValueError(f"Singularity image {singularity_image} does not exist.")
         
         if atlas_directory is None:
             raise ValueError("Atlas directory must be provided.")
@@ -166,6 +160,9 @@ class RbxFilterer(Filterer):
             sub_recognized_indices = np.array(list(sub_recognized_indices), dtype=int)
             sub_unrecognized_indices = np.setdiff1d(sub_all_indices, sub_recognized_indices)
             
+            print("Recognized ({}): {}".format(subid, len(sub_recognized_indices)))
+            print("Unrecognized ({}): {}".format(subid, len(sub_unrecognized_indices)))
+
             assert sub_recognized_indices.size + sub_unrecognized_indices.size == nb_streamlines
 
             valid_indices[subid] = sub_recognized_indices

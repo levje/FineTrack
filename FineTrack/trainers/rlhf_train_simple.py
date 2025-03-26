@@ -281,7 +281,12 @@ class RlhfTraining(FineTrackTraining):
         
         if self.hp.rbx_validator:
             self.filterers.append(
-                RbxFilterer(self.hp.singularity_image, self.hp.atlas_directory))
+                RbxFilterer(self.hp.atlas_directory))
+
+        if self.hp.rbx_validator or self.hp.extractor_validator:
+            pass
+        else:
+            raise ValueError("At least one of the filterers must be enabled.")
 
         do_warmup = self.hp.warmup_agent_steps and current_ep < self.hp.warmup_agent_steps - 1
 
@@ -321,7 +326,8 @@ class RlhfTraining(FineTrackTraining):
                 max_ep=agent_nb_steps,
                 starting_ep=current_ep,
                 save_model_dir=self.model_dir,
-                test_before_training=do_warmup or i == 0)
+                test_before_training=False)
+                # test_before_training=do_warmup or i == 0)
 
             self.end_finetuning_epoch(i, do_warmup)
 
@@ -349,6 +355,8 @@ class RlhfTraining(FineTrackTraining):
                 # to add to the dataset once we have enough.
                 # sft_valid = None
                 # sft_invalid = None
+
+                print("Creating tractograms in tmp dir: {}".format(tmpdir))
 
                 sfts_to_add = []
 
@@ -422,10 +430,14 @@ class RlhfTraining(FineTrackTraining):
                         sub_pbar.update(nb_new_streamlines)
                         nb_tries += 1
 
-                LOGGER.info(
-                    "Adding filtered tractograms to the dataset...")
-                self.dataset_manager.add_tractograms_to_dataset(
-                    sfts_to_add)
+                if nb_new_streamlines > 0:
+                    LOGGER.info(
+                        "Adding filtered tractograms to the dataset...")
+                    self.dataset_manager.add_tractograms_to_dataset(
+                        sfts_to_add)
+                else:
+                    LOGGER.warning(
+                        "No streamlines were added to the dataset.")
             
         # Print dataset stats
         data_stats = self.dataset_manager.fetch_dataset_stats()

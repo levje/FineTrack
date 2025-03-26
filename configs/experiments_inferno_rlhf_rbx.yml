@@ -67,7 +67,7 @@ data:
   hcp: 
     name: "hcp"
     location:
-      local: ""
+      local: "~/Documents/FineTrack/data/datasets/TractoInferno/tractoinferno_single.hdf5" # TODO: Wrong
       cluster: "~/projects/rrg-descotea/levje/datasets/hcp_full_100/hcp_full_100_fa.hdf5"
 
 ######################################
@@ -130,6 +130,11 @@ extras:
     dataset_to_augment_: null
     nb_new_streamlines_per_iter: 100000
     alg: "SACAuto"
+    rbx_validator: True
+
+    atlas_directory:
+      local: "/home/local/USHERBROOKE/levj1404/Documents/rbx_flow/atlas"
+      cluster: "/home/levj1404/rbx_binary/rbx_flow/atlas"
   other:
 
 
@@ -180,10 +185,10 @@ experiments:
     max_ep: 3000
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     reward_ckpt:
-      local: ""
+      local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt" # TODO: Wrong
       cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt" # HCP ORACLE
     crit_ckpt:
-      local: ""
+      local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt" # TODO: Wrong
       cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt" # HCP ORACLE
     time: "0-71:00:00"
     project_name: "finetrack-tractoinferno-rlhf"
@@ -195,10 +200,10 @@ experiments:
     max_ep: 3000
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     reward_ckpt:
-      local: ""
+      local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt"
       cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt" # INFERNO ORACLE
     crit_ckpt:
-      local: ""
+      local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt"
       cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt" # INFERNO ORACLE
     time: "0-71:00:00"
     project_name: "finetrack-hcp-rlhf"
@@ -210,10 +215,10 @@ experiments:
     max_ep: 3000
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     reward_ckpt:
-      local: ""
+      local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt" # TODO: Wrong
       cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt" # INFERNO ORACLE
     crit_ckpt:
-      local: ""
+      local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt" # TODO: Wrong
       cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt" # INFERNO ORACLE
     time: "0-71:00:00"
     project_name: "finetrack-hcp-rlhf"
@@ -226,10 +231,10 @@ experiments:
     max_ep: 3000
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     reward_ckpt:
-      local: ""
+      local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt" # TODO: Wrong
       cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt" # INFERNO ORACLE
     crit_ckpt:
-      local: ""
+      local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt" # TODO: Wrong
       cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt" # INFERNO ORACLE
     time: "0-71:00:00"
     project_name: "finetrack-hcp-rlhf"
