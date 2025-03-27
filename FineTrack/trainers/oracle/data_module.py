@@ -17,7 +17,9 @@ class StreamlineDataModule(object):
 
     def __init__(
         self,
-        dataset_file: str,
+        train_dataset: str,
+        valid_dataset: str,
+        test_dataset: str,
         batch_size: int = 1024,
         num_workers: int = 20,
         nb_points: int = 128,
@@ -37,7 +39,9 @@ class StreamlineDataModule(object):
         """
 
         super().__init__()
-        self.dataset_file = dataset_file
+        self.train_dataset = train_dataset
+        self.valid_dataset = valid_dataset
+        self.test_dataset = test_dataset
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.nb_points = nb_points
@@ -49,26 +53,26 @@ class StreamlineDataModule(object):
             'pin_memory': get_device_str() == 'cuda',
         }
 
-        # Select a random distribution of indices for the training and validation sets.
-        num_streamlines = len(StreamlineBatchDataset(
-            self.dataset_file, stage="train", nb_points=nb_points))
-        self.indices = np.arange(num_streamlines)
-        np.random.shuffle(self.indices)
+        # # Select a random distribution of indices for the training and validation sets.
+        # num_streamlines = len(StreamlineBatchDataset(
+        #     self.dataset_file, stage="train", nb_points=nb_points))
+        # self.indices = np.arange(num_streamlines)
+        # np.random.shuffle(self.indices)
 
-        # 80% of the training data is used for training
-        self.train_indices = self.indices[:int(0.8 * num_streamlines)]
-        # 20% of the training data is used for validation
-        self.valid_indices = self.indices[int(0.8 * num_streamlines):]
+        # # 80% of the training data is used for training
+        # self.train_indices = self.indices[:int(0.8 * num_streamlines)]
+        # # 20% of the training data is used for validation
+        # self.valid_indices = self.indices[int(0.8 * num_streamlines):]
 
-        # Accessing elements in an HDF5 file requires indices
-        # to be accessed in increasing order.
-        self.train_indices = np.sort(self.train_indices)
-        self.valid_indices = np.sort(self.valid_indices)
+        # # Accessing elements in an HDF5 file requires indices
+        # # to be accessed in increasing order.
+        # self.train_indices = np.sort(self.train_indices)
+        # self.valid_indices = np.sort(self.valid_indices)
 
-        assert len(self.train_indices) > 0 and \
-            len(self.valid_indices) > 0, \
-            "The dataset is too small to be split into train, validation and test sets." \
-            f"Train: {len(self.train_indices)} Val: {len(self.valid_indices)} Test: {len(self.test_indices)}"
+        # assert len(self.train_indices) > 0 and \
+        #     len(self.valid_indices) > 0, \
+        #     "The dataset is too small to be split into train, validation and test sets." \
+        #     f"Train: {len(self.train_indices)} Val: {len(self.valid_indices)} Test: {len(self.test_indices)}"
 
     def setup(self, stage: str, dense: bool = False, partial: bool = False):
 
@@ -77,20 +81,18 @@ class StreamlineDataModule(object):
             print("Setting up training and validation datasets with dense={} and partial={}".format(
                 dense, partial))
 
-            self.streamline_train = Subset(StreamlineBatchDataset(
-                self.dataset_file, stage="train",
-                dense=dense, partial=partial, nb_points=self.nb_points),
-                self.train_indices)
+            self.streamline_train = StreamlineBatchDataset(
+                self.train_dataset, stage="train",
+                dense=dense, partial=partial, nb_points=self.nb_points)
 
-            self.streamline_val = Subset(StreamlineBatchDataset(
-                self.dataset_file, stage="train",
-                dense=dense, partial=partial, nb_points=self.nb_points),
-                self.valid_indices)
+            self.streamline_val = StreamlineBatchDataset(
+                self.valid_dataset, stage="train",
+                dense=dense, partial=partial, nb_points=self.nb_points)
 
         # Assign test dataset for use in dataloader(s)
         if stage == "test":
             self.streamline_test = StreamlineBatchDataset(
-                self.dataset_file, noise=0.0, flip_p=0.0, stage="test",
+                self.test_dataset, noise=0.0, flip_p=0.0, stage="test",
                 dense=dense, partial=partial, nb_points=self.nb_points)
 
     def train_dataloader(self):

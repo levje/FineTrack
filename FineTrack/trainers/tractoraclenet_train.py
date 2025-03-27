@@ -43,7 +43,9 @@ class TractOracleNetTraining(object):
         self.grad_accumulation_steps = train_dto['grad_accumulation_steps']
 
         # Data files
-        self.dataset_file = train_dto['dataset_file']
+        self.train_dataset = train_dto['train_dataset']
+        self.valid_dataset = train_dto['valid_dataset']
+        self.test_dataset = train_dto['test_dataset']
         self.use_comet = train_dto['use_comet']
         self.comet_workspace = train_dto['comet_workspace']
         self.device = get_device()
@@ -115,7 +117,9 @@ class TractOracleNetTraining(object):
         oracle_trainer.setup_model_training(model)
 
         # Instanciate the datamodule
-        dm = StreamlineDataModule(self.dataset_file,
+        dm = StreamlineDataModule(self.train_dataset,
+                                    self.valid_dataset,
+                                    self.test_dataset,
                                   batch_size=self.oracle_batch_size,
                                   num_workers=self.num_workers,
                                   nb_points=self.nb_points)
@@ -156,7 +160,11 @@ def parse_args():
                         help='ID of experiment.')
     parser.add_argument('max_ep', type=int,
                         help='Number of epochs.')
-    parser.add_argument('dataset_file', type=str,
+    parser.add_argument('train_dataset', type=str,
+                        help='Training dataset.')
+    parser.add_argument('valid_dataset', type=str,
+                        help='Training dataset.')
+    parser.add_argument('test_dataset', type=str,
                         help='Training dataset.')
     parser.add_argument('--lr', type=float, default=5e-4,
                         help='Learning rate.')

@@ -68,7 +68,7 @@ class StreamlineBatchDataset(Dataset):
         f = self.archives
         self.input_size = self._compute_input_size()
 
-        streamlines = f[self.stage]['data']
+        streamlines = f["streamlines"]['data']
         self.length = len(streamlines)
 
     def _compute_input_size(self):
@@ -128,7 +128,7 @@ class StreamlineBatchDataset(Dataset):
         f = self.archives
 
         # Get the streamlines and their scores
-        hdf_subject = f[self.stage]
+        hdf_subject = f["streamlines"]
         data = hdf_subject['data']
         scores_data = hdf_subject['scores']
 
