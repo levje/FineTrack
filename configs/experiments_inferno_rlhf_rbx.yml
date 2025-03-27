@@ -112,8 +112,8 @@ global:
   # Misc
   log_interval: 50
   workspace: "ext-med-ia"
-  time: "3-00:00:00"
-  mem: "40000M"
+  time: "2-00:00:00"
+  mem: "70000M"
 
 # Extra configuration parameters
 # These parameters can be added to an experiment configuration
@@ -133,6 +133,7 @@ extras:
     rbx_validator: True
     rlhf_inter_npv: 2
     oracle_batch_size: 1024
+    num_workers: 4
 
     atlas_directory:
       local: "/home/local/USHERBROOKE/levj1404/Documents/rbx_flow/atlas"
@@ -161,7 +162,7 @@ experiments:
     crit_ckpt:
       local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt"
       cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt"
-    time: "0-71:00:00"
+    time: "0-47:00:00"
     project_name: "finetrack-tractoinferno-rlhf"
     extra_type: "rlhf"
     alg: "SACAuto"
@@ -177,7 +178,7 @@ experiments:
     crit_ckpt:
       local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt"
       cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt"
-    time: "0-71:00:00"
+    time: "0-47:00:00"
     project_name: "finetrack-tractoinferno-rlhf"
     extra_type: "rlhf"
 
@@ -192,7 +193,7 @@ experiments:
     crit_ckpt:
       local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt" # TODO: Wrong
       cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt" # HCP ORACLE
-    time: "0-71:00:00"
+    time: "0-47:00:00"
     project_name: "finetrack-tractoinferno-rlhf"
     extra_type: "rlhf"
 
@@ -207,7 +208,7 @@ experiments:
     crit_ckpt:
       local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt"
       cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt" # INFERNO ORACLE
-    time: "0-71:00:00"
+    time: "0-47:00:00"
     project_name: "finetrack-hcp-rlhf"
     extra_type: "rlhf"
 
@@ -222,7 +223,7 @@ experiments:
     crit_ckpt:
       local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt" # TODO: Wrong
       cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt" # INFERNO ORACLE
-    time: "0-71:00:00"
+    time: "0-47:00:00"
     project_name: "finetrack-hcp-rlhf"
     extra_type: "rlhf"
     alg: "CrossQ"
@@ -238,7 +239,7 @@ experiments:
     crit_ckpt:
       local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt" # TODO: Wrong
       cluster: "~/projects/rrg-descotea/levje/oracles/hcp_rbx/hcp_rbx_32pts_epoch14.ckpt" # INFERNO ORACLE
-    time: "0-71:00:00"
+    time: "0-47:00:00"
     project_name: "finetrack-hcp-rlhf"
     extra_type: "rlhf"
     alg: "SACAuto"

@@ -357,7 +357,7 @@ def main():
         extra_flags_string = extra_flags_manager.compile_flags(linebreak=True, indent=1, start_with_linebreak=True)
         slurm_script = f"""#!/bin/bash
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=8
 #SBATCH --mem={config["mem"]}
 #SBATCH --time={config["time"]}
 #SBATCH --job-name={config["exp_name"]}
