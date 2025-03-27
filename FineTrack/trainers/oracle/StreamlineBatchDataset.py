@@ -150,8 +150,10 @@ class StreamlineBatchDataset(Dataset):
         # Slice as usual
         # else:
 
-        if not self.is_sorted(indices):
-            indices = np.sort(indices)
+        # if not self.is_sorted(indices):
+        #     indices = np.sort(indices)
+
+        indices = np.sort(indices)
 
         streamlines = data[indices]
         score = scores_data[indices]
