@@ -307,7 +307,7 @@ class RlhfTraining(FineTrackTraining):
                 ################################################
                 # Train the Oracles
                 ################################################
-                if self.hp.disable_oracle_training:
+                if not self.hp.disable_oracle_training:
                     self.train_reward()
                     self.train_stopping_criterion()
                 else:
