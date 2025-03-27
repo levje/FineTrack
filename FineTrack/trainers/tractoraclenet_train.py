@@ -3,7 +3,7 @@ import os
 import comet_ml
 from comet_ml import Experiment as CometExperiment
 import torch.nn as nn
-
+import torch
 from FineTrack.utils.torch_utils import assert_accelerator, get_device
 from FineTrack.oracles.transformer_oracle import TransformerOracle
 from FineTrack.oracles.oracle_cnn import CnnOracle
