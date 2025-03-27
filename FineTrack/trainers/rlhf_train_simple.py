@@ -312,7 +312,7 @@ class RlhfTraining(FineTrackTraining):
                     self.train_stopping_criterion()
                 else:
                     self.test_reward(step=i, epoch=0)
-                    self.test_stopping_criterion(step=1, epoch=0)
+                    self.test_stopping_criterion(step=i, epoch=0)
 
             ################################################
             # Train the RL agent
