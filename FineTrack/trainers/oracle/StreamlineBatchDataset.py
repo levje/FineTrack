@@ -189,7 +189,7 @@ class StreamlineBatchDataset(Dataset):
             ).astype(dtype)
 
         if streamlines.shape[1] != self.nb_points:
-            # print("resampling stage {} streamlines to {} points".format(self.stage, self.nb_points))
+            print("resampling stage {} streamlines to {} points".format(self.stage, self.nb_points))
             array_seq = ArraySequence(streamlines)
             streamlines = set_number_of_points(array_seq, self.nb_points)
 
@@ -201,5 +201,8 @@ class StreamlineBatchDataset(Dataset):
         #     print("dirs shape: ", dirs.shape)
         #     print(f"debug streamlines 2:2:... ", streamlines[:2, :2, :])
         #     print(f"debug dirs 2:2:... ", dirs[:2, :2, :])
+
+        # nb_zeros = np.sum(dirs == 0)
+        # print("Loader nb zeros:", nb_zeros)
 
         return dirs, score

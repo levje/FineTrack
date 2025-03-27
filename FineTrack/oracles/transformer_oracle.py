@@ -149,9 +149,10 @@ class TransformerOracle(LightningLikeModule):
         # self.save_hyperparameters()
 
     def configure_optimizers(self, trainer, checkpoint=None):
+        print(">>> CONFIGURING OPTIMIZERS <<<")
         self.trainer = trainer
 
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer=optimizer, T_max=self.trainer.max_epochs
         )
@@ -159,19 +160,23 @@ class TransformerOracle(LightningLikeModule):
         scaler = torch.amp.GradScaler('cuda', enabled=self.enable_amp)
 
         if checkpoint is not None:
+            print("1a. Loading optimizer and scheduler state dicts from checkpoint.")
             optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
             scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
 
             if "scaler_state_dict" in checkpoint.keys():
+                print("2a. Loading scaler state dict from checkpoint.")
                 scaler.load_state_dict(checkpoint["scaler_state_dict"])
 
         elif hasattr(self, 'checkpoint_state_dicts') and self.checkpoint_state_dicts is not None:
+            print("1b. Loading optimizer and scheduler state dicts from self.checkpoint_state_dicts.")
             optimizer.load_state_dict(
                 self.checkpoint_state_dicts["optimizer_state_dict"])
             scheduler.load_state_dict(
                 self.checkpoint_state_dicts["scheduler_state_dict"])
 
             if "scaler_state_dict" in self.checkpoint_state_dicts.keys():
+                print("2b. Loading scaler state dict from self.checkpoint_state_dicts.")
                 scaler.load_state_dict(
                     self.checkpoint_state_dicts["scaler_state_dict"])
 
@@ -234,7 +239,7 @@ class TransformerOracle(LightningLikeModule):
             model = TransformerOracle(
                 input_size, output_size, n_head, n_layers, lr, loss,
                 out_activation=nn.Sigmoid)
-            model.load_state_dict(checkpoint["state_dict"])
+            model.load_state_dict(checkpoint["state_dict"], strict=True)
 
             optimizer_state_dict = checkpoint["optimizer_states"][0]
             scheduler_state_dict = checkpoint["lr_schedulers"][0]
@@ -273,6 +278,9 @@ class TransformerOracle(LightningLikeModule):
         # add the scaler state dict if it exists.
         if "scaler_state_dict" in checkpoint.keys() and checkpoint["scaler_state_dict"] is not None:
             model.checkpoint_state_dicts["scaler_state_dict"] = checkpoint["scaler_state_dict"]
+        elif is_pl_checkpoint:
+            print("Loading MixedPrecision state from Lightning checkpoint.")
+            model.checkpoint_state_dicts["scaler_state_dict"] = checkpoint["MixedPrecision"]
 
         return model
 

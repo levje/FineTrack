@@ -76,7 +76,7 @@ class TractOracleNetTraining(object):
         self.output_size = 1
 
         if self.checkpoint:
-            model = self.model_cls.load_from_checkpoint(self.checkpoint)
+            model = self.model_cls.load_from_checkpoint(torch.load(self.checkpoint, weights_only=False))
             model = model.to(self.device)
         else:
             if self.model_cls == CnnOracle:

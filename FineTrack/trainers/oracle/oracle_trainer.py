@@ -228,7 +228,6 @@ class OracleTrainer(object):
                         OracleHookEvent.ON_TRAIN_BATCH_START)
 
                     batch = to_device(batch, self.device)
-
                     # Train step
                     loss, train_info, matrix = self.oracle_model.training_step(
                         batch, i)
