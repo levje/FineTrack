@@ -62,6 +62,7 @@ class OracleReward(Reward):
             return None
         N = dones.shape[0]
         reward = np.zeros((N))
+        #print("reward streamlines shape: ", streamlines.shape)
         predictions = self.model.predict(streamlines)
         # Double indexing to get the indexes. Don't forget you
         # can't assign using double indexes as the first indexing

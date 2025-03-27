@@ -48,6 +48,8 @@ class OracleSingleton:
         N = len(streamlines)
         result = torch.zeros((N), dtype=torch.float, device=self.device)
 
+        #print("oracle batch predict shape: ", streamlines.shape)
+
         if prefetch_streamlines:
             placeholder = torch.zeros(
                 (self.batch_size, self.nb_points - 1, 3), pin_memory=get_device_str() == "cuda")

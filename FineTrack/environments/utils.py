@@ -290,6 +290,8 @@ def resample_streamlines_if_needed(streamlines: Union[ArraySequence, list, np.nd
                                    nb_points: int) -> Union[ArraySequence, np.ndarray]:
     assert nb_points > 3, "nb_points must be greater than 1"
 
+    #print("Streamlines shape: ", streamlines.shape)
+
     if isinstance(streamlines, ArraySequence) or isinstance(streamlines, list):
         if not np.all([len(sl) == nb_points for sl in streamlines]):
             print("resample ArraySequence")

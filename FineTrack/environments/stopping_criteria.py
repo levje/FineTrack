@@ -148,12 +148,12 @@ class OracleStoppingCriterion(object):
             sft.to_vox()
             sft.to_corner()
 
-            np_streamlines_to_predict = np.zeros_like(streamlines)
-            _rereferenced_streamlines = sft.streamlines # ArraySequence with streamlines of the same length.
-            for i in range(len(streamlines)):
-                np_streamlines_to_predict[i] = _rereferenced_streamlines[i]
-            resampled_streamlines = fix_streamlines_length(np_streamlines_to_predict, np_streamlines_to_predict.shape[1], 128)
-            predictions = self.model.predict(resampled_streamlines)
+            # np_streamlines_to_predict = np.zeros_like(streamlines)
+            # _rereferenced_streamlines = sft.streamlines # ArraySequence with streamlines of the same length.
+            # for i in range(len(streamlines)):
+            #     np_streamlines_to_predict[i] = _rereferenced_streamlines[i]
+            # resampled_streamlines = fix_streamlines_length(np_streamlines_to_predict, np_streamlines_to_predict.shape[1], 128)
+            predictions = self.model.predict(streamlines)
 
             scores = np.zeros_like(predictions)
             scores[predictions < 0.5] = 1
