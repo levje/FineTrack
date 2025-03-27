@@ -379,7 +379,10 @@ fi
 # Only run that when on a cluster node
 if [ $islocal -eq 0 ]; then
     echo "Loading modules and virtual env..."
-    module load python/3.10 cuda cudnn httpproxy nextflow
+    module load StdEnv/2020
+    module load nextflow/21.10.3
+    module load apptainer/1.1.8
+    module load python/3.10 cuda cudnn httpproxy
     source ~/FineTrack/venv/bin/activate
 
     # Prepare directories
