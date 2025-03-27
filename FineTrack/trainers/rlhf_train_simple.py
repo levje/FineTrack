@@ -550,7 +550,7 @@ class RlhfTraining(FineTrackTraining):
 
     def generate_and_save_tractograms(self, tracker: Tracker, env: BaseEnv,
                                       save_dir: str,
-                                      max_nb_subjects: int = 1):
+                                      max_nb_subjects: int = 5):
         """
         Most of the flows requires a single directory containing all the
         tractograms to filter in the following structure of files:

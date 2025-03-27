@@ -9,6 +9,7 @@ from FineTrack.oracles.transformer_oracle import TransformerOracle
 from FineTrack.oracles.oracle_cnn import CnnOracle
 from FineTrack.trainers.oracle.data_module import StreamlineDataModule
 from FineTrack.trainers.oracle.oracle_trainer import OracleTrainer
+from FineTrack.utils.utils import prettier_dict
 
 
 assert_accelerator()
@@ -76,6 +77,7 @@ class TractOracleNetTraining(object):
 
         if self.checkpoint:
             model = self.model_cls.load_from_checkpoint(self.checkpoint)
+            model = model.to(self.device)
         else:
             if self.model_cls == CnnOracle:
                 model = CnnOracle(
@@ -118,13 +120,19 @@ class TractOracleNetTraining(object):
                                   num_workers=self.num_workers,
                                   nb_points=self.nb_points)
 
+        # Test the model
+        dm.setup('test', dense=False, partial=False)
+        test_metrics = oracle_trainer.test(test_dataloader=dm.test_dataloader())
+        print(prettier_dict(test_metrics))
+
         dm.setup('fit', dense=self.dense, partial=self.partial)
         oracle_trainer.fit_iter(train_dataloader=dm.train_dataloader(),
                                 val_dataloader=dm.val_dataloader())
 
         # Test the model
         dm.setup('test', dense=False, partial=False)
-        oracle_trainer.test(test_dataloader=dm.test_dataloader())
+        test_metrics = oracle_trainer.test(test_dataloader=dm.test_dataloader())
+        print(prettier_dict(test_metrics))
 
 
 def add_oracle_train_args(parser):
