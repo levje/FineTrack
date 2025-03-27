@@ -132,6 +132,7 @@ extras:
     alg: "SACAuto"
     rbx_validator: True
     rlhf_inter_npv: 2
+    oracle_batch_size: 1024
 
     atlas_directory:
       local: "/home/local/USHERBROOKE/levj1404/Documents/rbx_flow/atlas"
