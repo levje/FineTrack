@@ -86,6 +86,7 @@ class TrackConfig:
         self.oracle_bonus = 0
         self.oracle_validator = False
         self.oracle_stopping_criterion = False
+        self.exclude_direct_neigh = False
 
     @classmethod
     def from_dict(cls, config: dict, filter_extra_keys=True):
@@ -130,6 +131,7 @@ class FineTrackTrack(Experiment):
         self.in_mask = self.hp.in_mask
         self.input_wm = self.hp.input_wm
         self.gm_mask = self.hp.gm_mask
+        self.in_fa = self.hp.fa_map_file
 
         self.noise = self.hp.noise
         self.binary_stopping_threshold = self.hp.binary_stopping_threshold
@@ -285,7 +287,7 @@ class FineTrackTrack(Experiment):
 
 
 def add_mandatory_options_tracking(p):
-    p.add_argument('algorithm', choices=['SACAuto', 'CrossQ'],
+    p.add_argument('algorithm', choices=['SACAuto', 'CrossQ', 'DroQ'],
                      help='The algorithm to use for tracking.')
     p.add_argument('in_odf',
                    help='File containing the orientation diffusion function \n'

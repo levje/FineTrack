@@ -233,6 +233,7 @@ class Experiment(object):
             'input_wm': self.input_wm,
             'reference': self.hp.reference_file,
             'gm_mask': self.gm_mask if hasattr(self, 'gm_mask') else None,
+            'in_fa': self.in_fa if hasattr(self, 'in_fa') else None
             # file instead of being passed directly.
         })
 

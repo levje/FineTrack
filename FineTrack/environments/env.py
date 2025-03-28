@@ -448,19 +448,21 @@ class BaseEnv(object):
         is_sh_basis_legacy = env_dto['is_sh_basis_legacy']
         reference = env_dto['reference']
         target_sh_order = env_dto['target_sh_order']
+        in_fa = env_dto['in_fa']
 
         (input_volume, peaks_volume, tracking_mask, seeding_mask,
-         gm_mask, transformation, deformation) = BaseEnv._load_files(
+         gm_mask, transformation, deformation, fa) = BaseEnv._load_files(
              in_odf,
              in_seed,
              in_mask,
              sh_basis,
              is_sh_basis_legacy,
              target_sh_order,
-             gm_mask=gm_mask)
+             gm_mask=gm_mask,
+             fa=in_fa)
 
         subj_files = (input_volume, tracking_mask, seeding_mask,
-                      peaks_volume, reference, gm_mask, transformation, deformation)
+                      peaks_volume, reference, gm_mask, transformation, deformation, fa)
 
         return cls(subj_files, 'testing', env_dto)
 
@@ -473,7 +475,8 @@ class BaseEnv(object):
         sh_basis,
         is_sh_basis_legacy,
         target_sh_order=6,
-        gm_mask=None
+        gm_mask=None,
+        fa=None
     ):
         """ Load data volumes and masks from files. This is useful for
         tracking from a trained model.
@@ -576,8 +579,15 @@ class BaseEnv(object):
         transformation = None
         deformation = None
 
+        if fa:
+            fa = nib.load(fa)
+            in_fa = MRIDataVolume(
+                fa.get_fdata(), fa.affine)
+        else:
+            in_fa = None
+
         return (signal_volume, peaks_volume, tracking_volume,
-                seeding_volume, gm_volume, transformation, deformation)
+                seeding_volume, gm_volume, transformation, deformation, in_fa)
 
     def get_state_size(self):
         """ Returns the size of the state space by computing the size of
