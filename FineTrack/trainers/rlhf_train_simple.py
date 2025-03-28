@@ -283,7 +283,7 @@ class RlhfTraining(FineTrackTraining):
             self.filterers.append(
                 RbxFilterer(self.hp.atlas_directory))
 
-        if self.hp.rbx_validator or self.hp.extractor_validator:
+        if self.hp.rbx_validator or self.hp.extractor_validator or self.hp.tractometer_validator:
             pass
         else:
             raise ValueError("At least one of the filterers must be enabled.")

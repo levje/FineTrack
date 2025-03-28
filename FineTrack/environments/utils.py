@@ -294,17 +294,17 @@ def resample_streamlines_if_needed(streamlines: Union[ArraySequence, list, np.nd
 
     if isinstance(streamlines, ArraySequence) or isinstance(streamlines, list):
         if not np.all([len(sl) == nb_points for sl in streamlines]):
-            print("resample ArraySequence")
+            # print("resample ArraySequence")
             data = set_number_of_points(streamlines, nb_points)
         else:
             data = streamlines
     elif isinstance(streamlines, np.ndarray):
         if streamlines.shape[1] != nb_points:
-            print("resample np.ndarray from {} to {}".format(streamlines.shape[1], nb_points))
+            # print("resample np.ndarray from {} to {}".format(streamlines.shape[1], nb_points))
             data = ArraySequence(streamlines)
             data = set_number_of_points(data, nb_points)
         else:
-            print("not resampling np.ndarray")
+            # print("not resampling np.ndarray")
             data = streamlines
     else:
         raise ValueError("streamlines must be a list, ArraySequence or "
