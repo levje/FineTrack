@@ -92,6 +92,7 @@ class OracleStoppingCriterion(object):
 
     def __init__(
         self,
+        subject_id: str,
         checkpoint: str,
         min_nb_steps: int,
         reference: str,
@@ -100,6 +101,7 @@ class OracleStoppingCriterion(object):
     ):
 
         self.name = 'oracle_reward'
+        self.subject_id = subject_id
 
         if checkpoint:
             self.checkpoint = checkpoint
@@ -111,6 +113,21 @@ class OracleStoppingCriterion(object):
         self.reference = reference
         self.min_nb_steps = min_nb_steps
         self.device = device
+
+    def change_subject(
+        self,
+        subject_id: str,
+        min_nb_steps: int,
+        reference: str,
+        affine_vox2rasmm: np.ndarray,
+    ):
+        """
+        Change the subject of the oracle.
+        """
+        self.subject_id = subject_id
+        self.reference = reference
+        self.affine_vox2rasmm = affine_vox2rasmm
+        self.min_nb_steps = min_nb_steps
 
     def __call__(
         self,

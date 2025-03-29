@@ -19,6 +19,20 @@ class Reward(object):
         """
         pass
 
+    def change_subject(
+        self,
+        subject_id: str,
+        min_nb_steps: int,
+        reference: str,
+        affine_vox2rasmm: np.ndarray,
+        **kwargs
+    ):
+        """ Most reward factors do not need to change subject.
+        """
+        raise NotImplementedError(
+            "This reward factor does not support changing subject."
+        )
+
 
 class RewardFunction():
 
@@ -41,6 +55,20 @@ class RewardFunction():
         self.weights = weights
 
         self.F = len(self.factors)
+
+    def change_subject(
+        self,
+        subject_id: str,
+        min_nb_steps: int,
+        reference: str,
+        affine_vox2rasmm: np.ndarray,
+        **kwargs
+    ):
+        """
+        Change the subject of the oracle.
+        """
+        for f in self.factors:
+            f.change_subject(subject_id, min_nb_steps, reference, affine_vox2rasmm, **kwargs)
 
     def __call__(self, streamlines, dones):
         """

@@ -19,10 +19,17 @@ class OracleSingleton:
         if checkpoint_str not in cls._registered_checkpoints.keys():
             print('Instanciating new Oracle, should only happen once. '
                   '(ckpt: {})'.format(checkpoint_str))
-            cls._registered_checkpoints[checkpoint_str] = super().__new__(cls)
+            instance = super().__new__(cls)
+            instance._initialized = False
+            cls._registered_checkpoints[checkpoint_str] = instance
         return cls._registered_checkpoints[checkpoint_str]
 
     def __init__(self, checkpoint: str, device: str, batch_size=4096, lr=None):
+        if getattr(self, '_initialized', False):
+            return
+        
+        self._initialized = True
+        print("CALLING ORACLE INIT")
         self.checkpoint = torch.load(checkpoint, map_location=get_device(), weights_only=False)
 
         # The model's class is saved in hparams

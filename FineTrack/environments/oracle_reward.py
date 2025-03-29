@@ -46,6 +46,21 @@ class OracleReward(Reward):
         # Reference anat
         self.device = device
 
+    def change_subject(
+        self,
+        subject_id: str,
+        min_nb_steps: int,
+        reference: nib.Nifti1Image,
+        affine_vox2rasmm: np.ndarray,
+    ):
+        """
+        Change the subject of the oracle.
+        """
+        self.subject_id = subject_id
+        self.reference = reference
+        self.affine_vox2rasmm = affine_vox2rasmm
+        self.min_nb_steps = min_nb_steps
+
     def reward(self, streamlines, dones):
         """
         Parameters

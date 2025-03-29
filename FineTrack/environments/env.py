@@ -138,6 +138,7 @@ class BaseEnv(object):
         self.scoring_data = env_dto['scoring_data']
 
         # Reward parameters
+        self.reward_was_init = False
         self.compute_reward = env_dto['compute_reward']
 
         # "Local" reward parameters
@@ -364,7 +365,7 @@ class BaseEnv(object):
         # =========================================
 
         # Reward function and reward factors
-        if self.compute_reward:
+        if self.compute_reward and not self.reward_was_init:
             # Reward streamline according to alignment with local peaks
             peaks_reward = PeaksAlignmentReward(self.peaks)
             factors = [peaks_reward]
@@ -393,6 +394,21 @@ class BaseEnv(object):
             self.reward_function = RewardFunction(
                 factors,
                 weights)
+            
+            self.reward_was_init = True
+        elif self.compute_reward:
+            # In this case, the reward functions were already initialized,
+            # we just need to update the subject
+            kwargs = {
+                'peaks': self.peaks
+            }
+            self.reward_function.change_subject(
+                self.subject_id,
+                self.min_nb_steps,
+                self.reference,
+                self.affine_vox2rasmm,
+                **kwargs)
+            
 
     @classmethod
     def from_dataset(

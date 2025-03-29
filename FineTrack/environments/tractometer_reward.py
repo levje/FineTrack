@@ -615,6 +615,18 @@ class TractometerReward(Reward):
                 self.gt_dir,
                 use_gt_masks_as_all_masks,
                 self.args)
+        
+    def change_subject(
+        self,
+        subject_id: str,
+        min_nb_steps: int,
+        reference: str,
+        affine_vox2rasmm: np.ndarray,
+        **kwargs
+    ):
+        raise NotImplementedError(
+            "This reward factor does not support changing subject."
+        )
 
     def __call__(self, streamlines, dones):
 

@@ -26,6 +26,16 @@ class PeaksAlignmentReward(Reward):
 
         self.peaks = peaks.data
 
+    def change_subject(
+        self,
+        subject_id: str,
+        min_nb_steps: int,
+        reference: str,
+        affine_vox2rasmm: np.ndarray,
+        **kwargs
+    ):
+        self.peaks = kwargs['peaks'].data
+
     def __call__(
         self,
         streamlines: np.ndarray,
