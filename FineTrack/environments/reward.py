@@ -25,7 +25,7 @@ class Reward(object):
         min_nb_steps: int,
         reference: str,
         affine_vox2rasmm: np.ndarray,
-        **kwargs
+        peaks
     ):
         """ Most reward factors do not need to change subject.
         """
@@ -62,13 +62,13 @@ class RewardFunction():
         min_nb_steps: int,
         reference: str,
         affine_vox2rasmm: np.ndarray,
-        **kwargs
+        peaks
     ):
         """
         Change the subject of the oracle.
         """
         for f in self.factors:
-            f.change_subject(subject_id, min_nb_steps, reference, affine_vox2rasmm, **kwargs)
+            f.change_subject(subject_id, min_nb_steps, reference, affine_vox2rasmm, peaks)
 
     def __call__(self, streamlines, dones):
         """

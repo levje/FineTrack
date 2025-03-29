@@ -32,9 +32,9 @@ class PeaksAlignmentReward(Reward):
         min_nb_steps: int,
         reference: str,
         affine_vox2rasmm: np.ndarray,
-        **kwargs
+        peaks
     ):
-        self.peaks = kwargs['peaks'].data
+        self.peaks = peaks.data
 
     def __call__(
         self,

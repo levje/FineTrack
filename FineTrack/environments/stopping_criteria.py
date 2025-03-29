@@ -117,7 +117,7 @@ class OracleStoppingCriterion(object):
         subject_id: str,
         min_nb_steps: int,
         reference: str,
-        affine_vox2rasmm: np.ndarray,
+        affine_vox2rasmm: np.ndarray
     ):
         """
         Change the subject of the oracle.

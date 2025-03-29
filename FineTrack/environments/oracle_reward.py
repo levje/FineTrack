@@ -52,6 +52,7 @@ class OracleReward(Reward):
         min_nb_steps: int,
         reference: nib.Nifti1Image,
         affine_vox2rasmm: np.ndarray,
+        peaks
     ):
         """
         Change the subject of the oracle.

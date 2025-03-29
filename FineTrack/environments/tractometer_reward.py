@@ -622,7 +622,7 @@ class TractometerReward(Reward):
         min_nb_steps: int,
         reference: str,
         affine_vox2rasmm: np.ndarray,
-        **kwargs
+        peaks
     ):
         raise NotImplementedError(
             "This reward factor does not support changing subject."
