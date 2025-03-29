@@ -92,7 +92,6 @@ class OracleStoppingCriterion(object):
 
     def __init__(
         self,
-        subject_id: str,
         checkpoint: str,
         min_nb_steps: int,
         reference: str,
@@ -101,7 +100,6 @@ class OracleStoppingCriterion(object):
     ):
 
         self.name = 'oracle_reward'
-        self.subject_id = subject_id
 
         if checkpoint:
             self.checkpoint = checkpoint
