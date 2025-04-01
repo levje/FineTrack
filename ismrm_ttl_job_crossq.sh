@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=6
-#SBATCH --mem=22000M
-#SBATCH --time=7-00:00:00
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=40000M
+#SBATCH --time=1-00:00:00
 #SBATCH --mail-user=jeremi.levesque@usherbrooke.ca
 #SBATCH --mail-type=ALL
 
@@ -15,6 +15,7 @@ EXPNAME="TrackToLearn-CrossQ"
 COMETPROJECT="TrackToLearn-CrossQ"
 NB_STREAMLINES_POINTS=32
 EXPID="CrossQ-UTD_1"_$(date +"%F-%H_%M_%S")
+WORKSPACE="mrzarfir"
 
 MAXEP=1000
 NPV=20
@@ -22,7 +23,7 @@ SEEDS=(1111)
 BATCHSIZE=4096
 N_ACTORS=4096
 GAMMA=0.95
-LR=0.00008
+LR=0.0005
 THETA=30
 
 # Check if the script is ran locally or on a cluster node.
@@ -116,7 +117,7 @@ do
         --scoring_data "${DATASETDIR}/scoring_data" \
         --tractometer_reference "${DATASETDIR}/scoring_data/t1.nii.gz" \
         --tractometer_validator \
-        --workspace "mrzarfir" \
+        --workspace ${WORKSPACE} \
         --rng_seed ${RNGSEED} \
         --n_actor ${N_ACTORS} \
         --npv ${NPV} \
@@ -138,9 +139,6 @@ do
         --utd 1 \
         --flatten_state \
         "${additionnal_args[@]}"
-        # --fodf_encoder_ckpt="test_ae/best_model_convs_2048_encoder_only.pth" \
-        --fodf_encoder_ckpt="test_ae/best_model_neigh8_encoder.pth" \
-        
 
     # POST-PROCESSING
     bash scripts/tractogram_post_processing.sh ${DEST_FOLDER} ${DATASETDIR}
