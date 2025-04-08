@@ -53,3 +53,6 @@ class OracleFilterer(Filterer):
         LOGGER.info(f"Number of streamlines: {nb_nb_streamlines_total}")
 
         return nb_valid_streamlines, nb_nb_streamlines_total
+
+    def _filter(self):
+        pass

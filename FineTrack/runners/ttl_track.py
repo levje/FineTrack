@@ -193,10 +193,10 @@ class FineTrackTrack(Experiment):
         if abs(float(tracking_voxel_size) - float(self.hp.voxel_size)) >= 0.1:
             step_size_mm = (
                 float(tracking_voxel_size) / float(self.hp.voxel_size)) * \
-                self.step_size
+                self.hp.step_size
 
             print("Agent was trained on a voxel size of {}mm and a "
-                  "step size of {}mm.".format(self.voxel_size, self.step_size))
+                  "step size of {}mm.".format(self.hp.voxel_size, self.hp.step_size))
 
             print("Subject has a voxel size of {}mm, setting step size to "
                   "{}mm.".format(tracking_voxel_size, step_size_mm))
@@ -266,24 +266,24 @@ class FineTrackTrack(Experiment):
             env.setup_rollout_env(rollout_env)
         
         filetype = detect_format(self.hp.out_tractogram)
-        # tractogram = tracker.track(env, filetype)
+        tractogram = tracker.track(env, filetype)
 
-        tractogram, _ = tracker.track_and_validate(env, True)
-        stopping_stats = self.stopping_stats(tractogram)
-        print(prettier_dict(stopping_stats, title='Stopping stats'))
+        # tractogram, _ = tracker.track_and_validate(env, True)
+        # stopping_stats = self.stopping_stats(tractogram)
+        # print(prettier_dict(stopping_stats, title='Stopping stats'))
 
-        if self.mc_oracle_checkpoint:
-            print(prettier_dict(rollout_stats.get_stats(), title='Tracking Rollout Stats'))
+        # if self.mc_oracle_checkpoint:
+            # print(prettier_dict(rollout_stats.get_stats(), title='Tracking Rollout Stats'))
 
         reference = get_reference_info(self.hp.reference_file)
         header = create_tractogram_header(filetype, *reference)
 
         # Use generator to save the streamlines on-the-fly
-        # nib.streamlines.save(tractogram, self.hp.out_tractogram, header=header)
+        nib.streamlines.save(tractogram, self.hp.out_tractogram, header=header)
 
-        from dipy.io.streamline import save_tractogram
-        sft = self.convert_to_rasmm_sft(tractogram, env.affine_vox2rasmm, env.reference, discard_dps=self.discard_dps)
-        save_tractogram(sft, self.hp.out_tractogram, bbox_valid_check=False)
+        # from dipy.io.streamline import save_tractogram
+        # sft = self.convert_to_rasmm_sft(tractogram, env.affine_vox2rasmm, env.reference, discard_dps=self.discard_dps)
+        # save_tractogram(sft, self.hp.out_tractogram, bbox_valid_check=False)
 
 
 def add_mandatory_options_tracking(p):

@@ -27,6 +27,9 @@ class OracleSingleton:
     def __init__(self, checkpoint: str, device: str, batch_size=4096, lr=None):
         if getattr(self, '_initialized', False):
             return
+        else:
+            print("Should we be skipping init? ", self._initialized)
+            
         
         self._initialized = True
         print("CALLING ORACLE INIT")

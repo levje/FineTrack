@@ -20,8 +20,6 @@ cast_device = 'cuda' if torch.cuda.is_available() else 'cpu'
 def _build_arg_parser(parser):
     parser.add_argument('tractogram', type=str,
                         help='Tractogram file to score.')
-    parser.add_argument('out', type=str,
-                        help='Output file.')
     parser.add_argument('--reference', type=str, default='same',
                         help='Reference file for tractogram (.nii.gz).'
                              'For .trk, can be \'same\'. Default is '
@@ -41,7 +39,6 @@ def parse_args():
     args = parser.parse_args()
 
     assert_inputs_exist(parser, args.tractogram)
-    assert_outputs_exist(parser, args, args.out, optional=args.rejected)
 
     return parser, args
 

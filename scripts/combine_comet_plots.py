@@ -73,6 +73,10 @@ def plot_data(data, args, output_file=None):
     for item in data:
         label = item.get("legend", item.get("name", None))
         plt.plot(item['x'], item['y'], label=label, alpha=0.6)
+
+        if item.get("dotted", None):
+            plt.axhline(item.get("dotted"), color='red', linestyle='--')
+
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.title(title)

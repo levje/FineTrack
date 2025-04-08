@@ -9,7 +9,7 @@ from FineTrack.utils.torch_utils import get_device_str
 from dipy.tracking.utils import length
 import numpy as np
 from collections import defaultdict
-
+from FineTrack.utils.utils import count_parameters
 
 def _verify_out_activation_with_data(out_activation, labels):
     # Safety to make sure I don't screw up the output activation
@@ -144,6 +144,8 @@ class TransformerOracle(LightningLikeModule):
             self.f1 = BinaryF1Score()
         self.mse = MeanSquaredError()
         self.mae = MeanAbsoluteError()
+
+        print(count_parameters(self))
 
         # Save the hyperparameters to the checkpoint
         # self.save_hyperparameters()
