@@ -9,10 +9,6 @@ from dipy.core.sphere import HemiSphere
 from dipy.data import get_sphere
 from dipy.direction.peaks import reshape_peaks_for_visualization
 from dipy.tracking import utils as track_utils
-from dwi_ml.data.processing.volume.interpolation import \
-    interpolate_volume_in_neighborhood
-from dwi_ml.data.processing.space.neighborhood import \
-    unflatten_neighborhood, prepare_neighborhood_vectors
 from scilpy.reconst.utils import (find_order_from_nb_coeff,
                                   get_maximas)
 from dipy.reconst.shm import sh_to_sf_matrix

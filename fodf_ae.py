@@ -13,8 +13,6 @@ from FineTrack.utils.logging import get_logger, setLevel
 from FineTrack.algorithms.shared.fodf_encoder import *
 from FineTrack.utils.neighborhood_interpolation import \
     interpolate_volume_in_neighborhood
-from dwi_ml.data.processing.space.neighborhood import \
-    unflatten_neighborhood, prepare_neighborhood_vectors
 from FineTrack.utils.interpolation import neighborhood_interpolation, calc_neighborhood_grid
 from FineTrack.utils.utils import TTLProfiler, count_parameters
 from FineTrack.environments.neighborhood_manager import NeighborhoodManager

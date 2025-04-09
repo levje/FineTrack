@@ -3,9 +3,8 @@ import logging
 
 import torch
 
-from dwi_ml.data.processing.space.neighborhood import \
+from FineTrack.utils.dwi_ml import \
     extend_coordinates_with_neighborhood
-from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 
 B1 = torch.tensor([[1, 0, 0, 0, 0, 0, 0, 0],
                [-1, 0, 0, 0, 1, 0, 0, 0],
@@ -231,10 +230,6 @@ def interpolate_volume_in_neighborhood(
         # [1 2] (13 neighbors), 47 features per point, we remove 6.5 GB of
         # memory!
         if clear_cache:
-            logging.debug("Torch trilinear: emptying cache. Before:")
-            log_gpu_memory_usage(logging.getLogger())
             torch.cuda.empty_cache()
-            logging.debug("After")
-            log_gpu_memory_usage(logging.getLogger())
 
     return subj_x_data, coords_vox_corner

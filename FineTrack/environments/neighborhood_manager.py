@@ -1,10 +1,10 @@
 import torch
 import numpy as np
 
-from dwi_ml.data.processing.volume.interpolation import \
+from FineTrack.utils.neighborhood_interpolation import \
     interpolate_volume_in_neighborhood
-from dwi_ml.data.processing.space.neighborhood import \
-    unflatten_neighborhood, prepare_neighborhood_vectors
+from FineTrack.utils.dwi_ml import \
+    prepare_neighborhood_vectors
 
 from FineTrack.utils.interpolation import neighborhood_interpolation, calc_neighborhood_grid
 from FineTrack.utils.torch_utils import get_device
