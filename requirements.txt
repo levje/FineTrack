@@ -1,4 +1,4 @@
-dwi-ml @ git+https://github.com/levje/dwi_ml@update_spams
+dwi-ml @ git+https://github.com/levje/dwi_ml@levje/update_spams
 torchmetrics
 pytest
 seaborn
