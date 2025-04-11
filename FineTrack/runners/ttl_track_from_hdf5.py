@@ -6,6 +6,7 @@ import numpy as np
 import random
 import torch
 
+from dataclasses import dataclass, fields
 from argparse import RawTextHelpFormatter
 from os.path import join
 
@@ -13,6 +14,8 @@ from dipy.io.utils import get_reference_info, create_tractogram_header
 from nibabel.streamlines import detect_format
 
 from FineTrack.algorithms.sac_auto import SACAuto
+from FineTrack.algorithms.cross_q import CrossQ
+from FineTrack.algorithms.dro_q import DroQ
 from FineTrack.datasets.utils import MRIDataVolume
 from FineTrack.experiment.experiment import (
     add_experiment_args,
@@ -24,6 +27,71 @@ from FineTrack.experiment.experiment import (
 from FineTrack.tracking.tracker import Tracker
 from FineTrack.experiment.experiment import Experiment
 from FineTrack.utils.torch_utils import get_device
+
+@dataclass
+class TrackConfig:
+    algorithm: str
+    in_odf: str
+    in_mask: str
+    in_seed: str
+    input_wm: bool
+    gm_mask: str
+    out_tractogram: str
+    noise: float
+    binary_stopping_threshold: float
+    n_actor: int
+    npv: int
+    min_length: int
+    max_length: int
+    save_seeds: bool
+    mc_oracle_checkpoint: str
+    agent_checkpoint: str
+    rng_seed: int
+
+    fa_map_file: str = None # Optional
+    compress: float = 0.0
+
+    def __post_init__(self):
+        self.dataset_file = None
+        self.subject_id = None
+        self.tractometer_validator = False
+        self.scoring_data = None
+        self.compute_reward = False
+        self.use_classic_reward = False
+        self.render = False
+        self.reward_with_gt = False
+
+        self.reference_file = self.in_mask
+        self.alignment_weighting = 0.0
+        self.oracle_reward_checkpoint = None
+        self.oracle_crit_checkpoint = None
+        self.oracle_bonus = 0
+        self.oracle_validator = False
+        self.oracle_stopping_criterion = False
+        self.exclude_direct_neigh = False
+
+    @classmethod
+    def from_dict(cls, config: dict, filter_extra_keys=True):
+        if filter_extra_keys:
+            valid_keys = {field.name for field in fields(cls) if field.init}
+            filtered_config = {k: v for k, v in config.items() if k in valid_keys}
+            extra_keys = set(config.keys()) - valid_keys
+            if extra_keys:
+                print(f"Warning: Ignoring unsupported parameters: {extra_keys}")
+            return cls(**filtered_config)
+        else:
+            return cls(**config)
+        
+    def update_with_dict(self, config, overwrite=False):
+        # This function iterates over the config file. If the key is already
+        # present in the object, it won't do anything unless overwrite is True.
+        # If the key is not present, it will add it to the object.
+        for key, value in config.items():
+            if hasattr(self, key):
+                if overwrite:
+                    setattr(self, key, value)
+            else:
+                setattr(self, key, value)
 
 class FineTrackValidation(Experiment):
     """ FineTrack validing script. Should work on any model trained with a
@@ -137,7 +205,7 @@ class FineTrackValidation(Experiment):
         env.set_step_size(step_size_mm)
 
         # Load agent
-        algs = {'SACAuto': SACAuto}
+        algs = {'SACAuto': SACAuto, 'CrossQ': CrossQ, 'DroQ': DroQ}
 
         rl_alg = algs[self.algorithm]
 

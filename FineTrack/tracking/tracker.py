@@ -111,7 +111,7 @@ class Tracker(object):
 
                 # Track forward
                 self.alg.validation_episode(
-                    state, env, self.prob)
+                    state, env, self.prob, compute_reward=False)
 
                 batch_tractogram = env.get_streamlines()
 

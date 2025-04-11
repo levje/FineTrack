@@ -257,7 +257,7 @@ class FineTrackTrack(Experiment):
         tracker = Tracker(
             alg, self.hp.n_actor, compress=self.hp.compress,
             min_length=self.hp.min_length, max_length=self.hp.max_length,
-            save_seeds=self.hp.save_seeds)
+            save_seeds=self.hp.save_seeds, prob=1.0)
 
         # Run tracking
         env.load_subject()

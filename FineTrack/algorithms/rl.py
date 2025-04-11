@@ -63,6 +63,7 @@ class RLAlgorithm(object):
         env: BaseEnv,
         prob: float = 1.,
         enable_pbar: bool = True,
+        compute_reward=True
     ):
         """
         Main loop for the algorithm
@@ -132,7 +133,8 @@ class RLAlgorithm(object):
                 pbar.set_postfix({'step': step})
 
             # Keep track of reward
-            running_reward += sum(reward)
+            if compute_reward:
+                running_reward += sum(reward)
 
             # "Harvesting" here means removing "done" trajectories
             # from state. This line also set the next_state as the
