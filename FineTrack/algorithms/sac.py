@@ -24,6 +24,7 @@ class SACHParams(HParams):
     batch_size: int
     replay_size: int
     utd: int
+    save_replay_buffer: bool
 
 class SAC(RLAlgorithm):
     """
@@ -163,9 +164,11 @@ class SAC(RLAlgorithm):
             'target': self.target.state_dict(as_dict=True),
             'actor_optimizer': self.actor_optimizer.state_dict(),
             'critic_optimizer': self.critic_optimizer.state_dict(),
-            'replay_buffer': self.replay_buffer.state_dict(),
             **extra_info
         }
+
+        if self.hp.save_replay_buffer:
+            checkpoint['replay_buffer'] = self.replay_buffer.state_dict()
 
         torch.save(checkpoint, checkpoint_file)
 

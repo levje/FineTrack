@@ -181,6 +181,9 @@ class CrossQ(SACAuto):
             **extra_info
         }
 
+        if self.hp.save_replay_buffer:
+            checkpoint['replay_buffer'] = self.replay_buffer.state_dict()
+
         torch.save(checkpoint, checkpoint_file)
 
     def update(

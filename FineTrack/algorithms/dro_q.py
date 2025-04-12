@@ -21,7 +21,6 @@ LOG_STD_MIN = -20
 class DroQHParams(SACAutoHParams):
     # So far, the hyperparameters for DroQ are the same as SACAuto
     algorithm: str = field(default="DroQ", init=False, repr=False)
-    dropout_rate: float
 
 class DroQ(SACAuto):
     """

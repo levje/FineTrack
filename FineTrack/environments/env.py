@@ -547,8 +547,12 @@ class BaseEnv(object):
         sphere = HemiSphere.from_sphere(get_sphere("repulsion724")
                                         ).subdivide(0)
 
-        b_matrix, _ = sh_to_sf_matrix(sphere, find_order_from_nb_coeff(
-            data), "descoteaux07", legacy=is_sh_basis_legacy)
+        order = find_order_from_nb_coeff(data)
+        print("is_sh_basis_legacy: ", is_sh_basis_legacy)
+        print("order: ", order)
+        print("sh_basis: ", sh_basis)
+        print("target_sh_order: ", target_sh_order)
+        b_matrix, _ = sh_to_sf_matrix(sphere, order, "descoteaux07", legacy=is_sh_basis_legacy)
 
         for idx in np.argwhere(np.sum(data, axis=-1)):
             idx = tuple(idx)

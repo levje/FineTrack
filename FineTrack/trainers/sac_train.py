@@ -63,6 +63,8 @@ def add_sac_args(parser):
     parser.add_argument('--utd', default=1, type=int,
                         help='Update to data ratio. How many times to update '
                         'the model per data sample.')
+    parser.add_argument('--save_replay_buffer', default=False, action='store_true',
+                        help='Save the replay buffer within the checkpoint.')
 
 
 def parse_args():
