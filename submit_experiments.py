@@ -12,6 +12,7 @@ def parse_args():
     parser.add_argument("config", type=str, default="config.yaml", help="Path to the YAML configuration file.")
     parser.add_argument("--submit", action="store_true", help="Also submit the script to be executed (qc (local) | sbatch (SLURM)).")
     parser.add_argument("--local", action="store_true", help="Run the experiments locally.")
+    parser.add_argument("--dry-run", action="store_true", help="Don't write any scripts.")
     args = parser.parse_args()
     return args
 
@@ -37,6 +38,20 @@ class Config:
 
         # Extract and build experiment settings
         self._experiments = self._select_local_or_cluster_paths(config["experiments"])
+
+        # Build combined config
+        # self._experiments = [self.experiment_config(i) for i in range(len(self._experiments))]
+        _experiments = []
+        _extras_managers = []
+        for i in range(len(self._experiments)):
+            exp, extras_manager = self.experiment_config(i)
+            rng_experiments = self._expand_rng_seeds(exp)
+            _experiments.extend(rng_experiments)
+            for _ in range(len(rng_experiments)):
+                _extras_managers.append(extras_manager)
+        
+        self._experiments = list(zip(_experiments, _extras_managers))
+
         self._nb_experiments = len(self._experiments)
         self._add_exp_ids()
         self._add_dest_folder()
@@ -51,6 +66,30 @@ class Config:
     @property
     def global_config(self):
         return self._global_config
+
+    def _expand_rng_seeds(self, exp):
+        """
+        Expand the rng_seed field in the experiments list.
+        If rng_seed is a list, it will be expanded to a list of experiments.
+        If rng_seed is an int, it will be expanded to a list of experiments with the same seed.
+        """
+        expanded_experiments = []
+
+        # print("exp:", exp)
+        if isinstance(exp["seeds"], list):
+            # Expand the rng_seed field
+            rng_seeds = exp["seeds"]
+            del exp["seeds"]
+            for seed in rng_seeds:
+                new_exp = {**exp}
+                new_exp["seed"] = seed
+
+                expanded_experiments.append(new_exp)
+        else:
+            exp["seed"] = exp["seeds"]
+            expanded_experiments.append(exp)
+        
+        return expanded_experiments
 
     def _select_local_or_cluster_paths(self, data_config: Union[dict, list]):
         """
@@ -128,8 +167,8 @@ class Config:
 
     def _add_exp_ids(self):
         already_created_exp_ids = []
-        for exp in self._experiments:
-            exp_id = f"{exp['exp_name']}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+        for exp, _ in self._experiments:
+            exp_id = f"{exp['exp_name']}_{exp['seed']}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
 
             # Make sure we don't create two experiments with the same ID
             if exp_id in already_created_exp_ids:
@@ -139,9 +178,17 @@ class Config:
             exp["exp_id"] = exp_id
 
     def _add_dest_folder(self):
+        # for i in range(self._nb_experiments):
+        #     exp, _ = self.experiment_config(i, handle_extras=False)
+        #     self._experiments[i]["dest_folder"] = \
+        #         os.path.join(self.EXPDIR,
+        #         exp['exp_name'],
+        #         exp['exp_id'],
+        #         str(exp['seed'])
+        #     )
         for i in range(self._nb_experiments):
-            exp, _ = self.experiment_config(i, handle_extras=False)
-            self._experiments[i]["dest_folder"] = \
+            exp, _ = self._experiments[i]
+            self._experiments[i][0]["dest_folder"] = \
                 os.path.join(self.EXPDIR,
                 exp['exp_name'],
                 exp['exp_id'],
@@ -154,7 +201,7 @@ class Config:
         Generator that yields the experiment configurations.
         """
         for i in range(self._nb_experiments):
-            yield self.experiment_config(i)
+            yield self._experiments[i]
 
     def experiment_config(self, indice, handle_extras=True):
         merged_config = {**self.global_config}
@@ -331,6 +378,19 @@ def main():
             state_state_specified = True
         if not state_state_specified:
             raise ValueError(f"Must specify one of flatten_state, fodf_encoder_ckpt or conv_state for experiment {i}")
+        
+        # Add the oracle flags
+        if config.get("oracle_validator", False):
+            extra_flags_manager.add_flag("--oracle_validator")
+        if config.get("oracle_stopping_criterion", False):
+            extra_flags_manager.add_flag("--oracle_stopping_criterion")
+        if config.get("oracle_bonus", None) is not None:
+            extra_flags_manager.add_flag("--oracle_bonus", config["oracle_bonus"])
+        if config.get("oracle_reward_checkpoint", None) is not None:
+            extra_flags_manager.add_flag("--oracle_reward_checkpoint", config["oracle_reward_checkpoint"])
+        if config.get("oracle_crit_checkpoint", None) is not None:
+            extra_flags_manager.add_flag("--oracle_crit_checkpoint", config["oracle_crit_checkpoint"])
+
 
         # Paths to the dataset
         dataset_name = config["dataset"]
@@ -357,7 +417,7 @@ def main():
         extra_flags_string = extra_flags_manager.compile_flags(linebreak=True, indent=1, start_with_linebreak=True)
         slurm_script = f"""#!/bin/bash
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task={config["cpus"]}
 #SBATCH --mem={config["mem"]}
 #SBATCH --time={config["time"]}
 #SBATCH --job-name={config["exp_name"]}
@@ -421,11 +481,6 @@ python -O {script_path} \\
     "{hdf5_path}" \\
     --max_ep {config["max_ep"]} \\
     --hidden_dims "{config['hidden_dims']}" \\
-    --oracle_reward_checkpoint $ORACLE_REWARD_CHECKPOINT \\
-    --oracle_crit_checkpoint $ORACLE_CRIT_CHECKPOINT \\
-    --oracle_validator \\
-    --oracle_stopping_criterion \\
-    --oracle_bonus {config["oracle_bonus"]} \\
     --workspace {config["workspace"]} \\
     --rng_seed {config["seed"]} \\
     --n_actor {config["n_actors"]} \\
@@ -464,11 +519,14 @@ echo "Script execution completed."
         os.makedirs(os.path.dirname(slurm_script_path), exist_ok=True)
 
         # Save and submit the SLURM script
-        with open(slurm_script_path, "w") as f:
-            f.write(slurm_script)
+        if not args.dry_run:
+            with open(slurm_script_path, "w") as f:
+                f.write(slurm_script)
 
-        all_jobs.append((exp_name, config["exp_id"], slurm_script_path))
-        print(f"Generated SLURM script for experiment {exp_name}: {slurm_script_path}")
+            all_jobs.append((exp_name, config["exp_id"], slurm_script_path))
+            print(f"Generated SLURM script for experiment {exp_name}: {slurm_script_path}")
+        else:
+            print(f"Dry run: SLURM script for experiment {exp_name} would be generated at {slurm_script_path}")
 
     ######################################################
     # Submit the jobs to SLURM.
