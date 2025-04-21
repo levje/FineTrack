@@ -6,7 +6,10 @@ from FineTrack.oracles.transformer_oracle import TransformerOracle
 from FineTrack.utils.torch_utils import get_device_str, get_device
 from nibabel.streamlines.array_sequence import ArraySequence
 from FineTrack.environments.utils import resample_streamlines_if_needed
+from FineTrack.utils.logging import get_logger
 from tqdm import tqdm
+
+LOGGER = get_logger(__name__)
 
 class OracleSingleton:
     _registered_checkpoints = {
@@ -28,11 +31,9 @@ class OracleSingleton:
         if getattr(self, '_initialized', False):
             return
         else:
-            print("Should we be skipping init? ", self._initialized)
-            
+            LOGGER.debug("Should we be skipping init? ", self._initialized)
         
         self._initialized = True
-        print("CALLING ORACLE INIT")
         self.checkpoint = torch.load(checkpoint, map_location=get_device(), weights_only=False)
 
         # The model's class is saved in hparams

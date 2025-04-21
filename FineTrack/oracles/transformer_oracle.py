@@ -145,8 +145,6 @@ class TransformerOracle(LightningLikeModule):
         self.mse = MeanSquaredError()
         self.mae = MeanAbsoluteError()
 
-        print(count_parameters(self))
-
         # Save the hyperparameters to the checkpoint
         # self.save_hyperparameters()
 

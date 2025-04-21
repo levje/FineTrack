@@ -22,19 +22,25 @@ class StoppingFlags(Enum):
     STOPPING_CSF = int('10000000', 2)
 
 
-def is_flag_set(flags, ref_flag):
+def is_flag_set(flags, ref_flag, logical_not=False):
     """ Checks which flags have the `ref_flag` set. """
     if type(ref_flag) is StoppingFlags:
         ref_flag = ref_flag.value
-    return ((flags.astype(np.uint8) & ref_flag) >>
-            np.log2(ref_flag).astype(np.uint8)).astype(bool)
+
+    res = ((flags.astype(np.uint8) & ref_flag) >>
+               np.log2(ref_flag).astype(np.uint8)).astype(bool)
+
+    if logical_not:
+        return np.logical_not(res)
+    else:
+        return res
 
 
-def count_flags(flags, ref_flag):
+def count_flags(flags, ref_flag, equal=True):
     """ Counts how many flags have the `ref_flag` set. """
     if type(ref_flag) is StoppingFlags:
         ref_flag = ref_flag.value
-    return is_flag_set(flags, ref_flag).sum()
+    return is_flag_set(flags, ref_flag, logical_not=not equal).sum()
 
 
 class BinaryStoppingCriterion(object):

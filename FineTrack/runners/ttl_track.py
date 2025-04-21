@@ -59,6 +59,7 @@ class TrackConfig:
     binary_stopping_threshold: float
     n_actor: int
     npv: int
+    in_peaks: str
     min_length: int
     max_length: int
     save_seeds: bool
@@ -132,6 +133,7 @@ class FineTrackTrack(Experiment):
         self.input_wm = self.hp.input_wm
         self.gm_mask = self.hp.gm_mask
         self.in_fa = self.hp.fa_map_file
+        self.in_peaks = self.hp.in_peaks
 
         self.noise = self.hp.noise
         self.binary_stopping_threshold = self.hp.binary_stopping_threshold
@@ -240,6 +242,9 @@ class FineTrackTrack(Experiment):
             LOGGER.warning('No agent checkpoint provided. Exiting.')
             return
 
+        # Run tracking
+        env.load_subject()
+
         if self.mc_oracle_checkpoint:
             oracle = OracleSingleton(self.mc_oracle_checkpoint, device=self.device)
             utility_tracker = RolloutUtilityTracker(self.n_actor)
@@ -259,18 +264,13 @@ class FineTrackTrack(Experiment):
             min_length=self.hp.min_length, max_length=self.hp.max_length,
             save_seeds=self.hp.save_seeds, prob=1.0)
 
-        # Run tracking
-        env.load_subject()
-
         if self.mc_oracle_checkpoint:
             env.setup_rollout_env(rollout_env)
         
         filetype = detect_format(self.hp.out_tractogram)
-        tractogram = tracker.track(env, filetype)
-
-        # tractogram, _ = tracker.track_and_validate(env, True)
-        # stopping_stats = self.stopping_stats(tractogram)
-        # print(prettier_dict(stopping_stats, title='Stopping stats'))
+        
+        stopping_stats = {} # Stopping stats dict that will get populated when tracking is done.
+        tractogram = tracker.track_mc(env, filetype, stopping_stats=stopping_stats)
 
         # if self.mc_oracle_checkpoint:
             # print(prettier_dict(rollout_stats.get_stats(), title='Tracking Rollout Stats'))
@@ -280,6 +280,7 @@ class FineTrackTrack(Experiment):
 
         # Use generator to save the streamlines on-the-fly
         nib.streamlines.save(tractogram, self.hp.out_tractogram, header=header)
+        print(prettier_dict(stopping_stats, title='Stopping stats'))
 
         # from dipy.io.streamline import save_tractogram
         # sft = self.convert_to_rasmm_sft(tractogram, env.affine_vox2rasmm, env.reference, discard_dps=self.discard_dps)
@@ -371,6 +372,9 @@ def add_track_args(parser):
     track_g.add_argument('--fa_map', type=str, default=None,
                          help='Scale the added noise (see `--noise`) according'
                          '\nto the provided FA map (.nii.gz). Optional.')
+    track_g.add_argument('--in_peaks', type=str, default=None,
+                         help='File containing the peaks volume. If not provided,'
+                         'the peaks will be computed from the ODF (slightly longer at startup).')
     track_g.add_argument(
         '--binary_stopping_threshold',
         type=float, default=0.1,

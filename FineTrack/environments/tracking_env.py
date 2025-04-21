@@ -199,7 +199,6 @@ class TrackingEnvironment(BaseEnv):
         # to the border for example).
         if self.rollout_env is not None \
             and (self.stopping_idx.size > 0):
-
             (new_streamlines, new_continuing_streamlines,
              new_stopping_idx, new_stopping_flags) = \
                 self.rollout_env.rollout(
@@ -209,7 +208,8 @@ class TrackingEnvironment(BaseEnv):
                     self.length,
                     self.stopping_criteria,
                     self._format_state,
-                    self._format_actions)
+                    self._format_actions,
+                    self.affine_vox2rasmm)
 
             self.streamlines = new_streamlines
 

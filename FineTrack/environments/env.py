@@ -30,8 +30,8 @@ from FineTrack.environments.stopping_criteria import (
     BinaryStoppingCriterion, OracleStoppingCriterion,
     StoppingFlags)
 from FineTrack.environments.utils import (  # is_looping,
-    is_too_curvy, is_too_long, has_reached_gm)
-from FineTrack.utils.utils import normalize_vectors, SimpleTimer
+    is_too_curvy, is_too_long, has_reached_gm, calc_angle)
+from FineTrack.utils.utils import normalize_vectors, Timer
 from FineTrack.environments.rollout_env import RolloutEnvironment
 from FineTrack.environments.state import ConvState, State
 from FineTrack.algorithms.shared.fodf_encoder import WorkingFodfEncoder, SmallWorkingFodfEncoder, DummyFodfEncoder
@@ -326,10 +326,10 @@ class BaseEnv(object):
             functools.partial(is_too_curvy, max_theta=self.theta)
         
         # GM criterion
-        # if self.gm_data is not None:
-        #     self.stopping_criteria[
-        #         StoppingFlags.STOPPING_TARGET] = \
-        #             functools.partial(has_reached_gm, mask=self.gm_data, threshold=0.5)
+        if self.gm_data is not None:
+            self.stopping_criteria[
+                StoppingFlags.STOPPING_TARGET] = \
+                    functools.partial(has_reached_gm, mask=self.gm_data, threshold=0.5)
             
         # # CSF criterion
         # import nibabel as nib
@@ -461,6 +461,7 @@ class BaseEnv(object):
         reference = env_dto['reference']
         target_sh_order = env_dto['target_sh_order']
         in_fa = env_dto['in_fa']
+        in_peaks = env_dto['in_peaks']
 
         (input_volume, peaks_volume, tracking_mask, seeding_mask,
          gm_mask, transformation, deformation, fa) = BaseEnv._load_files(
@@ -471,7 +472,8 @@ class BaseEnv(object):
              is_sh_basis_legacy,
              target_sh_order,
              gm_mask=gm_mask,
-             fa=in_fa)
+             fa=in_fa,
+             in_peaks=in_peaks)
 
         subj_files = (input_volume, tracking_mask, seeding_mask,
                       peaks_volume, reference, gm_mask, transformation, deformation, fa)
@@ -488,7 +490,8 @@ class BaseEnv(object):
         is_sh_basis_legacy,
         target_sh_order=6,
         gm_mask=None,
-        fa=None
+        fa=None,
+        in_peaks=None
     ):
         """ Load data volumes and masks from files. This is useful for
         tracking from a trained model.
@@ -537,70 +540,85 @@ class BaseEnv(object):
                                   target_order=target_sh_order,
                                   target_basis='descoteaux07')
 
-        # Compute peaks from signal
-        # Does not work if signal is not fODFs
-        npeaks = 5
-        odf_shape_3d = data.shape[:-1]
-        peak_dirs = np.zeros((odf_shape_3d + (npeaks, 3)))
-        peak_values = np.zeros((odf_shape_3d + (npeaks, )))
+        if in_peaks is not None:
+            peaks = nib.load(in_peaks)
+            peaks_volume = MRIDataVolume(
+                peaks.get_fdata(), peaks.affine)
 
-        sphere = HemiSphere.from_sphere(get_sphere("repulsion724")
-                                        ).subdivide(0)
+        else:
+            # No peaks was provided
+            with Timer("Computing peaks from ODF"):
+                # Compute peaks from signal
+                # Does not work if signal is not fODFs
+                npeaks = 5
+                odf_shape_3d = data.shape[:-1]
+                peak_dirs = np.zeros((odf_shape_3d + (npeaks, 3)))
+                peak_values = np.zeros((odf_shape_3d + (npeaks, )))
 
-        order = find_order_from_nb_coeff(data)
-        print("is_sh_basis_legacy: ", is_sh_basis_legacy)
-        print("order: ", order)
-        print("sh_basis: ", sh_basis)
-        print("target_sh_order: ", target_sh_order)
-        b_matrix, _ = sh_to_sf_matrix(sphere, order, "descoteaux07", legacy=is_sh_basis_legacy)
+                sphere = HemiSphere.from_sphere(get_sphere("repulsion724")
+                                                ).subdivide(0)
 
-        for idx in np.argwhere(np.sum(data, axis=-1)):
-            idx = tuple(idx)
-            directions, values, indices = get_maximas(data[idx],
-                                                      sphere, b_matrix.T,
-                                                      0.1, 0)
-            if values.shape[0] != 0:
-                n = min(npeaks, values.shape[0])
-                peak_dirs[idx][:n] = directions[:n]
-                peak_values[idx][:n] = values[:n]
+                order = find_order_from_nb_coeff(data)
 
-        X, Y, Z, N, P = peak_dirs.shape
-        peak_values = np.divide(peak_values, peak_values[..., 0, None],
-                                out=np.zeros_like(peak_values),
-                                where=peak_values[..., 0, None] != 0)
-        peak_dirs[...] *= peak_values[..., :, None]
-        peak_dirs = reshape_peaks_for_visualization(peak_dirs)
+                LOGGER.debug("is_sh_basis_legacy: ", is_sh_basis_legacy)
+                LOGGER.debug("order: {}".format(order))
+                LOGGER.debug("sh_basis: {}".format(sh_basis))
+                LOGGER.debug("target_sh_order: {}".format(target_sh_order))
+
+                b_matrix, _ = sh_to_sf_matrix(sphere, order, "descoteaux07", legacy=is_sh_basis_legacy)
+                for idx in np.argwhere(np.sum(data, axis=-1)):
+                    idx = tuple(idx)
+                    directions, values, indices = get_maximas(data[idx],
+                                                            sphere, b_matrix.T,
+                                                            0.1, 0)
+                    if values.shape[0] != 0:
+                        n = min(npeaks, values.shape[0])
+                        peak_dirs[idx][:n] = directions[:n]
+                        peak_values[idx][:n] = values[:n]
+
+                X, Y, Z, N, P = peak_dirs.shape
+                peak_values = np.divide(peak_values, peak_values[..., 0, None],
+                                        out=np.zeros_like(peak_values),
+                                        where=peak_values[..., 0, None] != 0)
+                peak_dirs[...] *= peak_values[..., :, None]
+                peak_dirs = reshape_peaks_for_visualization(peak_dirs)
+                
+                peaks_volume = MRIDataVolume(
+                    peak_dirs, signal.affine)
 
         # Load rest of volumes
-        seeding = nib.load(in_seed)
-        tracking = nib.load(in_mask)
-        signal_data = data
-        signal_volume = MRIDataVolume(
-            signal_data, signal.affine)
+        with Timer("Loading volumes"):
+            seeding = nib.load(in_seed)
+            tracking = nib.load(in_mask)
+            signal_data = data
+            signal_volume = MRIDataVolume(
+                signal_data, signal.affine)
 
-        peaks_volume = MRIDataVolume(
-            peak_dirs, signal.affine)
-
-        seeding_volume = MRIDataVolume(
-            seeding.get_fdata(), seeding.affine)
-        tracking_volume = MRIDataVolume(
-            tracking.get_fdata(), tracking.affine)
+            seeding_volume = MRIDataVolume(
+                seeding.get_fdata(), seeding.affine)
+            tracking_volume = MRIDataVolume(
+                tracking.get_fdata(), tracking.affine)
         
         gm_volume = None
         if gm_mask:
-            gm = nib.load(gm_mask)
-            gm_volume = MRIDataVolume(
-                gm.get_fdata(), gm.affine)
+            with Timer("Loading gm mask"):
+                gm = nib.load(gm_mask)
+                gm_volume = MRIDataVolume(
+                    gm.get_fdata(), gm.affine)
         
         transformation = None
         deformation = None
 
         if fa:
-            fa = nib.load(fa)
-            in_fa = MRIDataVolume(
-                fa.get_fdata(), fa.affine)
+            with Timer("Loading fa"):
+                fa = nib.load(fa)
+                in_fa = MRIDataVolume(
+                    fa.get_fdata(), fa.affine)
+                
         else:
             in_fa = None
+
+        print("Finished loading files")
 
         return (signal_volume, peaks_volume, tracking_volume,
                 seeding_volume, gm_volume, transformation, deformation, in_fa)
