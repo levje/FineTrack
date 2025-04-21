@@ -66,6 +66,7 @@ class TrackConfig:
     mc_oracle_checkpoint: str
     agent_checkpoint: str
     rng_seed: int
+    add_angle_to_state: bool = False
 
     fa_map_file: str = None # Optional
     compress: float = 0.0
@@ -88,6 +89,7 @@ class TrackConfig:
         self.oracle_validator = False
         self.oracle_stopping_criterion = False
         self.exclude_direct_neigh = False
+        self.add_angle_to_state = False
 
     @classmethod
     def from_dict(cls, config: dict, filter_extra_keys=True):

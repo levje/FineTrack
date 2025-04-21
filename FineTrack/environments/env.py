@@ -136,6 +136,7 @@ class BaseEnv(object):
         # Reward parameters
         self.reward_was_init = False
         self.compute_reward = env_dto['compute_reward']
+        self.add_angle_to_state = env_dto['add_angle_to_state']
 
         # "Local" reward parameters
         self.alignment_weighting = env_dto['alignment_weighting']
@@ -776,12 +777,18 @@ class BaseEnv(object):
                 torch.from_numpy(previous_dirs).to(self.device),
                 (N, self.n_dirs * P))
 
+            angles = None
+            if self.add_angle_to_state:
+                angles = calc_angle(streamlines)
+                angles = torch.from_numpy(angles).view(-1, 1).to(self.device)
+
             # Return them separately so we can run convolutions on unflattened
             # but not dir_inputs.
             if not self.flatten_state:
                 state = ConvState(signal, dir_inputs, coords, device=self.device)
             else:
-                state = State(signal, dir_inputs, coords, device=self.device)
+                state = State(signal, dir_inputs, coords, angles, device=self.device)
+
         return state
 
     def _get_neighborhood_grid_encodings(self, coords):

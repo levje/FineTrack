@@ -27,6 +27,7 @@ class HParams:
     fodf_encoder_ckpt: str
     interpolation: str
     exclude_direct_neigh: bool
+    add_angle_to_state: bool
 
     # Oracle parameters
     oracle_crit_checkpoint: str

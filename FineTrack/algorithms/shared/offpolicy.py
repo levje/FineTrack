@@ -215,7 +215,7 @@ class Critic(nn.Module):
         """ Forward propagation of the actor.
         Outputs a q estimate from both critics
         """
-        q1_input = torch.cat([state.neighborhood, state.prev_dirs, action], -1)
+        q1_input = torch.cat([state.neighborhood, state.prev_dirs, action, state.angle], -1)
 
         q1 = self.q1(q1_input).squeeze(-1)
 
@@ -261,7 +261,7 @@ class DoubleCritic(Critic):
             
             # flat_neigh_size = self.q1_neighbor_encoder.flat_output_size
         
-        full_fc_state_dim = flat_neigh_size + state_dim.prev_dirs_size
+        full_fc_state_dim = flat_neigh_size + state_dim.prev_dirs_size + state_dim.angle_size
         self.hidden_layers = format_widths(
             hidden_dims) * critic_size_factor
 
@@ -283,8 +283,8 @@ class DoubleCritic(Critic):
             encoded_neighborhood_1 = self.q1_neighbor_encoder(state.neighborhood)
             encoded_neighborhood_2 = self.q2_neighbor_encoder(state.neighborhood)
 
-        q1_input = torch.cat([encoded_neighborhood_1, state.prev_dirs, action], -1)
-        q2_input = torch.cat([encoded_neighborhood_2, state.prev_dirs, action], -1)
+        q1_input = torch.cat([encoded_neighborhood_1, state.prev_dirs, action, state.angle], -1)
+        q2_input = torch.cat([encoded_neighborhood_2, state.prev_dirs, action, state.angle], -1)
 
         q1 = self.q1(q1_input).squeeze(-1)
         q2 = self.q2(q2_input).squeeze(-1)

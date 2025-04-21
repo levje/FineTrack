@@ -174,9 +174,21 @@ def is_too_curvy(streamlines: np.ndarray, max_theta: float):
     v = normalize_vectors(streamlines[:, -2] - streamlines[:, -3])
 
     # Compute angles
-    angles = np.arccos(np.einsum('ij,ij->i', u, v))
+    angles = np.arccos(np.clip(np.einsum('ij,ij->i', u, v), -1.0, 1.0))
     return angles > max_theta_rad
 
+def calc_angle(streamlines):
+    if streamlines.shape[1] < 3:
+        # Not enough segments to compute curvature
+        return np.zeros(streamlines.shape[0], dtype=np.float32)
+
+    # Compute vectors for the last and before last streamline segments
+    u = normalize_vectors(streamlines[:, -1] - streamlines[:, -2])
+    v = normalize_vectors(streamlines[:, -2] - streamlines[:, -3])
+
+    # Compute angles
+    angles = np.arccos(np.clip(np.einsum('ij,ij->i', u, v), -1.0, 1.0))
+    return angles
 
 def winding(nxyz: np.ndarray) -> np.ndarray:
     """ Project lines to best fitting planes. Calculate

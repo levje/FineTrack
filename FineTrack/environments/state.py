@@ -5,10 +5,12 @@ class StateShape(object):
     def __init__(self,
                  nb_streamlines: int,
                  neighborhood_common_shape: tuple,
-                 prev_dirs_size: int):
+                 prev_dirs_size: int,
+                 angle_size: int):
         self.nb_streamlines = nb_streamlines
         self.neighborhood_common_shape = neighborhood_common_shape
         self.prev_dirs_size = prev_dirs_size[-1] if isinstance(prev_dirs_size, torch.Size) else prev_dirs_size
+        self.angle_size = angle_size
 
         # Validate the input parameters.
         assert self.nb_streamlines >= 0, "Number of streamlines must be positive."
@@ -53,7 +55,7 @@ class StateShape(object):
 
 
 class State(object):
-    def __init__(self, neighborhood=None, previous_directions=None, coords=None, device=None):
+    def __init__(self, neighborhood=None, previous_directions=None, coords=None, angle=None, device=None):
         if neighborhood is not None:
             self._neighborhood = neighborhood
         else:
@@ -67,6 +69,7 @@ class State(object):
             raise ValueError("Previous directions must be provided.")
 
         self._coords = coords
+        self._angle = angle
 
         self._shape = self._init_shape(self.neighborhood.shape, self._previous_directions.shape)
 
@@ -75,7 +78,8 @@ class State(object):
         return StateShape(
             nb_streamlines=neighborhood_shape[0],
             neighborhood_common_shape=neighborhood_shape[1:],
-            prev_dirs_size=prev_dirs_shape[1:]
+            prev_dirs_size=prev_dirs_shape[1:],
+            angle_size=1 if self._angle is not None else 0
         )
 
     @classmethod
@@ -84,7 +88,8 @@ class State(object):
         state_conv = torch.zeros(shape, device=device, dtype=dtype)
         previous_directions = torch.zeros((shape[0], prev_dirs_size), device=device, dtype=dtype)
         coords = torch.zeros((shape[0], 3), device=device, dtype=dtype)
-        return cls(state_conv, previous_directions, coords)
+        angle = torch.zeros((shape[0], 1), device=device, dtype=dtype)
+        return cls(state_conv, previous_directions, coords, angle=angle)
     
     @classmethod
     def ones(cls, shape, prev_dirs_size, device=None, dtype=torch.float32):
@@ -92,7 +97,8 @@ class State(object):
         state_conv = torch.ones(shape, dtype=dtype, device=device)
         previous_directions = torch.ones((shape[0], prev_dirs_size), dtype=dtype, device=device)
         coords = torch.zeros((shape[0], 3), dtype=dtype, device=device)
-        return cls(state_conv, previous_directions, coords)
+        angle = torch.ones((shape[0], 1), dtype=dtype, device=device)
+        return cls(state_conv, previous_directions, coords, angle=angle)
 
     def to(self, device, copy=False, non_blocking=False):
         self._neighborhood = self._neighborhood.to(device, copy=copy, non_blocking=non_blocking)
@@ -101,22 +107,32 @@ class State(object):
         if self._coords is not None:
             self._coords = self._coords.to(device, copy=copy, non_blocking=non_blocking)
 
+        if self._angle is not None:
+            self._angle = self._angle.to(device, copy=copy, non_blocking=non_blocking)
+
         return self
     
     def pin_memory(self):
         self._neighborhood = self._neighborhood.pin_memory()
         self._previous_directions = self._previous_directions.pin_memory()
+        if self._angle is not None:
+            self._angle = self._angle.pin_memory()
         return self
     
     def index_select(self, dim, index):
         state_slice = self._neighborhood.index_select(dim, index)
         dirs_slice = self._previous_directions.index_select(dim, index)
 
+        if self._angle is not None:
+            angle_slice = self._angle.index_select(dim, index)
+        else:
+            angle_slice = None
+
         coords_slice = None
         if coords_slice is not None:
             coords_slice = self._coords.index_select(dim, index)
 
-        return self.__class__(state_slice, dirs_slice, coords_slice)
+        return self.__class__(state_slice, dirs_slice, coords_slice, angle_slice)
 
     @property
     def shape(self):
@@ -149,6 +165,14 @@ class State(object):
     def coords(self, value):
         self._coords = value
 
+    @property
+    def angle(self):
+        return self._angle
+    
+    @angle.setter
+    def angle(self, value):
+        self._angle = value
+
     def __getitem__(self, indices):
         state_slice = self._neighborhood[indices]
         dirs_slice = self._previous_directions[indices]
@@ -157,7 +181,12 @@ class State(object):
         if self._coords is not None:
             coords_slice = self._coords[indices]
 
-        return self.__class__(state_slice, dirs_slice, coords_slice)
+        if self._angle is not None:
+            angle_slice = self._angle[indices]
+        else:
+            angle_slice = None
+
+        return self.__class__(state_slice, dirs_slice, coords_slice, angle_slice)
     
     def __setitem__(self, indices, other):
         if isinstance(other, State):
@@ -167,10 +196,16 @@ class State(object):
                 self._coords[indices] = other._coords
             else:
                 self._coords = other._coords
+
+            if self._angle is not None:
+                self._angle[indices] = other._angle
+            else:
+                self._angle = other._angle
+
         elif isinstance(other, tuple) or isinstance(other, list):
             assert len(other) == 2 or len(other) == 3, "Expected a tuple of tensors holding" \
                 " the state and previous directions only."
-            
+    
             self._neighborhood[indices] = other[0]
             self._previous_directions[indices] = other[1]
             if len(other) == 3:
@@ -178,6 +213,8 @@ class State(object):
                     self._coords[indices] = other[2]
                 else:
                     self._coords = other[2]
+
+            raise NotImplementedError("Setting angle is not implemented yet.")
         elif isinstance(other, torch.Tensor):
             assert other.shape[0] == 2 or other.shape[0] == 3, "Expected a tensor of dim 2 holding" \
                 " the state and previous directions only."
@@ -188,6 +225,8 @@ class State(object):
                     self._coords[indices] = other[2]
                 else:
                     self._coords = other[2]
+
+            raise NotImplementedError("Setting angle is not implemented yet.")
         else:
             raise ValueError("Expected a State object or a tuple of tensors.")
 

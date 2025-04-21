@@ -137,7 +137,8 @@ class Experiment(object):
             'fodf_encoder_ckpt': self.hp.fodf_encoder_ckpt,
             'interpolation': self.hp.interpolation,
             'extractor_target': self.hp.extractor_target if hasattr(self.hp, 'extractor_target') else None,
-            'exclude_direct_neigh': self.hp.exclude_direct_neigh
+            'exclude_direct_neigh': self.hp.exclude_direct_neigh,
+            'add_angle_to_state': self.hp.add_angle_to_state,
         }
 
         if noisy:
@@ -508,6 +509,8 @@ def add_model_args(parser: ArgumentParser):
                         default='axes', help='Type of neighborhood to use.')
     parser.add_argument('--interpolation', type=str, choices=['efficient', 'dwi_ml'],
                         default='dwi_ml', help='Type of interpolation to use.')
+    parser.add_argument('--add_angle_to_state', action='store_true',
+                        help='Whether to add the angle to the state representation.')
     
     conv_group = parser.add_mutually_exclusive_group(required=True)
     conv_group.add_argument('--flatten_state', action='store_true',
