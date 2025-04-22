@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 from typing import Union
+from copy import deepcopy
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Submit experiments to SLURM.")
@@ -48,7 +49,7 @@ class Config:
             rng_experiments = self._expand_rng_seeds(exp)
             _experiments.extend(rng_experiments)
             for _ in range(len(rng_experiments)):
-                _extras_managers.append(extras_manager)
+                _extras_managers.append(deepcopy(extras_manager))
         
         self._experiments = list(zip(_experiments, _extras_managers))
 
@@ -379,6 +380,9 @@ def main():
         if not state_state_specified:
             raise ValueError(f"Must specify one of flatten_state, fodf_encoder_ckpt or conv_state for experiment {i}")
         
+        # from FineTrack.utils.utils import prettier_dict
+        # print(prettier_dict(config))
+
         # Add the oracle flags
         if config.get("oracle_validator", False):
             extra_flags_manager.add_flag("--oracle_validator")
@@ -386,10 +390,10 @@ def main():
             extra_flags_manager.add_flag("--oracle_stopping_criterion")
         if config.get("oracle_bonus", None) is not None:
             extra_flags_manager.add_flag("--oracle_bonus", config["oracle_bonus"])
-        if config.get("oracle_reward_checkpoint", None) is not None:
-            extra_flags_manager.add_flag("--oracle_reward_checkpoint", config["oracle_reward_checkpoint"])
-        if config.get("oracle_crit_checkpoint", None) is not None:
-            extra_flags_manager.add_flag("--oracle_crit_checkpoint", config["oracle_crit_checkpoint"])
+        if config.get("reward_ckpt", None) is not None:
+            extra_flags_manager.add_flag("--oracle_reward_checkpoint", config["reward_ckpt"])
+        if config.get("crit_ckpt", None) is not None:
+            extra_flags_manager.add_flag("--oracle_crit_checkpoint", config["crit_ckpt"])
 
 
         # Paths to the dataset
