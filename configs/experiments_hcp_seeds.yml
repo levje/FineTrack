@@ -159,29 +159,29 @@ extras:
 ######################################  
 
 experiments:
-  - exp_name: "TrackToLearn"
-    launch_script: "FineTrack/trainers/sac_auto_train.py"
-    max_ep: 1000
-    n_dirs: 4
-    gamma: 0.75
-    oracle_bonus: 0
-    oracle_validator: False
-    oracle_stopping_criterion: False
+  # - exp_name: "TrackToLearn"
+    # launch_script: "FineTrack/trainers/sac_auto_train.py"
+    # max_ep: 1000
+    # n_dirs: 4
+    # gamma: 0.75
+    # oracle_bonus: 0
+    # oracle_validator: False
+    # oracle_stopping_criterion: False
+# 
+  # - exp_name: "SAC-1K"
+    # launch_script: "FineTrack/trainers/sac_auto_train.py"
+    # max_ep: 1000
 
-  - exp_name: "SAC-1K"
-    launch_script: "FineTrack/trainers/sac_auto_train.py"
-    max_ep: 1000
-
-  - exp_name: "SAC-IRT-3K"
-    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-    alg: "SACAuto"
-    extra_type: "rlhf"
-    cpus: 8
-    mem: "70000M"
+  # - exp_name: "SAC-IRT-3K"
+    # launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    # alg: "SACAuto"
+    # extra_type: "rlhf"
+    # cpus: 8
+    # mem: "70000M"
 
 
-  - exp_name: "CrossQ-3K"
-    launch_script: "FineTrack/trainers/cross_q_train.py"
+  # - exp_name: "CrossQ-3K"
+    # launch_script: "FineTrack/trainers/cross_q_train.py"
 
   - exp_name: "CrossQ-IRT-3K"
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
@@ -189,3 +189,4 @@ experiments:
     extra_type: "rlhf"
     cpus: 8
     mem: "70000M"
+    warmup_agent_steps: 300
