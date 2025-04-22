@@ -390,9 +390,9 @@ def main():
             extra_flags_manager.add_flag("--oracle_stopping_criterion")
         if config.get("oracle_bonus", None) is not None:
             extra_flags_manager.add_flag("--oracle_bonus", config["oracle_bonus"])
-        if config.get("reward_ckpt", None) is not None:
+        if config.get("reward_ckpt", None) is not None and config.get("oracle_bonus", 0) > 0:
             extra_flags_manager.add_flag("--oracle_reward_checkpoint", config["reward_ckpt"])
-        if config.get("crit_ckpt", None) is not None:
+        if config.get("crit_ckpt", None) is not None and config.get("oracle_stopping_criterion", False):
             extra_flags_manager.add_flag("--oracle_crit_checkpoint", config["crit_ckpt"])
 
 
