@@ -14,6 +14,7 @@ def parse_args():
     parser.add_argument("--submit", action="store_true", help="Also submit the script to be executed (qc (local) | sbatch (SLURM)).")
     parser.add_argument("--local", action="store_true", help="Run the experiments locally.")
     parser.add_argument("--dry-run", action="store_true", help="Don't write any scripts.")
+    parser.add_argument("--account", type=str, default="def-pmjodoin", choices=["def-pmjodoin", "rrg-descotea"], help="SLURM account to use.")
     args = parser.parse_args()
     return args
 
@@ -542,7 +543,7 @@ echo "Script execution completed."
                 subprocess.run(["qc", "bash", slurm_script_path], check=True)
             else:
                 print(f"Submitted experiment {exp_name} with job script: {slurm_script_path}")
-                subprocess.run(["sbatch", slurm_script_path], check=True)
+                subprocess.run(["sbatch", "--account", args.account, slurm_script_path], check=True)
     else:
         print("No jobs submitted. Launch the created scripts manually or use the --submit flag to submit jobs.")
 
