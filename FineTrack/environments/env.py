@@ -30,7 +30,7 @@ from FineTrack.environments.stopping_criteria import (
     BinaryStoppingCriterion, OracleStoppingCriterion,
     StoppingFlags)
 from FineTrack.environments.utils import (  # is_looping,
-    is_too_curvy, is_too_long, has_reached_gm, calc_angle)
+    is_too_curvy, is_too_long, has_reached_gm)
 from FineTrack.utils.utils import normalize_vectors, Timer
 from FineTrack.environments.rollout_env import RolloutEnvironment
 from FineTrack.environments.state import ConvState, State
