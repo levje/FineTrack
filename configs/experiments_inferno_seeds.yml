@@ -103,10 +103,12 @@ global:
   oracle_stopping_criterion: True
   reward_ckpt:
     local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt"
-    cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt"
+    cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_32pts.ckpt"
+    # cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt"
   crit_ckpt:
     local: "/home/local/USHERBROOKE/levj1404/Documents/FineTrack/custom_models/tractoinferno_full_oracle/inferno_rbx_128pts_epoch4.ckpt"
-    cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt"
+    cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_32pts.ckpt"
+    # cluster: "~/projects/rrg-descotea/levje/oracles/tractoinferno_rbx/inferno_rbx_128pts_epoch4.ckpt"
   
   # Neighborhood
   neighborhood_type: "axes"
