@@ -573,6 +573,8 @@ def add_rbx_args(parser: ArgumentParser):
                      help='Singularity image to use for the RBX filterer.')
     rbx.add_argument('--atlas_directory', type=str, default=None,
                      help='Directory containing the atlas for the RBX filterer.')
+    rbx.add_argument('--rbx_pipeline', type=str, default=None,
+                     help='Path to the RBX flow (main.nf) to use for the RBX filterer.')
 
 def add_oracle_args(parser: ArgumentParser):
     oracle = parser.add_argument_group('Oracle')

@@ -62,6 +62,7 @@ class RlhfHParams(CrossQHParams):
     max_dataset_size: int
     warmup_agent_steps: int
 
+    rbx_pipeline: str = None
     dataset_to_augment: str = None
 
     def __post_init__(self):
@@ -281,7 +282,7 @@ class RlhfTraining(FineTrackTraining):
         
         if self.hp.rbx_validator:
             self.filterers.append(
-                RbxFilterer(self.hp.atlas_directory))
+                RbxFilterer(self.hp.atlas_directory, pipeline_path=self.hp.rbx_pipeline))
 
         if self.hp.rbx_validator or self.hp.extractor_validator or self.hp.tractometer_validator:
             pass

@@ -143,6 +143,10 @@ extras:
     oracle_batch_size: 1024
     num_workers: 4
 
+    rbx_pipeline:
+      local: "/home/local/USHERBROOKE/levj1404/Documents/rbx_flow/main.nf"
+      cluster: "/home/levj1404/rbx_binary/rbx_flow/main.nf"
+
     atlas_directory:
       local: "/home/local/USHERBROOKE/levj1404/Documents/rbx_flow/atlas"
       cluster: "/home/levj1404/rbx_binary/rbx_flow/atlas"

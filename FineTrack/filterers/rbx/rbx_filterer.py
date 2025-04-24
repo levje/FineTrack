@@ -20,14 +20,16 @@ from FineTrack.utils.utils import get_project_root_dir
 
 LOGGER = get_logger(__name__)
 
+DEFAULT_RBX_FLOW = "levje/rbx_flow -r segregation"
+
 # TODO: Add the streamline sampler.
 class RbxFilterer(Filterer):
         
-    def __init__(self, atlas_directory: str):
+    def __init__(self, atlas_directory: str, pipeline_path: str = None):
         super(RbxFilterer, self).__init__()
 
         # self.pipeline_path = "scilus/extractor_flow -r dev2023"
-        self.pipeline_path = "levje/rbx_flow -r segregation"
+        self.pipeline_path = pipeline_path if pipeline_path is not None else DEFAULT_RBX_FLOW
         self.flow_configs = [ str(get_project_root_dir() / "configs/nextflow/rbx.config") ] # TODO
         self.atlas_directory = atlas_directory
         
@@ -73,14 +75,15 @@ class RbxFilterer(Filterer):
         return valid_paths, invalid_paths, subject_ids
     
     def _run_pipeline(self, params, run_path):
-        for execution in nextflow.run_and_poll(sleep=5,
+        for execution in nextflow.run_and_poll(sleep=10,
                     pipeline_path=self.pipeline_path,
                     run_path=run_path,
                     configs=self.flow_configs,
                     params=params,
                     profiles=self.profiles):
-            LOGGER.info("Running Extractor pipeline. ")
-            LOGGER.info(execution.stdout)
+            LOGGER.info("Running Extractor pipeline...")
+            # LOGGER.info(execution.stdout)
+            pass
         
         if execution.return_code == '0':
             LOGGER.info("Extractor pipeline executed successfully. "

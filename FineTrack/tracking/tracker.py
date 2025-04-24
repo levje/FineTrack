@@ -257,14 +257,14 @@ class Tracker(object):
 
                 batch_tractogram = env.get_streamlines()
                 
-                # TODO: Remove this?
-                small_streamlines_stopping_stats = {
-                    'total_nb_streamlines': len(batch_tractogram),
-                    'too_small_nb_streamlines': 0,
-                    'stopping_stats': {}
-                }
-                for f in StoppingFlags:
-                    small_streamlines_stopping_stats['stopping_stats'][f.name] = 0
+                # # TODO: Remove this?
+                # small_streamlines_stopping_stats = {
+                #     'total_nb_streamlines': len(batch_tractogram),
+                #     'too_small_nb_streamlines': 0,
+                #     'stopping_stats': {}
+                # }
+                # for f in StoppingFlags:
+                #     small_streamlines_stopping_stats['stopping_stats'][f.name] = 0
 
                 for item in batch_tractogram:
                     streamline = item.streamline
@@ -300,13 +300,14 @@ class Tracker(object):
                         yield TractogramItem(
                             streamline, data_for_streamline, {})
                     else:
-                        flag = item.data_for_streamline['flags']
-                        for f in StoppingFlags:
-                            small_streamlines_stopping_stats['stopping_stats'][f.name] += count_flags(flag, f)
+                        pass
+                        # flag = item.data_for_streamline['flags']
+                        # for f in StoppingFlags:
+                        #     small_streamlines_stopping_stats['stopping_stats'][f.name] += count_flags(flag, f)
                         
-                        small_streamlines_stopping_stats['too_small_nb_streamlines'] += 1
+                        # small_streamlines_stopping_stats['too_small_nb_streamlines'] += 1
 
-                print(prettier_dict(small_streamlines_stopping_stats))
+                # print(prettier_dict(small_streamlines_stopping_stats))
                     
 
         tractogram = LazyTractogram.from_data_func(tracking_generator)
