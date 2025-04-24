@@ -268,8 +268,8 @@ class Tracker(object):
 
                 for item in batch_tractogram:
                     streamline = item.streamline
-                    if not (scaled_min_length <= length(streamline) \
-                            <= scaled_max_length):
+                    if scaled_min_length <= length(streamline) \
+                            <= scaled_max_length:
 
                         if self.compress:
                             streamline = compress_streamlines(
