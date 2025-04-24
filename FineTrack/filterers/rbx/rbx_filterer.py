@@ -75,23 +75,23 @@ class RbxFilterer(Filterer):
         return valid_paths, invalid_paths, subject_ids
     
     def _run_pipeline(self, params, run_path):
-        for execution in nextflow.run_and_poll(sleep=10,
+        for execution in nextflow.run_and_poll(sleep=30,
                     pipeline_path=self.pipeline_path,
                     run_path=run_path,
                     configs=self.flow_configs,
                     params=params,
                     profiles=self.profiles):
-            LOGGER.info("Running Extractor pipeline...")
+            LOGGER.info("Running RBX pipeline...")
             # LOGGER.info(execution.stdout)
             pass
         
         if execution.return_code == '0':
-            LOGGER.info("Extractor pipeline executed successfully. "
+            LOGGER.info("RBX flow executed successfully. "
                         "Duration {}.".format(execution.duration))
         else:
             LOGGER.error(execution.stdout)
             LOGGER.error(execution.stderr)
-            raise ValueError("Extractor pipeline failed to execute "
+            raise ValueError("RBX pipeline failed to execute "
                              "successfully. Duration {} ".format(execution.duration) +
                              "Return code: {}.".format(execution.return_code))
         
