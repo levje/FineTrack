@@ -77,7 +77,7 @@ data:
 ## configurations below.
 ######################################  
 global:
-  project_name: "FineTrack-Inferno-Seeds"
+  project_name: "FineTrack-HCP-Seeds"
   launch_script: "FineTrack/trainers/sac_auto_train.py"
   use_comet: True
   hidden_dims: "1024-1024-1024"
@@ -176,12 +176,15 @@ experiments:
     # launch_script: "FineTrack/trainers/sac_auto_train.py"
     # max_ep: 1000
 
-  # - exp_name: "SAC-IRT-3K"
-    # launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-    # alg: "SACAuto"
-    # extra_type: "rlhf"
-    # cpus: 8
-    # mem: "70000M"
+  - exp_name: "SAC-3K"
+    launch_script: "FineTrack/trainers/sac_auto_train.py"
+
+  - exp_name: "SAC-IRT-3K"
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    alg: "SACAuto"
+    extra_type: "rlhf"
+    cpus: 8
+    mem: "70000M"
 
 
   # - exp_name: "CrossQ-3K"

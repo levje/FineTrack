@@ -178,12 +178,15 @@ experiments:
   #   launch_script: "FineTrack/trainers/sac_auto_train.py"
   #   max_ep: 1000
 
-  # - exp_name: "SAC-IRT-3K"
-  #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-  #   alg: "SACAuto"
-  #   extra_type: "rlhf"
-  #   cpus: 8
-  #   mem: "70000M"
+  - exp_name: "SAC-3K"
+    launch_script: "FineTrack/trainers/sac_auto_train.py"
+
+  - exp_name: "SAC-IRT-3K"
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    alg: "SACAuto"
+    extra_type: "rlhf"
+    cpus: 8
+    mem: "70000M"
 
 
   # - exp_name: "CrossQ-3K"
