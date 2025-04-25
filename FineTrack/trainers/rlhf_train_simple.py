@@ -128,9 +128,12 @@ class RlhfTraining(FineTrackTraining):
         # Setup oracle training
         ################################################
 
-        # Note: for the two oracle trainers, we disable the automatic checkpointing
-        # because we will want to save the checkpoints only when we improve the 
-        # total agent. We manually checkpoint those oracles instead.
+        # Load reward oracle
+        self.oracle_reward = OracleSingleton(self.hp.oracle_reward_checkpoint,
+                                      device=self.device,
+                                      batch_size=self.hp.oracle_batch_size,
+                                      lr=self.hp.oracle_lr)
+        
         self.oracle_reward_trainer = OracleTrainer(
             comet_experiment,
             self.oracle_training_dir,
@@ -143,7 +146,18 @@ class RlhfTraining(FineTrackTraining):
             metrics_prefix='reward',
             first_oracle_train_steps=self.hp.first_oracle_train_steps
         )
+        self.oracle_reward_trainer.setup_model_training(self.oracle_reward.model)
 
+
+        # If the two oracles are the same, that means that the checkpoint
+        # is the same. The oracle instance is the same, so we don't want to
+        # train it twice.
+        # Especially during the stopping criterion training, we train it
+        # to be able to predict partial streamlines.
+        self.oracle_crit = OracleSingleton(self.hp.oracle_crit_checkpoint,
+                                           device=self.device,
+                                           batch_size=self.hp.oracle_batch_size,
+                                           lr=self.hp.oracle_lr)
         self.oracle_crit_trainer = OracleTrainer(
             comet_experiment,
             self.oracle_training_dir,
@@ -154,22 +168,11 @@ class RlhfTraining(FineTrackTraining):
             device=self.device,
             grad_accumulation_steps=self.hp.grad_accumulation_steps,
             metrics_prefix='crit',
-            first_oracle_train_steps=self.hp.first_oracle_train_steps
+            first_oracle_train_steps=self.hp.first_oracle_train_steps,
+            disable=self.oracle_crit == self.oracle_reward
         )
-
-        # Load reward oracle
-        self.oracle_reward = OracleSingleton(self.hp.oracle_reward_checkpoint,
-                                      device=self.device,
-                                      batch_size=self.hp.oracle_batch_size,
-                                      lr=self.hp.oracle_lr)
-        self.oracle_reward_trainer.setup_model_training(self.oracle_reward.model)
-
-        # Load stopping criterion oracle
-        self.oracle_crit = OracleSingleton(self.hp.oracle_crit_checkpoint,
-                                           device=self.device,
-                                           batch_size=self.hp.oracle_batch_size,
-                                           lr=self.hp.oracle_lr)
         self.oracle_crit_trainer.setup_model_training(self.oracle_crit.model)
+        self.oracle_crit_disabled = self.oracle_crit_trainer.disabled
 
         # Register hooks on best VC reached to save the oracles that
         # contributed to reach that level of VC.
@@ -498,6 +501,10 @@ class RlhfTraining(FineTrackTraining):
         This stopping criterion model should have been trained on cut
         streamlines, which means that dense=True and partial=False.
         """
+        if self.oracle_crit_disabled:
+            print(">>> Skipping stopping criterion model training <<<")
+            return
+
         print(">>> Training stopping criterion model <<<")
         dm = StreamlineDataModule(self.dataset_manager.dataset_file_path,
                                   batch_size=self.hp.oracle_batch_size,

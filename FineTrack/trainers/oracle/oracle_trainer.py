@@ -78,7 +78,8 @@ class OracleTrainer(object):
                  grad_accumulation_steps=1,
                  device=get_device(),
                  metrics_prefix=None,
-                 first_oracle_train_steps=None
+                 first_oracle_train_steps=None,
+                 disable=False
                  ):
         self.experiment = experiment
         self.saving_path = saving_path
@@ -88,6 +89,7 @@ class OracleTrainer(object):
         self.device = device
         self.max_epochs = max_epochs
         self.first_oracle_train_steps = first_oracle_train_steps
+        self.disabled = disable
 
         if self.first_oracle_train_steps is not None:
             self.is_first_training_loop = True
@@ -134,6 +136,9 @@ class OracleTrainer(object):
         times with a coherent configuration of the optimizer, the scheduler
         and the scaler to train the same model.
         """
+        if self.disabled:
+            return
+        
         self.oracle_model = oracle_model
         self._reset_optimizers()
         self._global_epoch = 0
@@ -159,6 +164,9 @@ class OracleTrainer(object):
         This method is called automatically if self.auto_checkpointing_enabled
         is enabled.
         """
+        if self.disabled:
+            return
+        
         checkpoint_dict = self.oracle_model.pack_for_checkpoint(
             self._global_epoch, self._last_valid_metrics, self.optimizer,
             self.scheduler, self.scaler)
@@ -193,6 +201,9 @@ class OracleTrainer(object):
                 the same optimizer, scheduler and scaler as well as their last
                 respective states.
         """
+        if self.disabled:
+            return
+        
         self._verify_model_was_setup()
 
         self.oracle_model.train()  # Set model to training mode
@@ -367,6 +378,9 @@ class OracleTrainer(object):
         self.oracle_model.train()
 
     def test(self, test_dataloader, compute_histogram_metrics=False, step=None, epoch=None):
+        if self.disabled:
+            return
+        
         self.hooks_manager.trigger_hooks(OracleHookEvent.ON_TEST_START)
 
         self.oracle_model.eval()  # Set model to evaluation mode
