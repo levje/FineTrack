@@ -151,7 +151,7 @@ class CrossQ(SACAuto):
         checkpoint: dict
             Dictionary containing the checkpoint to load.
         """
-        checkpoint = torch.load(checkpoint_file, weights_only=False)
+        checkpoint = torch.load(checkpoint_file, weights_only=False, map_location=self.device)
 
         self.agent.load_checkpoint(checkpoint['agent'])
         self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])

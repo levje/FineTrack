@@ -29,6 +29,7 @@ def get_device():
     elif torch.backends.mps.is_available():
         return torch.device("mps")
     else:
+        print("No GPU or MPS device found, using CPU.")
         return torch.device("cpu")
     
 def assert_accelerator():

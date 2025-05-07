@@ -5,6 +5,7 @@ import seaborn as sns
 import numpy as np
 import re
 
+plt.rcParams['figure.dpi'] = 300
 sns.set_style("darkgrid")
 
 """
@@ -145,7 +146,6 @@ def main():
     # Read and plot data
     data = read_json_files(args.json_files)
     data = process_data(data)
-
     plot_data(data, args, output_file=args.output_file)
 
 if __name__ == "__main__":
