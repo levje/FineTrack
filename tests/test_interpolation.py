@@ -21,6 +21,18 @@ nib_img_path = '/home/jeremi/Documents/FineTrack/data/datasets/archives/1mm/ismr
 nifti_image = nib.load(nib_img_path)
 image_data = nifti_image.get_fdata().astype(np.float32) # Shape: (1, W, D, 45)
 
+def lexicographic_sort(directions):
+    """
+    Sorts the array in lexicographic order.
+    """
+    sorted_indices = torch.argsort(directions[:, 2])
+    sorted_coords = directions[sorted_indices]
+    sorted_indices = torch.argsort(sorted_coords[:, 1], stable=True)
+    sorted_coords = sorted_coords[sorted_indices]
+    sorted_indices = torch.argsort(sorted_coords[:, 0], stable=True)
+    sorted_coords = sorted_coords[sorted_indices]
+    return sorted_coords
+
 @pytest.fixture
 def prepare_fodf_volume_and_target():
     fodf_volume = torch.tensor(image_data, dtype=torch.float32)
@@ -69,8 +81,8 @@ def test_dwiml_interpolation_crop(prepare_fodf_volume_and_target):
     n_coef = fodf_volume.shape[-1]
     neighborhood_type = 'grid'
     neighborhood_resolution = 1.0
-    neighborhood_vectors = prepare_neighborhood_vectors(
-        neighborhood_type, radius, neighborhood_resolution)
+    neighborhood_vectors = lexicographic_sort(prepare_neighborhood_vectors(
+        neighborhood_type, radius, neighborhood_resolution))
     
     grid_side_size = radius*2 + 1
 
@@ -86,7 +98,7 @@ def test_dwiml_interpolation_crop(prepare_fodf_volume_and_target):
     assert error_ratio < 0.03
 
     avg_difference = difference.mean()
-    assert avg_difference < 0.01 # TODO: Is this normal? This error is pretty high.
+    assert avg_difference < 1e-9 
 
 def test_custom_interpolation_mutiple_coordinates(prepare_fodf_volume_and_targets):
     fodf_volume, targets, coords, radius = prepare_fodf_volume_and_targets
@@ -103,7 +115,7 @@ def test_custom_interpolation_mutiple_coordinates(prepare_fodf_volume_and_target
         differences.append(error_ratio)
     
     for error_ratio in differences:
-        assert error_ratio < 1e-5 # TODO: We need to reduce the error ratio here.
+        assert error_ratio < 1e-8 # TODO: We need to reduce the error ratio here.
 
 @pytest.fixture
 def prepare_interpolation_test():
@@ -137,14 +149,14 @@ def test_other_interpolation_speedup(prepare_interpolation_test):
         interpolated_img = neighborhood_interpolation(img_tensor, coord_tensor, grid)
     interpolated_img = interpolated_img.cpu().numpy()
     difference = np.mean(np.abs(cropped_img - interpolated_img))
-    assert difference < 1e-5
+    assert difference < 1e-8
 
     # DWI-ML style
     n_coef = image_data.shape[-1]
     neighborhood_type = 'grid'
     neighborhood_resolution = 1.0
-    neighborhood_vectors = prepare_neighborhood_vectors(
-        neighborhood_type, radius, neighborhood_resolution).to(device)
+    neighborhood_vectors = lexicographic_sort(prepare_neighborhood_vectors(
+        neighborhood_type, radius, neighborhood_resolution)).to(device)
     
     grid_side_size = radius*2 + 1
 
@@ -155,7 +167,7 @@ def test_other_interpolation_speedup(prepare_interpolation_test):
     signal = signal.squeeze(0)
     signal = signal.cpu().numpy()
     difference = np.mean(np.abs(cropped_img - signal))
-    assert difference < 0.01 # TODO: Is this normal? This error is pretty high.
+    assert difference < 1e-9 # TODO: Is this normal? This error is pretty high.
 
     assert timer_custom.interval < timer_dwi_ml.interval, f"Custom interpolation is slower than dwi_ml interpolation: {timer_custom.interval} > {timer_dwi_ml.interval}"
 
@@ -217,7 +229,7 @@ def test_other_interpolation_axes(prepare_interpolation_axes):
         interpolated_img = neighborhood_interpolation(img_tensor, coord_tensor, grid)
     interpolated_img = interpolated_img.cpu().numpy()
     difference = np.mean(np.abs(target - interpolated_img))
-    assert difference < 1e-5
+    assert difference < 1e-8
 
     # DWI-ML style
     neighborhood_type = 'axes'
@@ -231,7 +243,7 @@ def test_other_interpolation_axes(prepare_interpolation_axes):
     signal = signal.squeeze(0)
     signal = signal.cpu().numpy()
     difference = np.mean(np.abs(target - signal))
-    assert difference < 1e-5
+    assert difference < 1e-9
 
     assert timer_custom.interval < timer_dwi_ml.interval, f"Custom interpolation is slower than dwi_ml interpolation: {timer_custom.interval} > {timer_dwi_ml.interval}"
 
@@ -278,13 +290,13 @@ def test_multiple_targets_grid(prepare_multiple_targets_grid):
     # Compare each target
     for i, target in enumerate(targets):
         difference = torch.mean(torch.abs(target - interpolated_img[i]))
-        assert difference < 1e-5
+        assert difference < 1e-8
 
     # DWI-ML style
     neighborhood_type = 'grid'
     neighborhood_resolution = 1.0
-    neighborhood_vectors = prepare_neighborhood_vectors(
-        neighborhood_type, radius, neighborhood_resolution).to(device)
+    neighborhood_vectors = lexicographic_sort(prepare_neighborhood_vectors(
+        neighborhood_type, radius, neighborhood_resolution)).to(device)
     grid_side_size = radius*2 + 1
     # Interpolate with dwi_ml
     with SimpleTimer() as timer_dwi_ml:
@@ -293,6 +305,6 @@ def test_multiple_targets_grid(prepare_multiple_targets_grid):
     signal = signal.cpu()
     for i, target in enumerate(targets):
         difference = torch.mean(torch.abs(target - signal[i]))
-        assert difference < 0.01
+        assert difference < 1e-9
 
     assert timer_custom.interval < timer_dwi_ml.interval, f"Custom interpolation is slower than dwi_ml interpolation: {timer_custom.interval} > {timer_dwi_ml.interval}"

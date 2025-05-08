@@ -5,6 +5,18 @@ import numpy as np
 from dwi_ml.data.processing.volume.interpolation import interpolate_volume_in_neighborhood
 from dwi_ml.data.processing.space.neighborhood import prepare_neighborhood_vectors
 
+def lexicographic_sort(directions):
+    """
+    Sorts the array in lexicographic order.
+    """
+    sorted_indices = torch.argsort(directions[:, 2])
+    sorted_coords = directions[sorted_indices]
+    sorted_indices = torch.argsort(sorted_coords[:, 1], stable=True)
+    sorted_coords = sorted_coords[sorted_indices]
+    sorted_indices = torch.argsort(sorted_coords[:, 0], stable=True)
+    sorted_coords = sorted_coords[sorted_indices]
+    return sorted_coords
+
 @pytest.fixture
 def prepare_fodf_volume_and_target():
     rng = np.random.RandomState(42)
@@ -32,8 +44,8 @@ def test_dwiml_interpolation_crop(prepare_fodf_volume_and_target):
     n_coef = fodf_volume.shape[-1]
     neighborhood_type = 'grid'
     neighborhood_resolution = 1.0
-    neighborhood_vectors = prepare_neighborhood_vectors(
-        neighborhood_type, radius, neighborhood_resolution)
+    neighborhood_vectors = lexicographic_sort(prepare_neighborhood_vectors(
+        neighborhood_type, radius, neighborhood_resolution))
     
     grid_side_size = radius*2 + 1
 
