@@ -1,7 +1,116 @@
 import torch
 
+# -*- coding: utf-8 -*-
+
+import numpy as np
+import torch
+
+
+def calc_neighborhood_vectors(
+        mode: str, radius: int,
+        resolution: float = 1.0,
+        device=None) -> torch.Tensor:
+    """
+    Prepare neighborhood vectors.
+
+    Note: We only support isometric voxels! Adding isometry would also require
+    the voxel resolution.
+
+    Params
+    ------
+    mode: str
+        Either the 'axes' option or the 'grid' option. See each method for a
+        description.
+    radius: int
+        Required if neighborhood type is not None.
+        - axes: a radius of 1 = 7 neighbhors, a radius of 2 = 13, on two
+         concentric spheres.
+        - grid option: a radius of 1 = 27 neighbors, a radius of 2 = 125, on
+         two concentric cubes.
+    resolution: float
+        Required if neighborhood type is not None.
+        - 'axes': spacing between each concentric sphere.
+        - 'grid': resolution of the final grid-like neighborhood.
+        Hint: To convert from mm to voxel world, you may use
+        dwi_ml.data.processing.space.world_to_vox.convert_world_to_vox(
+            radius_mm, affine_mm_to_vox)
+    device: torch.device
+        Device to use for the neighborhood vectors. If None, will use the
+        default device (usually CPU). If you are using a GPU, you can set
+        this to torch.device('cuda') to speed up the calculations.
+
+    Returns
+    -------
+    neighborhood_vectors: tensor of shape (N, 3).
+        Results are vectors pointing to a neighborhood point, starting from the
+        origin (i.e. current position). The current point (0,0,0) is included.
+        Hint: You can now interpolate your DWI data in each direction around
+        your point of interest to get your neighbourhood.
+        Returns None if neighborhood_radius is None.
+    """
+    if mode is None:
+        return None
+
+    if radius is None:
+        raise ValueError("You must provide neighborhood radius to add "
+                         "a neighborhood.")
+    if resolution is None:
+        raise ValueError("You must provide neighborhood resolution to add "
+                         "a neighborhood.")
+    if mode not in ['axes', 'grid']:
+        raise ValueError(
+            "Mode must be either 'axes', 'grid' "
+            "but we received {}!".format(mode))
+
+    if mode == 'axes':
+        neighborhood_vectors = calc_neighborhood_axes(
+            radius, resolution, device=device)
+    else:
+        neighborhood_vectors = calc_neighborhood_grid(
+            radius, resolution, device=device)
+
+    return neighborhood_vectors
+
 @torch.no_grad()
-def calc_neighborhood_grid(neighborhood_radius: int, device=None, resolution: float = 1.):
+def calc_neighborhood_axes(radius: int, resolution: float, device=None) -> torch.Tensor:
+    """
+    This neighborhood definition lies on a sphere.
+
+    For radius = 1, returns a list of 7 positions (current, up, down, left,
+    right, behind, in front) at exactly `resolution` (mm or voxels) from origin
+    (i.e. current postion).
+    If radius is > 1, returns a multi-radius neighborhood (lying on
+    concentring spheres).
+
+    Returns
+    -------
+    neighborhood_vectors : tensor of shape (N, 3)
+        A list of vectors with last dimension = 3 (x,y,z coordinate for each
+        neighbour per respect to the origin).
+    """
+    if radius > 1:
+        import warnings
+        warnings.warn("Neighborhood radius > 1 wasn't tested for axes. Make sure the behavior is "
+                        "as expected. If not, please open an issue on GitHub.")
+
+    tmp_axes = torch.eye(3, dtype=torch.float32)
+    unit_axes = torch.concat((tmp_axes, -tmp_axes), dim=0)
+
+    radiuses = torch.arange(1, radius + 1, dtype=torch.float32) * resolution
+    neighborhood_vectors = [torch.tensor([0, 0, 0], dtype=torch.float32)]
+    for r in radiuses:
+        neighborhood_vectors.extend(unit_axes * r)
+
+    neighborhood_vectors = torch.stack(neighborhood_vectors, dim=0).to(device=device)
+
+    return neighborhood_vectors
+
+
+"""
+CUSTOM FUNCTIONS
+"""
+@torch.no_grad()
+def calc_neighborhood_grid(neighborhood_radius: int, resolution: float = 1., device=None):
     # Get the neighborhood grid for the coordinates
     grid_z, grid_y, grid_x = torch.meshgrid(
         torch.arange(-neighborhood_radius, neighborhood_radius+1),
@@ -18,7 +127,7 @@ def calc_neighborhood_grid(neighborhood_radius: int, device=None, resolution: fl
     return neighborhood_grid
 
 @torch.no_grad()
-def neighborhood_interpolation(volume: torch.Tensor, coords: torch.Tensor, neighborhood_grid: torch.Tensor, align_corners: bool = False):
+def old_neighborhood_interpolation(volume: torch.Tensor, coords: torch.Tensor, neighborhood_grid: torch.Tensor, align_corners: bool = False):
     """
     This function interpolates a volume at given coordinates using a neighborhood
     of points around the coordinates.
@@ -121,7 +230,7 @@ def chatgpt_neighborhood_interpolation(volume: torch.Tensor, coords: torch.Tenso
     return interpolated_volume
 
 @torch.no_grad()
-def corrected_neighborhood_interpolation(volume: torch.Tensor, coords: torch.Tensor, grid: torch.Tensor, align_corners: bool = True):
+def neighborhood_interpolation(volume: torch.Tensor, coords: torch.Tensor, grid: torch.Tensor, align_corners: bool = True):
     """
     Interpolates a 3D volume at given coordinates using a local neighborhood grid.
     ----
@@ -155,12 +264,20 @@ def corrected_neighborhood_interpolation(volume: torch.Tensor, coords: torch.Ten
         raise ValueError("coords should be of shape (N, 3) or (3,)")
 
     # Make sure the grid is of shape (N, D, H, W, 3)
-    if len(grid.shape) == 4:
+    is_grid = True
+    if len(grid.shape) == 4: # (D, H, W, 3)
         grid = grid.expand(coords.shape[0], -1, -1, -1, -1)  # Expand grid to match the number of coordinates
-    elif len(grid.shape) == 5:
+    elif len(grid.shape) == 5: # (N, D, H, W, 3)
         assert grid.shape[0] == coords.shape[0], f"grid should be of shape ({coords.shape[0]}, D, H, W, 3)"
+    elif len(grid.shape) == 2: # (W, 3)
+        grid = grid.unsqueeze(0).unsqueeze(0).expand(coords.shape[0], -1, -1, -1, -1)  # Expand grid to match the number of coordinates
+        is_grid = False # When using "axes"
+    elif len(grid.shape) == 3: # (N, W, 3)
+        assert grid.shape[0] == coords.shape[0], f"grid should be of shape ({coords.shape[0]}, W, 3)"
+        grid = grid.unsqueeze(1).expand(coords.shape[0], -1, -1, -1, -1)
+        is_grid = False # When using "axes"
     elif len(grid.shape) < 4 or len(grid.shape) > 5:
-        raise ValueError("grid should be of shape (N, D, H, W, 3) or (D, H, W, 3)")
+        raise ValueError("grid should be of shape (N, D, H, W, 3) or (D, H, W, 3), but we received {}".format(grid.shape))
     
     if coords.device != volume.device:
         coords = coords.to(volume.device) # This could eventually be slow if we call this function a lot
@@ -169,14 +286,14 @@ def corrected_neighborhood_interpolation(volume: torch.Tensor, coords: torch.Ten
 
     D, H, W, _ = volume.shape
     spatial_size = torch.tensor([W, H, D], dtype=torch.float32, device=grid.device)
-    grid = grid + coords[:, [2, 1, 0]]
+    grid = grid + coords[:, None, None, None, [2, 1, 0]]
 
     # Normalize the grid to be between -1 and 1
     offset = 0.5 if align_corners else 0.0
     grid = (grid + offset) * 2 / spatial_size - 1
 
     # Interpolate
-    img_mod = volume.unsqueeze(0).expand(1, -1, -1, -1, -1)  # Shape: (1, C, D, H, W)
+    img_mod = volume.unsqueeze(0).expand(grid.shape[0], -1, -1, -1, -1)  # Shape: (1, C, D, H, W)
     img_mod = img_mod.permute(0, 4, 1, 2, 3)
     interpolated = torch.nn.functional.grid_sample(
         img_mod,
@@ -187,5 +304,9 @@ def corrected_neighborhood_interpolation(volume: torch.Tensor, coords: torch.Ten
     )
 
     # Prepare for visualization
-    interpolated_img = interpolated.squeeze(0).permute(1, 2, 3, 0).detach().numpy()
+    interpolated_img = interpolated.permute(0, 2, 3, 4, 1)
+
+    if not is_grid:
+        interpolated_img = interpolated_img.reshape(coords.shape[0], -1)
+
     return interpolated_img
