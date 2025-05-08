@@ -15,7 +15,6 @@ from dipy.reconst.shm import sh_to_sf_matrix
 from torch.utils.data import DataLoader
 
 from FineTrack.environments.neighborhood_manager import NeighborhoodManager
-from FineTrack.garbage.view_image import display_image
 from FineTrack.utils.logging import get_logger
 from FineTrack.datasets.SubjectDataset import SubjectDataset
 from FineTrack.datasets.utils import (MRIDataVolume,
@@ -34,7 +33,7 @@ from FineTrack.environments.utils import (  # is_looping,
 from FineTrack.utils.utils import normalize_vectors, Timer
 from FineTrack.environments.rollout_env import RolloutEnvironment
 from FineTrack.environments.state import ConvState, State
-from FineTrack.algorithms.shared.fodf_encoder import WorkingFodfEncoder, SmallWorkingFodfEncoder, DummyFodfEncoder
+from FineTrack.algorithms.shared.fodf_encoder import SmallWorkingFodfEncoder
 from FineTrack.utils.interpolation import calc_neighborhood_grid, neighborhood_interpolation
 from scilpy.tractograms.tractogram_operations import transform_warp_sft
 

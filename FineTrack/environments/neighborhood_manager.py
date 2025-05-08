@@ -6,7 +6,7 @@ from FineTrack.utils.neighborhood_interpolation import \
 from FineTrack.utils.dwi_ml import \
     prepare_neighborhood_vectors
 
-from FineTrack.utils.interpolation import neighborhood_interpolation, calc_neighborhood_grid
+from FineTrack.utils.interpolation import neighborhood_interpolation, calc_neighborhood_vectors
 from FineTrack.utils.torch_utils import get_device
 
 
@@ -45,15 +45,16 @@ class NeighborhoodManager(object):
         return self._manager.radius
 
 class EfficientNeighborhoodManager(object):
-    def __init__(self, data_volume, radius, add_neighborhood_vox, flatten, device=get_device(), **kwargs):
+    def __init__(self, data_volume, radius, add_neighborhood_vox, flatten,
+                 neighborhood_type, device=get_device(), **kwargs):
         self.device = device
         self.add_neighborhood_vox = add_neighborhood_vox
 
         self.radius = radius
         self.data_volume = to_torch(data_volume, device=self.device)
-        self.grid = calc_neighborhood_grid(radius, device=self.device, resolution=self.add_neighborhood_vox)
+        self.grid = calc_neighborhood_vectors(neighborhood_type,
+            radius, resolution=self.add_neighborhood_vox, device=self.device)
 
-        # Warn that flattening is not supported
         self.flatten = flatten
 
     def get(self, coords, torch_convention):
@@ -62,17 +63,16 @@ class EfficientNeighborhoodManager(object):
             coords = coords.to(self.device)
 
         # Seem to have better results with align_corners=False
-        signal = neighborhood_interpolation(self.data_volume, coords, self.grid, align_corners=False)          
+        signal = neighborhood_interpolation(self.data_volume, coords, self.grid)          
 
-        if self.flatten:
-            signal = signal.reshape(signal.shape[0], -1)
-            if torch_convention:
-                import warnings
-                warnings.warn('Flattening is enabled, but torch_convention=True. Ignoring torch_convention=True.')
-        elif torch_convention:
+        if torch_convention and signal.ndim == 5:
             # Permute axes to fit PyTorch's convention of (N, C, D, H, W)
             # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
             signal = signal.permute(0, 4, 1, 2, 3)
+        elif torch_convention and signal.ndim < 5:
+            raise ValueError('Signal has less than 5 dimensions. '
+                             'Cannot permute to PyTorch convention. '
+                             'Signal shape: {}'.format(signal.shape))
 
         return signal
     
