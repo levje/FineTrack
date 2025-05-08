@@ -78,10 +78,6 @@ def test_dwiml_interpolation_crop(prepare_fodf_volume_and_target):
     signal, _ = interpolate_volume_in_neighborhood(fodf_volume, coord.unsqueeze(0), neighborhood_vectors)
     assert signal.shape == (1, grid_side_size*grid_side_size*grid_side_size*n_coef)
 
-    # Unflatten the neighborhood
-    # signal = unflatten_neighborhood(
-    #                 signal, neighborhood_vectors, 'grid',
-    #                 radius, neighborhood_resolution)
     signal = signal.view(1, grid_side_size, grid_side_size, grid_side_size, n_coef)
     assert signal.shape == (1, grid_side_size, grid_side_size, grid_side_size, n_coef)
 
@@ -124,7 +120,6 @@ def prepare_interpolation_test():
 
     # Copy the same coordinate 50 times
     coord = coord.repeat(100, 1)
-
 
     return image_data, cropped_img, coord, radius
 
@@ -237,5 +232,67 @@ def test_other_interpolation_axes(prepare_interpolation_axes):
     signal = signal.cpu().numpy()
     difference = np.mean(np.abs(target - signal))
     assert difference < 1e-5
+
+    assert timer_custom.interval < timer_dwi_ml.interval, f"Custom interpolation is slower than dwi_ml interpolation: {timer_custom.interval} > {timer_dwi_ml.interval}"
+
+@pytest.fixture
+def prepare_multiple_targets_grid():
+    radius = 9
+
+    D, H, W, _ = image_data.shape
+    coords = [
+        [D // 2, H // 2, W // 2],
+        [D // 2+5, H // 2+5, W // 2+5],
+        [D // 2-5, H // 2-5, W // 2-5],
+        [D // 2+5, H // 2-5, W // 2-5],
+        [D // 2+5, H // 2+5, W // 2-5]
+    ]
+    coords = torch.tensor(coords, dtype=torch.float32)
+    targets = []
+    for coord in coords:
+        target = image_data[
+            coord[0].long()-radius:coord[0].long()+radius+1,
+            coord[1].long()-radius:coord[1].long()+radius+1,
+            coord[2].long()-radius:coord[2].long()+radius+1]
+        targets.append(target)
+    targets = np.array(targets)
+    targets = torch.from_numpy(targets).float()
+    
+    return image_data, targets, coords, radius
+
+def test_multiple_targets_grid(prepare_multiple_targets_grid):
+    device="cuda"
+    image_data, targets, coords, radius = prepare_multiple_targets_grid
+
+    img_tensor = torch.from_numpy(image_data).to(device)
+    img_tensor_2 = img_tensor.clone().to(device)
+    coord_tensor = coords.to(device)
+    coord_tensor_2 = coord_tensor.clone().to(device)
+
+    # Create a normalized grid (e.g., 50x50 grid points in the center of the image)
+    grid = calc_neighborhood_vectors('grid', radius, device=device)
+    with SimpleTimer() as timer_custom:
+        interpolated_img = neighborhood_interpolation(img_tensor, coord_tensor, grid)
+    interpolated_img = interpolated_img.cpu()
+
+    # Compare each target
+    for i, target in enumerate(targets):
+        difference = torch.mean(torch.abs(target - interpolated_img[i]))
+        assert difference < 1e-5
+
+    # DWI-ML style
+    neighborhood_type = 'grid'
+    neighborhood_resolution = 1.0
+    neighborhood_vectors = prepare_neighborhood_vectors(
+        neighborhood_type, radius, neighborhood_resolution).to(device)
+    grid_side_size = radius*2 + 1
+    # Interpolate with dwi_ml
+    with SimpleTimer() as timer_dwi_ml:
+        signal, _ = interpolate_volume_in_neighborhood(img_tensor_2, coord_tensor_2, neighborhood_vectors)
+        signal = signal.view(coord_tensor_2.shape[0], grid_side_size, grid_side_size, grid_side_size, img_tensor_2.shape[-1])
+    signal = signal.cpu()
+    for i, target in enumerate(targets):
+        difference = torch.mean(torch.abs(target - signal[i]))
+        assert difference < 0.01
 
     assert timer_custom.interval < timer_dwi_ml.interval, f"Custom interpolation is slower than dwi_ml interpolation: {timer_custom.interval} > {timer_dwi_ml.interval}"
