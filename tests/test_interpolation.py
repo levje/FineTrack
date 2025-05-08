@@ -7,20 +7,26 @@ from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
 from dwi_ml.data.processing.space.neighborhood import \
     unflatten_neighborhood, prepare_neighborhood_vectors
+import torch
+import torch.nn.functional as F
+import torchvision.transforms as T
+import matplotlib.pyplot as plt
+import nibabel as nib
+import numpy as np
+from FineTrack.utils.utils import SimpleTimer
+from FineTrack.utils.interpolation import chatgpt_neighborhood_interpolation as neighborhood_interpolation, calc_neighborhood_grid, corrected_neighborhood_interpolation
 
-from FineTrack.utils.interpolation import neighborhood_interpolation, calc_neighborhood_grid
-from FineTrack.garbage.view_image import display_image
-
-nib_img_path = '/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_1mm/fodfs/ismrm2015_fodf.nii.gz'
+nib_img_path = '/Users/jeremilevesque/Documents/uni/FineTrack/data/datasets/ismrm2015_1mm/fodfs/ismrm2015_fodf.nii.gz'
 
 @pytest.fixture
 def prepare_fodf_volume_and_target():
     nib_img = nib.load(nib_img_path)
     img = nib_img.get_fdata()
     fodf_volume = torch.tensor(img, dtype=torch.float32)
+    # fodf_volume = fodf_volume.permute(3, 0, 1, 2)  # Shape: (45, D, H, W)
 
     coord = torch.tensor([img.shape[0]//2, img.shape[1]//2, img.shape[2]//2], dtype=torch.long)
-    radius = 10
+    radius = 50
 
     # Crop the fodf_volume to the neighborhood
     target = fodf_volume[
@@ -71,14 +77,19 @@ def test_dwiml_interpolation_crop(prepare_fodf_volume_and_target):
     assert signal.shape == (1, grid_side_size*grid_side_size*grid_side_size*n_coef)
 
     # Unflatten the neighborhood
-    signal = unflatten_neighborhood(
-                    signal, neighborhood_vectors, 'grid',
-                    radius, neighborhood_resolution)
+    # signal = unflatten_neighborhood(
+    #                 signal, neighborhood_vectors, 'grid',
+    #                 radius, neighborhood_resolution)
+    signal = signal.view(1, grid_side_size, grid_side_size, grid_side_size, n_coef)
     assert signal.shape == (1, grid_side_size, grid_side_size, grid_side_size, n_coef)
 
     difference = torch.abs(target - signal[0])
     error_ratio = difference.sum() / (difference>=0).sum()
     assert error_ratio < 0.03
+
+    avg_difference = difference.mean()
+    print("avg_difference:", avg_difference)
+    assert avg_difference < 1e-5
 
 
 def test_custom_interpolation_crop(prepare_fodf_volume_and_target):
@@ -89,11 +100,38 @@ def test_custom_interpolation_crop(prepare_fodf_volume_and_target):
 
     # Interpolate with custom interpolation technique
     signal = neighborhood_interpolation(fodf_volume, coord.unsqueeze(0), grid)
+    signal = signal.squeeze(0)
 
-    difference = torch.abs(target - signal[0])
-    error_ratio = difference.sum() / (difference>=0).sum()
-    print("error_ratio:", error_ratio)
-    assert error_ratio < 0.04  # TODO: We need to reduce the error ratio here.
+    print("signal.shape:", signal.shape)
+    print("target.shape:", target.shape)
+
+    difference = torch.abs(target - signal)
+    error_ratio = difference.mean()
+
+    import matplotlib.pyplot as plt
+    def plot_for_coefficient(coefficient, num_rows, index):
+        plt.subplot(num_rows, 4, index)
+        plt.title("Original Image")
+        plt.imshow(fodf_volume[coord[0].to(int), :, :, coefficient].cpu().numpy())
+        plt.axis("off")
+        plt.subplot(num_rows, 4, index+1)
+        plt.title("Target Image")
+        plt.imshow(target[radius, :, :, coefficient].cpu().numpy())
+        plt.axis("off")
+        plt.subplot(num_rows, 4, index+2)
+        plt.title("Interpolated Image")
+        plt.imshow(signal[radius, :, :, coefficient].cpu().numpy())
+        plt.axis("off")
+        plt.subplot(num_rows, 4, index+3)
+        plt.title("Difference map")
+        plt.imshow(difference[radius, :, :, coefficient].cpu().numpy())
+        plt.axis("off")
+    plot_for_coefficient(0, 3, 1)
+    plot_for_coefficient(1, 3, 5)
+    plot_for_coefficient(2, 3, 9)
+    plt.show()
+
+    assert error_ratio < 1e-8
 
 def test_custom_interpolation_mutiple_coordinates(prepare_fodf_volume_and_targets):
     fodf_volume, targets, coords, radius = prepare_fodf_volume_and_targets
@@ -110,27 +148,71 @@ def test_custom_interpolation_mutiple_coordinates(prepare_fodf_volume_and_target
         differences.append(error_ratio)
     
     for error_ratio in differences:
-        assert error_ratio < 0.04 # TODO: We need to reduce the error ratio here.
+        assert error_ratio < 1e-5 # TODO: We need to reduce the error ratio here.
 
-def test_custom_unflattening():
-    # Unflatten the signal into (N, W, H, D, C) shape
-    other_signal = unflatten_neighborhood(
-        signal, self.neighborhood_directions, self.neighborhood_type,
-        self.radius, self.add_neighborhood_vox)
-    other_signal_flat = other_signal.view(other_signal.shape[0], -1, 28)
-    signal = self._unflatten_neighborhood(signal)
+@pytest.fixture
+def prepare_interpolation_test():
+    radius = 50
+    nifti_image = nib.load("/Users/jeremilevesque/Documents/uni/FineTrack/data/datasets/ismrm2015_1mm/fodfs/ismrm2015_fodf.nii.gz")
+    image_data = nifti_image.get_fdata().astype(np.float32) # Shape: (1, W, D, 45)
+    D, H, W, _ = image_data.shape
+    coord = [D // 2, H // 2, W // 2]
 
-    signal = signal.cpu()
-    other_signal = other_signal.cpu()
-    # Test 1 (signal of shape (N, W, H, D, C))
-    # if (torch.abs(signal - other_signal) < 1e-6).all():
-    #     raise ValueError('Found it!')
-    difference = torch.abs(signal - other_signal)
+    cropped_img = image_data[
+        coord[0]-radius:coord[0]+radius+1,
+        coord[1]-radius:coord[1]+radius+1,
+        coord[2]-radius:coord[2]+radius+1]
+
+    return image_data, cropped_img, coord, radius
+
+
+def test_other_test_interpolation(prepare_interpolation_test):
+    image_data, cropped_img, coord, radius = prepare_interpolation_test
+    img_tensor = torch.from_numpy(image_data)
+
+    # Create a normalized grid (e.g., 50x50 grid points in the center of the image)
+    grid = calc_neighborhood_grid(radius)
+    interpolated_img = corrected_neighborhood_interpolation(img_tensor, torch.tensor(coord, dtype=torch.float32), grid)
+
+    difference = np.mean(np.abs(cropped_img - interpolated_img))
+    assert difference < 1e-5
+    print("difference avg: ", difference)
+
+
+def test_other_interpolation_speedup(prepare_interpolation_test):
+    image_data, cropped_img, coord, radius = prepare_interpolation_test
+    img_tensor = torch.from_numpy(image_data).to("mps")
+    img_tensor_2 = img_tensor.clone().to('mps')
+    coord_tensor = torch.tensor(coord, dtype=torch.float32)
+
+    # Create a normalized grid (e.g., 50x50 grid points in the center of the image)
+    grid = calc_neighborhood_grid(radius)
+    with SimpleTimer() as timer_custom:
+        interpolated_img = corrected_neighborhood_interpolation(img_tensor, torch.tensor(coord, dtype=torch.float32), grid)
+
+    difference = np.mean(np.abs(cropped_img - interpolated_img))
+    assert difference < 1e-5
+
+    # DWI-ML style
+    n_coef = image_data.shape[-1]
+    neighborhood_type = 'grid'
+    neighborhood_resolution = 1.0
+    neighborhood_vectors = prepare_neighborhood_vectors(
+        neighborhood_type, radius, neighborhood_resolution)
     
-    # diff_flat = torch.abs(flat - other_signal_flat)[0] # First point only
-    # eq_zero = diff_flat == 0
-    # all_eq_zero = torch.all(eq_zero, dim=1)
-    # idx_where_zero = torch.arange(len(diff_flat))[all_eq_zero.cpu()]
-    # coords_where_good = self.neighborhood_directions[idx_where_zero]
+    grid_side_size = radius*2 + 1
+
+    # Interpolate with dwi_ml
+    with SimpleTimer() as timer_dwi_ml:
+        signal, _ = interpolate_volume_in_neighborhood(img_tensor_2, coord_tensor.unsqueeze(0), neighborhood_vectors)
+        signal = signal.view(1, grid_side_size, grid_side_size, grid_side_size, n_coef)
+    signal = signal.squeeze(0)
+    signal = signal.cpu().numpy()
+    difference = np.mean(np.abs(cropped_img - signal))
+    assert difference < 1e-5
+
+    print("timer_custom.interval:", timer_custom.interval)
+    print("timer_dwi_ml.interval:", timer_dwi_ml.interval)
+    assert timer_custom.interval < timer_dwi_ml.interval, f"Custom interpolation is slower than dwi_ml interpolation: {timer_custom.interval} > {timer_dwi_ml.interval}"
+
     
-    # raise ValueError('Unflattening is not working correctly.')

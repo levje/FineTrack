@@ -3,14 +3,14 @@ import torch
 @torch.no_grad()
 def calc_neighborhood_grid(neighborhood_radius: int, device=None, resolution: float = 1.):
     # Get the neighborhood grid for the coordinates
-    neighborhood_grid = torch.meshgrid(
+    grid_z, grid_y, grid_x = torch.meshgrid(
         torch.arange(-neighborhood_radius, neighborhood_radius+1),
         torch.arange(-neighborhood_radius, neighborhood_radius+1),
         torch.arange(-neighborhood_radius, neighborhood_radius+1),
-        indexing='xy')
+        indexing='ij')
     
     # Convert the neighborhood grid to a tensor
-    neighborhood_grid = torch.stack(neighborhood_grid, dim=-1).float().to(device=device)
+    neighborhood_grid = torch.stack([grid_x, grid_y, grid_z], dim=-1).float().to(device=device)
 
     # Scale the neighborhood_grid to the specified resolution
     neighborhood_grid *= resolution
@@ -83,3 +83,109 @@ def neighborhood_interpolation(volume: torch.Tensor, coords: torch.Tensor, neigh
     interpolated_volume = interpolated_volume.permute(0, 2, 3, 4, 1)
     
     return interpolated_volume
+
+
+# Correction from ChatGPT
+@torch.no_grad()
+def chatgpt_neighborhood_interpolation(volume: torch.Tensor, coords: torch.Tensor, neighborhood_grid: torch.Tensor, align_corners: bool = False):
+    """
+    Interpolates a 3D volume at given coordinates using a local neighborhood grid.
+    """
+    N = coords.shape[0]
+
+    # volume: (C, D, H, W) -> (N, C, D, H, W)
+    volume_mod = volume.unsqueeze(0).expand(N, -1, -1, -1, -1)
+
+    # Add coordinate center to each neighborhood grid
+    # coords: (N, 3) -> (N, 1, 1, 1, 3), broadcast with neighborhood_grid
+    neighborhood_grid = neighborhood_grid + coords.view(N, 1, 1, 1, 3) # Each coord point is considered (D, H, W)
+
+    # Normalize grid to [-1, 1]
+    spatial_shape = torch.tensor(
+        [volume.shape[0], volume.shape[1], volume.shape[2]],
+        device=volume.device,
+        dtype=torch.float32
+    )
+    offset = 0.5
+    norm_grid = ((neighborhood_grid + offset) * 2 / spatial_shape) - 1 # Each point is considered (D, H, W)
+
+    volume_mod = volume_mod.permute(0, 4, 1, 2, 3)
+    interpolated_volume = torch.nn.functional.grid_sample(
+        volume_mod,
+        norm_grid,
+        mode='bilinear',
+        align_corners=False,
+        padding_mode='zeros'
+    )
+    interpolated_volume = interpolated_volume.permute(0, 2, 3, 4, 1)
+    return interpolated_volume
+
+@torch.no_grad()
+def corrected_neighborhood_interpolation(volume: torch.Tensor, coords: torch.Tensor, grid: torch.Tensor, align_corners: bool = True):
+    """
+    Interpolates a 3D volume at given coordinates using a local neighborhood grid.
+    ----
+    Parameters
+    ----------
+    volume: torch.Tensor
+        The 3D volume to be interpolated. Shape: (C, D, H, W)
+    coords: torch.Tensor
+        The coordinates at which to interpolate the volume. Shape: (N, 3) or (3,)
+    grid: torch.Tensor
+        The neighborhood grid to be used for interpolation. Shape: (N, D, H, W, 3) or (D, H, W, 3)
+    align_corners: bool
+        Whether to align corners when interpolating. Default is True.
+    ----
+    Returns
+    -------
+    interpolated_img: numpy.ndarray
+        The interpolated image at the given coordinates. Shape: (N, D, H, W, C)
+    ----
+    """
+
+    # Make sure we have tensors as inputs
+    assert isinstance(volume, torch.Tensor), "volume should be a torch.Tensor"
+    assert isinstance(coords, torch.Tensor), "coords should be a torch.Tensor"
+    assert isinstance(grid, torch.Tensor), "grid should be a torch.Tensor"
+
+    # Make sure the coordinates are of shape (N, 3)
+    if len(coords.shape) == 1:
+        coords = coords.unsqueeze(0)
+    elif len(coords.shape) == 0 or len(coords.shape) > 2:
+        raise ValueError("coords should be of shape (N, 3) or (3,)")
+
+    # Make sure the grid is of shape (N, D, H, W, 3)
+    if len(grid.shape) == 4:
+        grid = grid.expand(coords.shape[0], -1, -1, -1, -1)  # Expand grid to match the number of coordinates
+    elif len(grid.shape) == 5:
+        assert grid.shape[0] == coords.shape[0], f"grid should be of shape ({coords.shape[0]}, D, H, W, 3)"
+    elif len(grid.shape) < 4 or len(grid.shape) > 5:
+        raise ValueError("grid should be of shape (N, D, H, W, 3) or (D, H, W, 3)")
+    
+    if coords.device != volume.device:
+        coords = coords.to(volume.device) # This could eventually be slow if we call this function a lot
+    if grid.device != volume.device:
+        grid = grid.to(volume.device) # This could eventually be slow if we call this function a lot
+
+    D, H, W, _ = volume.shape
+    spatial_size = torch.tensor([W, H, D], dtype=torch.float32, device=grid.device)
+    grid = grid + coords[:, [2, 1, 0]]
+
+    # Normalize the grid to be between -1 and 1
+    offset = 0.5 if align_corners else 0.0
+    grid = (grid + offset) * 2 / spatial_size - 1
+
+    # Interpolate
+    img_mod = volume.unsqueeze(0).expand(1, -1, -1, -1, -1)  # Shape: (1, C, D, H, W)
+    img_mod = img_mod.permute(0, 4, 1, 2, 3)
+    interpolated = torch.nn.functional.grid_sample(
+        img_mod,
+        grid,
+        mode='bilinear',
+        align_corners=False,
+        padding_mode='zeros'
+    )
+
+    # Prepare for visualization
+    interpolated_img = interpolated.squeeze(0).permute(1, 2, 3, 0).detach().numpy()
+    return interpolated_img

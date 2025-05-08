@@ -4,7 +4,7 @@ import numpy as np
 
 
 # @njit
-def nearest_neighbor_interpolation(
+def old_nearest_neighbor_interpolation(
     volume: np.array([[[[]]]]),
     coords: np.ndarray,
 ) -> np.ndarray:
@@ -24,3 +24,19 @@ def nearest_neighbor_interpolation(
     output = volume[tuple(indices)]
 
     return output
+
+def nearest_neighbor_interpolation(
+    volume: np.ndarray,
+    coords: np.ndarray,
+) -> np.ndarray:
+    """
+    Interpolates the given coordinates using nearest neighbor method on a 4D volume.
+    """
+    if volume.ndim != 4:
+        raise ValueError("Volume must be 4D!")
+
+    # Round and clip coordinates
+    indices = np.clip(np.round(coords), 0, np.array(volume.shape[:3]) - 1).astype(np.int32)
+
+    # Efficient indexing
+    return volume[indices[:, 0], indices[:, 1], indices[:, 2]]
