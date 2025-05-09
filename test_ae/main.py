@@ -13,9 +13,10 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from FineTrack.utils.utils import count_parameters
 from FineTrack.environments.neighborhood_manager import NeighborhoodManager
-from FineTrack.algorithms.shared.fodf_encoder import WorkingFodfEncoder, WorkingFodfDecoder, SmallWorkingFodfEncoder, SmallWorkingFodfDecoder
+from FineTrack.algorithms.shared.fodf_encoder import *
 
-VOLUME_PATH = '/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz'
+# VOLUME_PATH = '/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz'
+VOLUME_PATH = '/home/jeremi/Documents/FineTrack/data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf_sf.nii.gz'
 WM_MASK_PATH = '/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_2mm/masks/ismrm2015_wm_mask.nii.gz'
 
 dim_2d = False
@@ -26,7 +27,7 @@ get_flat_size = lambda dim_size: dim_size**2 if dim_2d else dim_size**3
 get_flat_shape = lambda dim_size: (dim_size, dim_size) if dim_2d else (dim_size, dim_size, dim_size)
 
 class NeighborhoodDataset(torch.utils.data.Dataset):
-    def __init__(self, train=True, n_coefs=28, neighborhood_size=3, method='crop', torch_convention=False):
+    def __init__(self, train=True, neighborhood_size=3, method='crop', torch_convention=False):
         self.is_train = train
         self.volume_nib = nib.load(VOLUME_PATH)
         self.volume_data = self.volume_nib.get_fdata()
@@ -36,7 +37,7 @@ class NeighborhoodDataset(torch.utils.data.Dataset):
         self.rng = np.random.RandomState(42)
         self.coords = self._get_coordinates()
         self.method = method
-        self.n_coefs = n_coefs
+        self.n_coefs = self.volume_data.shape[-1]
         self.torch_convention = torch_convention
 
         if method == 'interpolate':
@@ -71,11 +72,11 @@ class NeighborhoodDataset(torch.utils.data.Dataset):
 
         # Keep everything within bounds
         min_x = np.clip(x-rad, 0, self.volume_data.shape[0])
-        max_x = np.clip(x+rad, 0, self.volume_data.shape[0])
+        max_x = np.clip(x+rad+1, 0, self.volume_data.shape[0])
         min_y = np.clip(y-rad, 0, self.volume_data.shape[1])
-        max_y = np.clip(y+rad, 0, self.volume_data.shape[1])
+        max_y = np.clip(y+rad+1, 0, self.volume_data.shape[1])
         min_z = np.clip(z-rad, 0, self.volume_data.shape[2])
-        max_z = np.clip(z+rad, 0, self.volume_data.shape[2])
+        max_z = np.clip(z+rad+1, 0, self.volume_data.shape[2])
 
         crop = self.volume_data[min_x:max_x, min_y:max_y, min_z:max_z]
 
@@ -107,13 +108,14 @@ class NeighborhoodDataset(torch.utils.data.Dataset):
         if dim_2d:
             return placeholder[:, 0, :, :] # 2D image
         else:
+            print("placeholder shape: {}".format(placeholder.shape))
             return placeholder[:, :, :, :] # 3D image
 
     def _interpolate_at_coordinate(self, coord):
         interp = self.neigh_manager.get(coord, torch_convention=self.torch_convention)
         
         # Crop it to be evenly sized
-        interp = interp[:, :, :-1, :-1, :-1]
+        # interp = interp[:, :, :-1, :-1, :-1]
 
         # The result is of an odd size, we need to crop the last dim
         if dim_2d:
@@ -147,118 +149,15 @@ def setup_neighborhood_datasets(neighborhood_size=3, method='crop'):
 
     return trainloader, testloader
 
-# class ResidualBlock(nn.Module):
-#     def __init__(self, in_channels, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-
-#         self.block = nn.Sequential(
-#             conv_layer(in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=1, padding=1),
-#             bn_layer(in_channels),
-#             nn.ReLU(),
-#             conv_layer(in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=1, padding=1),
-#             bn_layer(in_channels),
-#             # nn.ReLU()
-#         )
-
-#     def forward(self, x):
-#         residue = x
-#         out = self.block(x)
-#         out += residue
-#         return out
-
-# class Model(nn.Module):
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-
-#         self.latent_space_size = 4096
-
-#         self.encoder = nn.Sequential(
-#             # 32x32x3
-#             ResidualBlock(in_channels=28), # 32x32x32
-#             ResidualBlock(in_channels=28), # 32x32x32
-#             ResidualBlock(in_channels=28), # 32x32x32
-#             ResidualBlock(in_channels=28), # 32x32x32
-
-#             self.downsampling_block(in_channels=28, out_channels=48), # 16x16x48
-#             ResidualBlock(in_channels=48),
-#             ResidualBlock(in_channels=48),
-#             ResidualBlock(in_channels=48),
-#             ResidualBlock(in_channels=48),
-
-#             self.downsampling_block(in_channels=48, out_channels=96), # 8x8x96
-#             ResidualBlock(in_channels=96),
-#             ResidualBlock(in_channels=96),
-#             ResidualBlock(in_channels=96),
-#             ResidualBlock(in_channels=96),
-#             # self.downsampling_block(in_channels=96, out_channels=192), # 4x4x192
-#             # self.downsampling_block(in_channels=192, out_channels=96), # 2x2x96
-
-#             # nn.Flatten(),
-#             # nn.Linear(get_flat_size(8)*96, self.latent_space_size),
-#             self.downsampling_block(in_channels=96, out_channels=32), # 4x4x64
-#             ResidualBlock(in_channels=32),
-#             ResidualBlock(in_channels=32),
-#             ResidualBlock(in_channels=32),
-#             ResidualBlock(in_channels=32),
-#         )
-
-#         self.decoder = nn.Sequential(
-#             # nn.Linear(self.latent_space_size, get_flat_size(8)*96),
-#             # nn.Unflatten(1, (96, *get_flat_shape(8))),
-#             ResidualBlock(in_channels=32),
-#             ResidualBlock(in_channels=32),
-#             ResidualBlock(in_channels=32),
-#             ResidualBlock(in_channels=32),
-#             self.upsampling_block(in_channels=32, out_channels=96), # 8x8x96
-#             ResidualBlock(in_channels=96),
-#             ResidualBlock(in_channels=96),
-#             ResidualBlock(in_channels=96),
-#             ResidualBlock(in_channels=96),
-#             # self.upsampling_block(in_channels=96, out_channels=192), # 4x4x192
-#             # self.upsampling_block(in_channels=192, out_channels=96), # 8x8x96
-#             self.upsampling_block(in_channels=96, out_channels=48), # 16x16x48
-#             ResidualBlock(in_channels=48),
-#             ResidualBlock(in_channels=48),
-#             ResidualBlock(in_channels=48),
-#             ResidualBlock(in_channels=48),
-
-#             conv_t_layer(in_channels=48, out_channels=48, kernel_size=2, stride=2), # 32x32x48
-#             nn.ReLU(),
-#             conv_layer(in_channels=48, out_channels=28, kernel_size=3, stride=1, padding=1),
-#         )
-
-#         print('Encoder: {} params'.format(count_parameters(self.encoder)))
-#         print('Decoder: {} params'.format(count_parameters(self.decoder)))
-
-#     def downsampling_block(self, in_channels, out_channels):
-#         return nn.Sequential(
-#             conv_layer(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=2, padding=1),
-#             nn.ReLU(),
-#             conv_layer(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
-#             nn.ReLU()
-#         )
-
-#     def upsampling_block(self, in_channels, out_channels):
-#         return nn.Sequential(
-#             conv_t_layer(in_channels=in_channels, out_channels=out_channels, kernel_size=2, stride=2, padding=0),
-#             nn.ReLU(),
-#             conv_layer(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
-#             nn.ReLU(),
-#         )
-
-#     def forward(self, x):
-#         latent = self.encoder(x)
-#         out = self.decoder(latent)
-#         return out
-
 class Model(nn.Module):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, n_coefs, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # self.encoder = WorkingFodfEncoder()
-        # self.decoder = WorkingFodfDecoder()
-        self.encoder = SmallWorkingFodfEncoder()
-        self.decoder = SmallWorkingFodfDecoder()
+        # self.encoder = SmallWorkingFodfEncoder()
+        # self.decoder = SmallWorkingFodfDecoder()
+
+        self.encoder = SFWorkingFodfEncoder(in_channels=n_coefs)
+        self.decoder = SFWorkingFodfDecoder(out_channels=n_coefs)
     
     def forward(self, x):
         latent = self.encoder(x)
@@ -267,6 +166,14 @@ class Model(nn.Module):
 
 
 def train(model, interp='crop'):
+    neigh_manager = NeighborhoodManager(
+        data_volume=nib.load(VOLUME_PATH).get_fdata(),
+        radius=4,
+        add_neighborhood_vox=1, #0.375,
+        neighborhood_type='grid',
+        flatten=False,
+        device='cuda',
+        method='dwi_ml')
     trainloader, testloader = setup_neighborhood_datasets(neighborhood_size=4, method=interp)
     model.train()
     model = model.to(device='cuda')
@@ -277,6 +184,7 @@ def train(model, interp='crop'):
     for epoch in range(nb_epochs):
         for i, inputs in enumerate(tqdm(trainloader)):
             inputs = inputs.to(device='cuda')
+            inputs = neigh_manager.get(inputs, torch_convention=True)
             outputs = model(inputs)
             loss = criterion(outputs, inputs)
             optimizer.zero_grad()
@@ -407,13 +315,14 @@ if __name__ == '__main__':
     parser.add_argument('--interp', choices=['crop', 'interpolate'], default='crop')
     args = parser.parse_args()
 
-    model = Model()
+    n_coefs = nib.load(VOLUME_PATH).get_fdata().shape[-1]
+    model = Model(n_coefs=n_coefs)
     if args.ckpt is not None:
         print('Loading model from checkpoint...')
         model.load_state_dict(torch.load(args.ckpt))
 
     if args.test:
         print('Testing...')
-        test(model, args.out_file, args.interp)
+        test(model, args.out_file, 'interpolate')
     else:
-        train(model, args.interp)
+        train(model, 'interpolate')

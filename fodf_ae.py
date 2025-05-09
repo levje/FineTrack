@@ -34,7 +34,9 @@ class FodfAe(nn.Module):
         self.decoder = SmallWorkingFodfDecoder()
 
         print("Encoder: {} params".format(count_parameters(self.encoder)))
+        print("Latent size: ", self.encoder.output_size)
         print("Decoder: {} params".format(count_parameters(self.decoder)))
+        
 
     def forward(self, x):
         latent = self.encoder(x)
@@ -388,7 +390,9 @@ class FodfAeTrainer(object):
 
 def main():
     print("loading fodf image")
-    fodf_path = "data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz"
+    # fodf_path = "data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz"
+    fodf_path = "/home/jeremi/Documents/FineTrack/data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf_sf.nii.gz"
+
     fodf_img = nib.load(fodf_path)
     fodf_data = fodf_img.get_fdata()
     fodf_shape = fodf_data.shape

@@ -799,7 +799,7 @@ class SmallWorkingFodfEncoder(nn.Module):
 
     def forward(self, x):
         return self.layers(x)
-
+    
 class SmallWorkingFodfDecoder(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -828,6 +828,95 @@ class SmallWorkingFodfDecoder(nn.Module):
         )
 
         print(f'{self.__class__.__name__}: {count_parameters(self)} params')
+
+    def forward(self, x):
+        return self.layers(x)
+
+class SFWorkingFodfEncoder(nn.Module):
+    def __init__(self, in_channels,  *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.input_channels = in_channels # Will be 362
+
+        self.layers = nn.Sequential(
+            # Reduce the number of channels to 128
+            nn.Conv3d(in_channels=in_channels, out_channels=in_channels, kernel_size=1, stride=1, padding=0),
+            nn.ReLU(),
+            nn.Conv3d(in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Conv3d(in_channels=in_channels, out_channels=128, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+
+            # 32x32x3
+            ResidualBlock(in_channels=128), # 9x9x9
+            ResidualBlock(in_channels=128), # 9x9x9
+            ResidualBlock(in_channels=128), # 9x9x9
+            ResidualBlock(in_channels=128), # 9x9x9
+
+            small_downsampling_block(in_channels=128, out_channels=64), # 7x7x7
+            ResidualBlock(in_channels=64),
+            ResidualBlock(in_channels=64),
+            ResidualBlock(in_channels=64),
+            ResidualBlock(in_channels=64),
+
+            small_downsampling_block(in_channels=64, out_channels=48), # 5x5x5
+            ResidualBlock(in_channels=48),
+            ResidualBlock(in_channels=48),
+            ResidualBlock(in_channels=48),
+            ResidualBlock(in_channels=48),
+
+            small_downsampling_block(in_channels=48, out_channels=32), # 3x3x3
+            ResidualBlock(in_channels=32),
+            ResidualBlock(in_channels=32),
+            ResidualBlock(in_channels=32),
+            ResidualBlock(in_channels=32),
+        )
+
+        self.output_size = get_flat_size(3)*32 # 4x4x4x32 = 2048
+
+        print(f'{self.__class__.__name__}: {count_parameters(self) / 1e6 :.2f}M params')
+
+    def forward(self, x):
+        return self.layers(x)
+
+class SFWorkingFodfDecoder(nn.Module):
+    def __init__(self, out_channels, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.output_channels = out_channels
+        self.layers = nn.Sequential(
+
+            # 3x3x3
+            ResidualBlock(in_channels=32),
+            ResidualBlock(in_channels=32),
+            ResidualBlock(in_channels=32),
+            ResidualBlock(in_channels=32),
+            small_upsampling_block(in_channels=32, out_channels=48), # 5x5x5
+
+            ResidualBlock(in_channels=48),
+            ResidualBlock(in_channels=48),
+            ResidualBlock(in_channels=48),
+            ResidualBlock(in_channels=48),
+            small_upsampling_block(in_channels=48, out_channels=64), # 7x7x7
+
+            ResidualBlock(in_channels=64),
+            ResidualBlock(in_channels=64),
+            ResidualBlock(in_channels=64),
+            ResidualBlock(in_channels=64),
+            conv_t_layer(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=0), # 9x9x9
+            nn.ReLU(),
+            conv_layer(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1),
+
+            # Scale back to the original number of channels
+            nn.Conv3d(in_channels=128, out_channels=128, kernel_size=1, stride=1, padding=0),
+            nn.ReLU(),
+            nn.Conv3d(in_channels=128, out_channels=self.output_channels, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Conv3d(in_channels=self.output_channels, out_channels=self.output_channels, kernel_size=1, stride=1, padding=0),
+            nn.ReLU(),
+            nn.Conv3d(in_channels=self.output_channels, out_channels=self.output_channels, kernel_size=3, stride=1, padding=1),
+        )
+
+        print(f'{self.__class__.__name__}: {count_parameters(self) / 1e6 :.2f}M params')
 
     def forward(self, x):
         return self.layers(x)
