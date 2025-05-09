@@ -284,14 +284,14 @@ class BaseEnv(object):
                                                     1, # We just want a crop of the neighborhood around him.
                                                     False,
                                                     neighborhood_type=self.neighborhood_type,
-                                                    method=self.interpolation)
+                                                    method='efficient')
         # This is just to interpolate the direct neighbors
         self.direct_neigh_manager = NeighborhoodManager(self.data_volume,
                                             1,
                                             self.add_neighborhood_vox,
                                             True,
                                             neighborhood_type='axes',
-                                            method='dwi_ml')
+                                            method='efficient')
                                                         
 
         # Tracking seeds

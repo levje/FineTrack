@@ -36,13 +36,13 @@ def prepare_multiple_targets_grid():
     return image_data, targets, coords, radius
 
 def test_multiple_targets_grid(prepare_multiple_targets_grid):
-    device="cuda"
+    device="cpu"
     image_data, targets, coords, radius = prepare_multiple_targets_grid
 
-    img_tensor = torch.from_numpy(image_data).to(device)
-    img_tensor_2 = img_tensor.clone().to(device)
-    coord_tensor = coords.to(device)
-    coord_tensor_2 = coord_tensor.clone().to(device)
+    img_tensor = torch.from_numpy(image_data).double().to(device)
+    img_tensor_2 = img_tensor.clone().float().to(device)
+    coord_tensor = coords.double().to(device)
+    coord_tensor_2 = coord_tensor.clone().float().to(device)
 
     # EfficientNeighborhoodManager
     # data_volume, radius, add_neighborhood_vox, flatten, neighborhood_type, device=get_device()
@@ -61,9 +61,12 @@ def test_multiple_targets_grid(prepare_multiple_targets_grid):
     interpolated_img = interpolated_img.cpu()
 
     # Compare each target
+    differences = []
     for i, target in enumerate(targets):
         difference = torch.mean(torch.abs(target - interpolated_img[i]))
         assert difference < 1e-8
+        differences.append(difference)
+    print("Efficient differences: ", differences)
 
     # DWI-ML style
     with SimpleTimer() as timer_dwi_ml:
@@ -71,9 +74,12 @@ def test_multiple_targets_grid(prepare_multiple_targets_grid):
     interpolated_img_dwi_ml = interpolated_img_dwi_ml.cpu()
     
     # Compare each target
+    differences_dwi_ml = []
     for i, target in enumerate(targets):
         difference = torch.mean(torch.abs(target - interpolated_img_dwi_ml[i]))
         assert difference < 1e-9
+        differences_dwi_ml.append(difference)
+    print("DWI-ML differences: ", differences_dwi_ml)
 
     assert timer_custom.interval < timer_dwi_ml.interval, f"Custom interpolation is slower than dwi_ml interpolation: {timer_custom.interval} > {timer_dwi_ml.interval}"
 

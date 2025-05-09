@@ -285,12 +285,11 @@ def neighborhood_interpolation(volume: torch.Tensor, coords: torch.Tensor, grid:
         grid = grid.to(volume.device) # This could eventually be slow if we call this function a lot
 
     D, H, W, _ = volume.shape
-    spatial_size = torch.tensor([W, H, D], dtype=torch.float32, device=grid.device)
+    spatial_size = torch.tensor([W - 1, H - 1, D - 1], dtype=torch.float32, device=grid.device)
     grid = grid + coords[:, None, None, None, [2, 1, 0]]
 
     # Normalize the grid to be between -1 and 1
-    offset = 0.5 if align_corners else 0.0
-    grid = (grid + offset) * 2 / spatial_size - 1
+    grid = (grid * 2 / spatial_size) - 1
 
     # Interpolate
     img_mod = volume.unsqueeze(0).expand(grid.shape[0], -1, -1, -1, -1)  # Shape: (1, C, D, H, W)
@@ -299,7 +298,7 @@ def neighborhood_interpolation(volume: torch.Tensor, coords: torch.Tensor, grid:
         img_mod,
         grid,
         mode='bilinear',
-        align_corners=False,
+        align_corners=align_corners,
         padding_mode='zeros'
     )
 
