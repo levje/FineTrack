@@ -16,7 +16,7 @@ from FineTrack.environments.neighborhood_manager import NeighborhoodManager
 from FineTrack.algorithms.shared.fodf_encoder import *
 
 # VOLUME_PATH = '/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz'
-VOLUME_PATH = '/home/jeremi/Documents/FineTrack/data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf_sf.nii.gz'
+VOLUME_PATH = '/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf_sf.nii.gz'
 WM_MASK_PATH = '/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_2mm/masks/ismrm2015_wm_mask.nii.gz'
 
 dim_2d = False
@@ -233,7 +233,7 @@ def test(model, out_file=None, interp='crop'):
     _, testloader = setup_neighborhood_datasets(neighborhood_size=4, method=interp)
     neigh_manager = NeighborhoodManager(
         data_volume=nib.load(VOLUME_PATH).get_fdata(),
-        radius=16,
+        radius=9,
         add_neighborhood_vox=1, #0.375,
         neighborhood_type='grid',
         flatten=False,
