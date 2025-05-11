@@ -124,21 +124,26 @@ class NeighborhoodDataset(torch.utils.data.Dataset):
             return interp[:, :, :, :]
 
 
-    def _get_coordinates(self):
-        all_x = np.arange(0, self.volume_data.shape[0])[self.volume_data.shape[0]//2-20:self.volume_data.shape[0]//2+20]
-        all_y = np.arange(0, self.volume_data.shape[1])[self.volume_data.shape[1]//2-20:self.volume_data.shape[1]//2+20]
-        all_z = np.arange(0, self.volume_data.shape[2])[self.volume_data.shape[2]//2-20:self.volume_data.shape[2]//2+20]
-
-        all_coords = list(it.product(all_x, all_y, all_z))
-        self.rng.shuffle(all_coords)
-        if self.is_train:
-            coords = all_coords[:int(0.8*len(all_coords))]
+    def _get_coordinates(self, in_wm_mask=True):
+        if in_wm_mask:
+            wm_mask = nib.load(WM_MASK_PATH).get_fdata()
+            coords = np.argwhere(wm_mask > 0)
+            coords = self.rng.permutation(coords)
+            coords = coords[:int(0.8*len(coords))] if self.is_train else coords[int(0.8*len(coords)):]
+            return coords
         else:
-            coords = all_coords[int(0.8*len(all_coords)):]
+            all_x = np.arange(0, self.volume_data.shape[0])[self.volume_data.shape[0]//2-20:self.volume_data.shape[0]//2+20]
+            all_y = np.arange(0, self.volume_data.shape[1])[self.volume_data.shape[1]//2-20:self.volume_data.shape[1]//2+20]
+            all_z = np.arange(0, self.volume_data.shape[2])[self.volume_data.shape[2]//2-20:self.volume_data.shape[2]//2+20]
 
-        # For testing purposes, we will only use one coordinate and repeat it multiple times
-        # coords = [coords[0]] * 10000
-        return coords
+            all_coords = list(it.product(all_x, all_y, all_z))
+            self.rng.shuffle(all_coords)
+            if self.is_train:
+                coords = all_coords[:int(0.8*len(all_coords))]
+            else:
+                coords = all_coords[int(0.8*len(all_coords)):]
+
+            return coords
 
 def setup_neighborhood_datasets(neighborhood_size=3, method='crop'):
     trainset = NeighborhoodDataset(train=True, neighborhood_size=neighborhood_size, method=method, torch_convention=True)
@@ -233,19 +238,19 @@ def test(model, out_file=None, interp='crop'):
     _, testloader = setup_neighborhood_datasets(neighborhood_size=4, method=interp)
     neigh_manager = NeighborhoodManager(
         data_volume=nib.load(VOLUME_PATH).get_fdata(),
-        radius=16,
+        radius=4,
         add_neighborhood_vox=1, #0.375,
         neighborhood_type='grid',
         flatten=False,
-        device='cuda',
+        device='cpu',
         method='dwi_ml')
     model.eval()
-    model = model.to(device='cuda')
+    model = model.to(device='cpu')
     criterion = nn.MSELoss()
     n = 20 # number of reconstructions to vizualize
     fig, axes = plt.subplots(4, n//2, figsize=(20, 5))
     for i, inputs in enumerate(testloader):
-        inputs = inputs.to(device='cuda')
+        inputs = inputs.to(device='cpu')
         if interp=='interpolate':
             inputs = neigh_manager.get(inputs, torch_convention=True)
             inputs = inputs[:, :, :-1, :-1, :-1]
@@ -319,7 +324,7 @@ if __name__ == '__main__':
     model = Model(n_coefs=n_coefs)
     if args.ckpt is not None:
         print('Loading model from checkpoint...')
-        model.load_state_dict(torch.load(args.ckpt))
+        model.load_state_dict(torch.load(args.ckpt, weights_only=False))
 
     if args.test:
         print('Testing...')
