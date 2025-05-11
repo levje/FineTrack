@@ -16,7 +16,7 @@ from FineTrack.environments.neighborhood_manager import NeighborhoodManager
 from FineTrack.algorithms.shared.fodf_encoder import *
 
 # VOLUME_PATH = '/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf.nii.gz'
-VOLUME_PATH = '/home/jeremi/Documents/FineTrack/data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf_sf.nii.gz'
+VOLUME_PATH = '/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_2mm/fodfs/ismrm2015_fodf_sf.nii.gz'
 WM_MASK_PATH = '/home/local/USHERBROOKE/levj1404/Documents/FineTrack/data/datasets/ismrm2015_2mm/masks/ismrm2015_wm_mask.nii.gz'
 
 dim_2d = False
