@@ -156,19 +156,19 @@ experiments:
 ##########################################
 # TractoInferno (extractor-based)
 ##########################################
-  - exp_name: "SAC-1K"
+  - exp_name: "Inferno-SAC-1K"
     project_name: "FineTrack-Inferno-Extractor"
     launch_script: "FineTrack/trainers/sac_auto_train.py"
     dataset: "tractoinferno"
     max_ep: 1000
 
-  - exp_name: "SAC-3K"
+  - exp_name: "Inferno-SAC-3K"
     project_name: "FineTrack-Inferno-Extractor"
     launch_script: "FineTrack/trainers/sac_auto_train.py"
     dataset: "tractoinferno"
     max_ep: 3000
 
-  # - exp_name: "SAC-IRT-3K"
+  # - exp_name: "Inferno-SAC-IRT-3K"
   #   project_name: "FineTrack-Inferno-Extractor"
   #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
   #   alg: "SACAuto"
@@ -177,12 +177,12 @@ experiments:
   #   mem: "70000M"
   #   dataset: "tractoinferno"
 
-  - exp_name: "CrossQ-3K"
+  - exp_name: "Inferno-CrossQ-3K"
     project_name: "FineTrack-Inferno-Extractor"
     launch_script: "FineTrack/trainers/cross_q_train.py"
     dataset: "tractoinferno"
 
-  # - exp_name: "CrossQ-IRT-3K"
+  # - exp_name: "Inferno-CrossQ-IRT-3K"
   #   project_name: "FineTrack-Inferno-Extractor"
   #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
   #   alg: "CrossQ"
@@ -195,19 +195,19 @@ experiments:
 ##########################################
 # HCP (extractor-based)
 ##########################################
-  - exp_name: "SAC-1K"
+  - exp_name: "HCP-SAC-1K"
     project_name: "FineTrack-HCP-Extractor"
     launch_script: "FineTrack/trainers/sac_auto_train.py"
     dataset: "hcp"
     max_ep: 1000
 
-  - exp_name: "SAC-3K"
+  - exp_name: "HCP-SAC-3K"
     project_name: "FineTrack-HCP-Extractor"
     launch_script: "FineTrack/trainers/sac_auto_train.py"
     dataset: "hcp"
     max_ep: 3000
 
-  # - exp_name: "SAC-IRT-3K"
+  # - exp_name: "HCP-SAC-IRT-3K"
   #   project_name: "FineTrack-HCP-Extractor"
   #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
   #   alg: "SACAuto"
@@ -216,12 +216,12 @@ experiments:
   #   mem: "70000M"
   #   dataset: "hcp"
 
-  - exp_name: "CrossQ-3K"
+  - exp_name: "HCP-CrossQ-3K"
     project_name: "FineTrack-HCP-Extractor"
     launch_script: "FineTrack/trainers/cross_q_train.py"
     dataset: "hcp"
 
-  # - exp_name: "CrossQ-IRT-3K"
+  # - exp_name: "HCP-CrossQ-IRT-3K"
   #   project_name: "FineTrack-HCP-Extractor"
   #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
   #   alg: "CrossQ"
