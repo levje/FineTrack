@@ -505,19 +505,7 @@ python -O {script_path} \\
     --log_interval {config["log_interval"]} \\
     --utd {config["utd"]} {extra_flags_string}
     
-# Archive and save everything if on a cluster node
-if [ $islocal -eq 0 ]; then
-    OUTNAME={config["exp_id"]}$(date -d "today" +"%Y%m%d%H%M").tar
-
-    echo "Archiving experiment..."
-    tar -cvf $SLURM_TMPDIR/data/$OUTNAME {config_manager.EXPDIR}
-    echo "Copying archive to scratch..."
-    cp $SLURM_TMPDIR/data/$OUTNAME ~/scratch/$OUTNAME
-else
-    echo "Experiment available on {config["dest_folder"]}"
-fi
-
-echo "Script execution completed."
+echo "Experiment available on {config["dest_folder"]}"
     """
 
         slurm_script_path = os.path.join(config_manager.SOURCEDIR, "slurm_scripts", f"{config['exp_id']}.sh")
