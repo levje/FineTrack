@@ -22,10 +22,9 @@ LOGGER = get_logger(__name__)
 # TODO: Add the streamline sampler.
 class ExtractorFilterer(Filterer):
         
-    def __init__(self, end_space="mni", keep_intermediate_steps=False, quick_registration=False, singularity=False):
+    def __init__(self, end_space="mni", keep_intermediate_steps=False, quick_registration=True, singularity=True):
         super(ExtractorFilterer, self).__init__()
 
-        # self.pipeline_path = "scilus/extractor_flow -r dev2023"
         self.pipeline_path = "levje/extractor_flow"
         self.flow_configs = [ str(get_project_root_dir() / "configs/nextflow/extractor.config") ] # TODO
         

@@ -103,7 +103,7 @@ def add_subject_to_hdf5(
     tracking_file = config['tracking']
     seeding_file = config['seeding']
     anat_file = config['anat']
-    gm_file = config['gm']
+    gm_file = config['gm'] if 'gm' in config else config['anat']
     transfo_file = config.get('transformation', None)
     deformation_file = config.get('deformation', None)
 
@@ -183,8 +183,9 @@ def process_subject(
     anat_image = nib.load(anat)
     add_volume_to_hdf5(hdf_subject, anat_image, 'anat_volume')
 
-    gm_mask_image = nib.load(gm)
-    add_volume_to_hdf5(hdf_subject, gm_mask_image, 'gm_volume')
+    if gm is not None:
+        gm_mask_image = nib.load(gm)
+        add_volume_to_hdf5(hdf_subject, gm_mask_image, 'gm_volume')
 
     # Transformations to MNI if provided.
     # Transformation matrix

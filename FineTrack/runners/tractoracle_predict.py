@@ -75,7 +75,6 @@ class TractOracleNetPredict(object):
             oracle_experiment,
             root_dir,
             self.oracle_train_steps,
-            enable_checkpointing=True,
             val_interval=1,
             device=self.device,
             grad_accumulation_steps=self.grad_accumulation_steps
