@@ -529,3 +529,10 @@ def get_project_root_dir(as_str: bool = False):
         return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     else:
         return Path(__file__).parents[2]
+    
+def is_running_on_slurm():
+    """
+    Check if the script is running on a SLURM cluster.
+    Returns True if running on SLURM, False otherwise.
+    """
+    return 'SLURM_JOB_ID' in os.environ or 'SLURM_JOB_NAME' in os.environ or 'SLURM_ARRAY_TASK_ID' in os.environ
