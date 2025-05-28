@@ -292,7 +292,10 @@ class ExtrasManager:
         
         if flag.endswith("_") and value is None:
             return # Skip flags that end with an underscore and have no value
-            
+
+        if isinstance(value, bool) and value is False:
+            return # Skip flags that are False
+        
         if not flag.startswith(self.prefix):
             flag = self.prefix + flag
 
