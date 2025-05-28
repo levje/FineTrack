@@ -22,7 +22,7 @@ LOGGER = get_logger(__name__)
 # TODO: Add the streamline sampler.
 class ExtractorFilterer(Filterer):
         
-    def __init__(self, end_space="orig", keep_intermediate_steps=True, quick_registration=True, singularity=True):
+    def __init__(self, end_space="mni", keep_intermediate_steps=True, quick_registration=True, singularity=True):
         super(ExtractorFilterer, self).__init__()
 
         self.pipeline_path = "levje/extractor_flow"
