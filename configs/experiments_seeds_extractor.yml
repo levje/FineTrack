@@ -156,77 +156,77 @@ experiments:
 ##########################################
 # TractoInferno (extractor-based)
 ##########################################
-  - exp_name: "Inferno-SAC-1K"
-    project_name: "FineTrack-Inferno-Extractor"
-    launch_script: "FineTrack/trainers/sac_auto_train.py"
-    dataset: "tractoinferno"
-    max_ep: 1000
-
-  - exp_name: "Inferno-SAC-3K"
-    project_name: "FineTrack-Inferno-Extractor"
-    launch_script: "FineTrack/trainers/sac_auto_train.py"
-    dataset: "tractoinferno"
-    max_ep: 3000
-
-  # - exp_name: "Inferno-SAC-IRT-3K"
+  # - exp_name: "Inferno-SAC-1K"
   #   project_name: "FineTrack-Inferno-Extractor"
-  #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-  #   alg: "SACAuto"
-  #   extra_type: "rlhf"
-  #   cpus: 8
-  #   mem: "70000M"
+  #   launch_script: "FineTrack/trainers/sac_auto_train.py"
+  #   dataset: "tractoinferno"
+  #   max_ep: 1000
+
+  # - exp_name: "Inferno-SAC-3K"
+  #   project_name: "FineTrack-Inferno-Extractor"
+  #   launch_script: "FineTrack/trainers/sac_auto_train.py"
+  #   dataset: "tractoinferno"
+  #   max_ep: 3000
+
+  - exp_name: "Inferno-SAC-IRT-3K"
+    project_name: "FineTrack-Inferno-Extractor"
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    alg: "SACAuto"
+    extra_type: "rlhf"
+    cpus: 12
+    mem: "70000M"
+    dataset: "tractoinferno"
+
+  # - exp_name: "Inferno-CrossQ-3K"
+  #   project_name: "FineTrack-Inferno-Extractor"
+  #   launch_script: "FineTrack/trainers/cross_q_train.py"
   #   dataset: "tractoinferno"
 
-  - exp_name: "Inferno-CrossQ-3K"
+  - exp_name: "Inferno-CrossQ-IRT-3K"
     project_name: "FineTrack-Inferno-Extractor"
-    launch_script: "FineTrack/trainers/cross_q_train.py"
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    alg: "CrossQ"
+    extra_type: "rlhf"
+    cpus: 12
+    mem: "70000M"
+    warmup_agent_steps: 300
     dataset: "tractoinferno"
-
-  # - exp_name: "Inferno-CrossQ-IRT-3K"
-  #   project_name: "FineTrack-Inferno-Extractor"
-  #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-  #   alg: "CrossQ"
-  #   extra_type: "rlhf"
-  #   cpus: 8
-  #   mem: "70000M"
-  #   warmup_agent_steps: 300
-  #   dataset: "tractoinferno"
 
 ##########################################
 # HCP (extractor-based)
 ##########################################
-  - exp_name: "HCP-SAC-1K"
-    project_name: "FineTrack-HCP-Extractor"
-    launch_script: "FineTrack/trainers/sac_auto_train.py"
-    dataset: "hcp"
-    max_ep: 1000
-
-  - exp_name: "HCP-SAC-3K"
-    project_name: "FineTrack-HCP-Extractor"
-    launch_script: "FineTrack/trainers/sac_auto_train.py"
-    dataset: "hcp"
-    max_ep: 3000
-
-  # - exp_name: "HCP-SAC-IRT-3K"
+  # - exp_name: "HCP-SAC-1K"
   #   project_name: "FineTrack-HCP-Extractor"
-  #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-  #   alg: "SACAuto"
-  #   extra_type: "rlhf"
-  #   cpus: 8
-  #   mem: "70000M"
+  #   launch_script: "FineTrack/trainers/sac_auto_train.py"
+  #   dataset: "hcp"
+  #   max_ep: 1000
+
+  # - exp_name: "HCP-SAC-3K"
+  #   project_name: "FineTrack-HCP-Extractor"
+  #   launch_script: "FineTrack/trainers/sac_auto_train.py"
+  #   dataset: "hcp"
+  #   max_ep: 3000
+
+  - exp_name: "HCP-SAC-IRT-3K"
+    project_name: "FineTrack-HCP-Extractor"
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    alg: "SACAuto"
+    extra_type: "rlhf"
+    cpus: 12
+    mem: "70000M"
+    dataset: "hcp"
+
+  # - exp_name: "HCP-CrossQ-3K"
+  #   project_name: "FineTrack-HCP-Extractor"
+  #   launch_script: "FineTrack/trainers/cross_q_train.py"
   #   dataset: "hcp"
 
-  - exp_name: "HCP-CrossQ-3K"
+  - exp_name: "HCP-CrossQ-IRT-3K"
     project_name: "FineTrack-HCP-Extractor"
-    launch_script: "FineTrack/trainers/cross_q_train.py"
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    alg: "CrossQ"
+    extra_type: "rlhf"
+    cpus: 12
+    mem: "70000M"
+    warmup_agent_steps: 300
     dataset: "hcp"
-
-  # - exp_name: "HCP-CrossQ-IRT-3K"
-  #   project_name: "FineTrack-HCP-Extractor"
-  #   launch_script: "FineTrack/trainers/rlhf_train_simple.py"
-  #   alg: "CrossQ"
-  #   extra_type: "rlhf"
-  #   cpus: 8
-  #   mem: "70000M"
-  #   warmup_agent_steps: 300
-  #   dataset: "hcp"
