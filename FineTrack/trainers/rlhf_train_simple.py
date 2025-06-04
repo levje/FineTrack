@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 
 from comet_ml import Experiment as CometExperiment
+from comet_ml import OfflineExperiment as CometOfflineExperiment
 
 from dipy.io.streamline import load_tractogram
 from dipy.io.streamline import save_tractogram
@@ -105,10 +106,23 @@ class RlhfTraining(FineTrackTraining):
         ################################################
         # Start by initializing the agent trainer.     #
         if comet_experiment is None:
-            comet_experiment = CometExperiment(project_name=self.hp.experiment,
-                                               workspace=self.hp.workspace, parse_args=False,
-                                               auto_metric_logging=False,
-                                               disabled=not self.hp.use_comet)
+            if not self.hp.offline:
+                comet_experiment = CometExperiment(project_name=self.hp.experiment,
+                                            workspace=self.hp.workspace, parse_args=False,
+                                            auto_metric_logging=False,
+                                            disabled=not self.hp.use_comet)
+            else:
+                print(f">>> Running in offline mode, no comet logging (in {self.hp.experiment_path}). <<<")
+                os.makedirs(self.hp.experiment_path, exist_ok=True)
+                
+                comet_experiment = CometOfflineExperiment(
+                    project_name=self.hp.experiment,
+                    workspace=self.hp.workspace,
+                    parse_args=False,
+                    auto_metric_logging=False,
+                    disabled=not self.hp.use_comet,
+                    offline_directory=self.hp.experiment_path
+                )
 
         comet_experiment.set_name(self.hp.experiment_id)
 
@@ -136,6 +150,7 @@ class RlhfTraining(FineTrackTraining):
         
         self.oracle_reward_trainer = OracleTrainer(
             comet_experiment,
+            self.hp.experiment_path,
             self.oracle_training_dir,
             self.hp.oracle_train_steps,
             enable_auto_checkpointing=False,
@@ -144,7 +159,8 @@ class RlhfTraining(FineTrackTraining):
             device=self.device,
             grad_accumulation_steps=self.hp.grad_accumulation_steps,
             metrics_prefix='reward',
-            first_oracle_train_steps=self.hp.first_oracle_train_steps
+            first_oracle_train_steps=self.hp.first_oracle_train_steps,
+            offline=self.hp.offline
         )
         self.oracle_reward_trainer.setup_model_training(self.oracle_reward.model)
 
@@ -160,6 +176,7 @@ class RlhfTraining(FineTrackTraining):
                                            lr=self.hp.oracle_lr)
         self.oracle_crit_trainer = OracleTrainer(
             comet_experiment,
+            self.hp.experiment_path,
             self.oracle_training_dir,
             self.hp.oracle_train_steps,
             enable_auto_checkpointing=False,
@@ -169,7 +186,8 @@ class RlhfTraining(FineTrackTraining):
             grad_accumulation_steps=self.hp.grad_accumulation_steps,
             metrics_prefix='crit',
             first_oracle_train_steps=self.hp.first_oracle_train_steps,
-            disable=self.oracle_crit == self.oracle_reward
+            disable=self.oracle_crit == self.oracle_reward,
+            offline=self.hp.offline
         )
         self.oracle_crit_trainer.setup_model_training(self.oracle_crit.model)
         self.oracle_crit_disabled = self.oracle_crit_trainer.disabled

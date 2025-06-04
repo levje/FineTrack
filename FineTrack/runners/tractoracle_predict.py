@@ -73,6 +73,7 @@ class TractOracleNetPredict(object):
 
         oracle_trainer = OracleTrainer(
             oracle_experiment,
+            self.experiment_path,
             root_dir,
             self.oracle_train_steps,
             val_interval=1,

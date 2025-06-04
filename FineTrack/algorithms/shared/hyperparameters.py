@@ -10,6 +10,7 @@ class HParams:
     experiment_id: str
     experiment_path: str
     workspace: str
+    offline: bool
 
     # Data parameters
     target_sh_order: int
