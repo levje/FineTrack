@@ -292,6 +292,8 @@ class ExtrasManager:
         
         if flag.endswith("_") and value is None:
             return # Skip flags that end with an underscore and have no value
+        elif flag.endswith("_"):
+            flag = flag[:-1]
 
         if isinstance(value, bool) and value is False:
             return # Skip flags that are False
