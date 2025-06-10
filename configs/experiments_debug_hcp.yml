@@ -172,7 +172,7 @@ experiments:
     launch_script: "FineTrack/trainers/sac_auto_train.py"
 
 # Two oracles instead of one during RLHF training!
-  - exp_name: "SAC-IRT"
+  - exp_name: "SAC-IRT-2-oracles"
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     alg: "SACAuto"
     extra_type: "rlhf"
@@ -183,7 +183,7 @@ experiments:
       cluster: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/rbx_based/hcp_rbx_32pts_epoch14_copy.ckpt"
 
 # Start RLHF training with a pre-trained agent (single oracle)
-  - exp_name: "SAC-IRT"
+  - exp_name: "SAC-IRT-PT-1-oracle"
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     alg: "SACAuto"
     extra_type: "rlhf"
@@ -192,7 +192,7 @@ experiments:
     agent_checkpoint: "/home/levj1404/projects/rrg-descotea/levje/checkpoints/hcp/SAC-3K/1111/last_model_state.ckpt"
 
 # Start RLHF training with a pre-trained agent (two oracles)
-  - exp_name: "SAC-IRT"
+  - exp_name: "SAC-IRT-PT-2-oracles"
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     alg: "SACAuto"
     extra_type: "rlhf"
