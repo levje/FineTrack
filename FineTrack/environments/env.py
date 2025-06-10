@@ -326,10 +326,10 @@ class BaseEnv(object):
             functools.partial(is_too_curvy, max_theta=self.theta)
         
         # GM criterion
-        if self.gm_data is not None:
-            self.stopping_criteria[
-                StoppingFlags.STOPPING_TARGET] = \
-                    functools.partial(has_reached_gm, mask=self.gm_data, threshold=0.5)
+        # if self.gm_data is not None:
+        #     self.stopping_criteria[
+        #         StoppingFlags.STOPPING_TARGET] = \
+        #             functools.partial(has_reached_gm, mask=self.gm_data, threshold=0.5)
             
         # # CSF criterion
         # import nibabel as nib
