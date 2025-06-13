@@ -123,8 +123,8 @@ global:
   cpus: 2
   time: "3-00:00:00"
   mem: "40000M"
-  seeds: [2222, 3333, 4444, 5555]
-
+  #seeds: [1111, 2222, 3333, 4444, 5555]
+  seeds: [1111]
 # Extra configuration parameters
 # These parameters can be added to an experiment configuration
 # identifying its category in the extras-type field.
@@ -140,18 +140,23 @@ extras:
     dataset_to_augment_: null
     nb_new_streamlines_per_iter: 250000
     alg: "SACAuto"
-    rbx_validator: True
+    rbx_validator: False
     rlhf_inter_npv: 2
     oracle_batch_size: 1024
     num_workers: 4
 
-    rbx_pipeline:
-      local: "/home/local/USHERBROOKE/levj1404/Documents/rbx_flow/main.nf"
-      cluster: "/home/levj1404/rbx_binary/rbx_flow/main.nf"
+    extractor_validator: True
+    extractor_target:
+      local: ~/Documents/FineTrack/data/mni_template/JHU_MNI_SS_T1_brain_182x218x182_conv_f.nii.gz
+      cluster: ~/extractor_flow/templates/JHU_MNI_SS_T1_brain_182x218x182_conv_f.nii.gz
 
-    atlas_directory:
-      local: "/home/local/USHERBROOKE/levj1404/Documents/rbx_flow/atlas"
-      cluster: "/home/levj1404/rbx_binary/rbx_flow/atlas"
+    #rbx_pipeline:
+    #  local: "/home/local/USHERBROOKE/levj1404/Documents/rbx_flow/main.nf"
+    #  cluster: "/home/levj1404/rbx_binary/rbx_flow/main.nf"
+
+    #atlas_directory:
+    #  local: "/home/local/USHERBROOKE/levj1404/Documents/rbx_flow/atlas"
+    #  cluster: "/home/levj1404/rbx_binary/rbx_flow/atlas"
   other:
 
 
