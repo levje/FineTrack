@@ -213,17 +213,30 @@ class Config:
         extras_manager = None
         if handle_extras:
             # Get extras config
+            extra_config = {}
             extra_type = specific_config.get("extra_type", None)
-            if extra_type is not None:
-
+            if extra_type is None:
+                pass
+            elif isinstance(extra_type, str):
                 if extra_type not in self._extras:
                     raise ValueError(f"Extra type '{extra_type}' not found in configuration. "
                                     f"The only extras available are: {list(self._extras.keys())}")
                 elif self._extras[extra_type] is None:
                     raise ValueError(f"Extra type '{extra_type}' has an empty configuration. ")
-                extra_config = self._extras[extra_type]        
+                
+                extra_config.update(self._extras[extra_type])
+            elif isinstance(extra_type, list):
+                for et in extra_type:
+                    if et not in self._extras:
+                        raise ValueError(f"Extra type '{et}' not found in configuration. "
+                                        f"The only extras available are: {list(self._extras.keys())}")
+                    elif self._extras[et] is None:
+                        raise ValueError(f"Extra type '{et}' has an empty configuration. ")
+                    
+                    extra_config.update(self._extras[et])
             else:
-                extra_config = {}
+                raise ValueError(f"Invalid extra type '{extra_type}' in configuration. "
+                                 f"Expected a string or a list of strings.")
 
             # Overwrite values of the extra config with the specific config
             for key in merged_config.keys():
