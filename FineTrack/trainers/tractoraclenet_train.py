@@ -103,6 +103,7 @@ class TractOracleNetTraining(object):
 
         oracle_trainer = OracleTrainer(
             oracle_experiment,
+            self.experiment_path,
             root_dir,
             self.oracle_train_steps,
             enable_auto_checkpointing=True,

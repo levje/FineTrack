@@ -1,9 +1,11 @@
 import numpy as np
 
+import os
 from os.path import join as pjoin
 from comet_ml import Experiment
 
 from FineTrack.utils.logging import get_logger
+from FineTrack.utils.utils import LossHistory
 
 LOGGER = get_logger(__name__)
 
@@ -19,6 +21,23 @@ def _get_prefix_with_delim(prefix):
 
     return out_prefix
 
+def _force_prefix_to_slash(prefix):
+    """ Force the prefix to end with a slash. """
+    if prefix is None or len(prefix) == 0:
+        LOGGER.warning("Prefix is None or empty.")
+        return None
+
+    # First remove any trailing delimiters
+    delims = ['_', '-', '/']
+    for delim in delims:
+        if prefix[-1] == delim:
+            prefix = prefix[:-1]
+    # Then add a trailing slash
+    if prefix[-1] != '/':
+        return f"{prefix}/"
+    else:
+        return prefix
+
 
 class CometMonitor():
     """ Wrapper class to track information using Comet.ml
@@ -30,7 +49,8 @@ class CometMonitor():
         experiment_path: str,
         prefix: str,
         render: bool = False,
-        use_comet: bool = False
+        use_comet: bool = False,
+        offline: bool = False
     ):
         """
         Parameters:
@@ -51,11 +71,19 @@ class CometMonitor():
         # the project root.
         self.experiment_path = experiment_path
         self.e = experiment
+
+        self.offline_monitor = OfflineMonitor(
+            experiment_path=experiment_path,
+            prefix=prefix,
+            enabled=offline
+        )
+
         self.prefix = _get_prefix_with_delim(prefix)
         self.render = render
         self.use_comet = use_comet
 
     def log_parameters(self, hyperparameters: dict):
+        print("Logging hyperparameters to Comet...")
         if not self.use_comet:
             return
 
@@ -123,6 +151,8 @@ class CometMonitor():
             else:
                 self.e.log_metric(self.prefix + k, v, step=i)
 
+        self.offline_monitor.log_metrics(loss_dict, step=None, epoch=i)
+
     def update_train(
         self,
         monitor,
@@ -133,13 +163,16 @@ class CometMonitor():
 
         x, y = zip(*monitor.epochs)
 
-        self.e.log_metrics(
-            {
-                self.prefix + monitor.name: y[-1],
+        metrics = {
+            self.prefix + monitor.name: y[-1],
+        }
 
-            },
+        self.e.log_metrics(
+            metrics,
             step=i_episode
         )
+
+        self.offline_monitor.log_metrics(metrics, step=i_episode)
 
 
 class OracleMonitor(object):
@@ -147,10 +180,21 @@ class OracleMonitor(object):
     def __init__(
         self,
         experiment: Experiment,
+        experiment_path: str,
         use_comet: bool = False,
-        metrics_prefix: str = None
+        metrics_prefix: str = None,
+        offline: bool = False
     ):
         self.experiment = experiment
+
+        # This monitor will automatically log each metric to a
+        # file in the experiment path if we're running in offline mode.
+        self.offline_monitor = OfflineMonitor(
+            experiment_path=experiment_path,
+            prefix=metrics_prefix,
+            log_each_step=True,  # Log each step for Oracle training
+            enabled=offline
+        )
 
         self.metrics_prefix = _get_prefix_with_delim(metrics_prefix) if metrics_prefix else None
 
@@ -184,3 +228,55 @@ class OracleMonitor(object):
 
             self.experiment.log_metric(k, v, step=step, epoch=epoch)
 
+        self.offline_monitor.log_metrics(metrics_dict, step, epoch)
+
+
+class OfflineMonitor(object):
+    """ Monitor that automatically logs corresponding metrics to a file if enabled.
+    Using LossHistory.
+    """
+
+    def __init__(self, experiment_path: str, prefix: str, log_each_step=True, enabled: bool = True):
+        self.monitors = {}
+        self.enabled = enabled
+        self.log_each_step = log_each_step
+
+        experiment_path = experiment_path
+        prefix = _force_prefix_to_slash(prefix)
+
+        self.path = pjoin(experiment_path, "offline_plots", prefix)
+        if self.enabled:
+            os.makedirs(self.path, exist_ok=True)
+            print(f"Offline monitor initialized at: {self.path}")
+            
+
+    def log_metrics(self, metrics_dict, step: int, epoch: int):
+        """ Log metrics to the monitors.
+        
+        Parameters:
+        -----------
+            metrics_dict: dict
+                Dictionary of metrics to log.
+            step: int
+                Current step in training.
+            epoch: int
+                Current epoch in training.
+        """
+        if not self.enabled:
+            return
+
+        for k, v in metrics_dict.items():
+            if k not in self.monitors:
+                name=k
+                filename=k
+                self.monitors[k] = LossHistory(name, filename, self.path,
+                                               log_each_step=self.log_each_step,
+                                               handle_out_dir=False)
+                
+            # Make sure that the value is not a list or array
+            if isinstance(v, (list, np.ndarray)):
+                # TODO
+                raise NotImplementedError("Logging lists or arrays is not supported yet.")
+            else:
+                self.monitors[k].update(v, step, epoch)
+                self.monitors[k].end_epoch(epoch)

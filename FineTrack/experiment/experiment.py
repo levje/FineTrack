@@ -84,7 +84,7 @@ class Experiment(object):
         # The comet object that will handle monitors
         self.comet_monitor = CometMonitor(
             self.comet_experiment, self.hp.experiment_path,
-            prefix, use_comet=self.hp.use_comet)
+            prefix, use_comet=self.hp.use_comet, offline=self.hp.offline)
         print(self.hp.to_dict())
         self.comet_monitor.log_parameters(self.hp.to_dict())
 
@@ -470,6 +470,8 @@ def add_experiment_args(parser: ArgumentParser):
                         "This will compress and archive the experiment's files and\n"
                         "save the archive at this specified location. To avoid \n"
                         "doing backups, omit this argument. The directory should exist.")
+    parser.add_argument('--offline', action='store_true',
+                        help='Run the experiment in offline mode. This will save the experiment to a local directory instead of using Comet.ml.')
 
 
 def add_data_args(parser: ArgumentParser):
@@ -563,6 +565,14 @@ def add_extractor_args(parser: ArgumentParser):
                            ' how the training is doing w.r.t. ground truth.')
     extractor.add_argument('--extractor_target', type=str, default=None,
                            help='Target file for the extractor.')
+    
+def add_verifyber_args(parser: ArgumentParser):
+    verifyber = parser.add_argument_group('Verifyber Filterer')
+    verifyber.add_argument('--verifyber_validator', action='store_true',
+                           help='Run the Verifyber filterer during validation to monitor '
+                           'how the training is doing.')
+    verifyber.add_argument('--verifyber_image_path', type=str, default=None,
+                           help='Path to the Verifyber singularity (.sif) image to use for the filterer.')
     
 def add_rbx_args(parser: ArgumentParser):
     rbx = parser.add_argument_group('RBX Filterer')

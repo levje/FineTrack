@@ -174,7 +174,8 @@ def is_too_curvy(streamlines: np.ndarray, max_theta: float):
     v = normalize_vectors(streamlines[:, -2] - streamlines[:, -3])
 
     # Compute angles
-    angles = np.arccos(np.einsum('ij,ij->i', u, v))
+    dot = np.einsum('ij,ij->i', u, v)
+    angles = np.arccos(np.clip(dot, -1.0, 1.0))  # Clip to avoid numerical errors
     return angles > max_theta_rad
 
 

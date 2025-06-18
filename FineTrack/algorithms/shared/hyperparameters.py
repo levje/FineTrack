@@ -10,6 +10,7 @@ class HParams:
     experiment_id: str
     experiment_path: str
     workspace: str
+    offline: bool
 
     # Data parameters
     target_sh_order: int
@@ -49,6 +50,10 @@ class HParams:
     rbx_validator: bool
     singularity_image: str
     atlas_directory: str
+
+    # Verifyber Filterer parameters
+    verifyber_validator: bool
+    verifyber_image_path: str
 
     # Tracking parameters
     npv: int

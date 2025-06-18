@@ -6,6 +6,7 @@ from argparse import RawTextHelpFormatter
 
 import comet_ml  # noqa: F401 ugh
 import torch
+import os
 from comet_ml import Experiment as CometExperiment
 from comet_ml import OfflineExperiment as CometOfflineExperiment
 
@@ -84,10 +85,23 @@ def main():
     setup_logging(args)
     print(args)
 
-    experiment = CometExperiment(project_name=args.experiment,
-                                workspace=args.workspace, parse_args=False,
-                                auto_metric_logging=False,
-                                disabled=not args.use_comet)
+    if not args.offline:
+        experiment = CometExperiment(project_name=args.experiment,
+                                    workspace=args.workspace, parse_args=False,
+                                    auto_metric_logging=False,
+                                    disabled=not args.use_comet)
+    else:
+        print(f">>> Running in offline mode, no comet logging (in {args.experiment_path}). <<<")
+        os.makedirs(args.experiment_path, exist_ok=True)
+        
+        experiment = CometOfflineExperiment(
+            project_name=args.experiment,
+            workspace=args.workspace,
+            parse_args=False,
+            auto_metric_logging=False,
+            disabled=not args.use_comet,
+            offline_directory=args.experiment_path
+        )
 
     # Create and run experiment
     training_experiment = CrossQFineTrackTraining(

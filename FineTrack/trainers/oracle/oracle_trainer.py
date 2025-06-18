@@ -68,6 +68,7 @@ class MicroBatchInfo(object):
 class OracleTrainer(object):
     def __init__(self,
                  experiment,
+                 experiment_path,
                  saving_path,
                  max_epochs,
                  use_comet=True,
@@ -79,7 +80,8 @@ class OracleTrainer(object):
                  device=get_device(),
                  metrics_prefix=None,
                  first_oracle_train_steps=None,
-                 disable=False
+                 disable=False,
+                 offline=False
                  ):
         self.experiment = experiment
         self.saving_path = saving_path
@@ -103,9 +105,12 @@ class OracleTrainer(object):
         self.hooks_manager = HooksManager(OracleHookEvent)
         self.oracle_monitor = OracleMonitor(
             experiment=self.experiment,
+            experiment_path=experiment_path,
             use_comet=use_comet,
-            metrics_prefix=metrics_prefix
+            metrics_prefix=metrics_prefix,
+            offline=offline
         )
+        
         self.log_interval = log_interval  # Log every n update steps
         self.grad_accumulation_steps = grad_accumulation_steps
         assert self.grad_accumulation_steps > 0, \

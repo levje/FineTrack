@@ -7,7 +7,7 @@ from pathlib import Path
 
 from dipy.core.geometry import sphere2cart
 from os.path import join as pjoin
-from time import time
+from time import time, sleep
 import cProfile
 import pstats
 import io
@@ -16,7 +16,11 @@ import torch
 from functools import wraps
 from typing import Optional, Type
 from types import TracebackType
+from FineTrack.utils.logging import get_logger
+import threading
+import atexit
 
+LOGGER = get_logger(__name__)
 
 COLOR_CODES = {
     'black': '\u001b[30m',
@@ -30,6 +34,37 @@ COLOR_CODES = {
     'reset': '\u001b[0m'
 }
 
+# Global registry of all LossHistory instances
+THREAD_LOCK = threading.Lock()
+THREAD = None
+
+LOSS_HISTORY_REGISTRY = []
+LOSS_HISTORY_LOCK = threading.Lock()
+
+def register_loss_history(instance):
+    with LOSS_HISTORY_LOCK:
+        LOSS_HISTORY_REGISTRY.append(instance)
+
+def background_saver(interval=20):
+    while True:
+        sleep(interval)
+        LOGGER.debug("Saving all LossHistory instances in the background...")
+        with LOSS_HISTORY_LOCK:
+            for instance in LOSS_HISTORY_REGISTRY:
+                try:
+                    instance.write(only_if_changed=True)
+                except Exception as e:
+                    LOGGER.warning(f"Failed to save LossHistory {instance.name}: {e}")
+
+def write_on_exit():
+    with LOSS_HISTORY_LOCK:
+        for instance in LOSS_HISTORY_REGISTRY:
+            try:
+                instance.write()
+            except Exception as e:
+                LOGGER.warning(f"Failed to save LossHistory {instance.name} on exit: {e}")
+
+atexit.register(write_on_exit)
 
 class LossHistory(object):
     """ History of the loss during training.
@@ -46,7 +81,7 @@ class LossHistory(object):
         monitor.epochs  # returns the loss curve as a list
     """
 
-    def __init__(self, name, filename, path):
+    def __init__(self, name, filename, path, log_each_step=True, handle_out_dir=True):
         self.name = name
         self.history = []
         self.epochs = []
@@ -55,20 +90,43 @@ class LossHistory(object):
         self._avg = 0.0
         self.num_iter = 0
         self.num_epochs = 0
+        self.HISTORY_LOCK = threading.Lock()
+        self.HISTORY_LAST_WRITTEN_LENGTH = -1
 
+        # Create the directory if it doesn't exist and
+        # set the file path for saving the history
         self.filename = filename
-        self.path = path
+        if handle_out_dir:
+            directory = pjoin(path, 'plots')
+        else:
+            directory = path
+        os.makedirs(directory, exist_ok=True)
+        self.file_path = pjoin(directory, f'{self.filename}.npy')
+
+        self.log_each_step = log_each_step
+        self.handle_out_dir = handle_out_dir
+
+        LOGGER.debug(f"Creating new monitor for {name} at {self.file_path}")
+
+        with THREAD_LOCK:
+            global THREAD
+            if THREAD is None or not THREAD.is_alive():
+                THREAD = threading.Thread(target=background_saver, daemon=True)
+                THREAD.start()
+            register_loss_history(self)
 
     def __len__(self):
         return len(self.history)
 
-    def update(self, value):
+    def update(self, value, step=None, epoch=None):
         if np.isinf(value):
             return
 
-        self.history.append(value)
         self.sum += value
         self.count += 1
+
+        time_point = (self.count, value)
+        self.history.append(time_point)
         self._avg = self.sum / self.count
         self.num_iter += 1
 
@@ -77,17 +135,37 @@ class LossHistory(object):
         return self._avg
 
     def end_epoch(self, epoch):
+        if self.num_iter == 0:
+            return
+
+        if len(self.epochs) > 1 \
+            and not self.log_each_step \
+            and epoch == self.epochs[-1][0]:
+            LOGGER.warning("Epoch {} already exists in the history.")
+            return
+
         self.epochs.append((epoch, self._avg))
         self.sum = 0.0
-        self.count = 0
+        # self.count = 0
         self._avg = 0.0
         self.num_epochs += 1
 
-        directory = pjoin(self.path, 'plots')
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-        with open(pjoin(directory, '{}.npy'.format(self.filename)), 'wb') as f:
-            np.save(f, self.epochs)
+    def write(self, only_if_changed=False):
+        do_write = True
+        if only_if_changed:
+            with self.HISTORY_LOCK:
+                if len(self.history) == self.HISTORY_LAST_WRITTEN_LENGTH:
+                    do_write = False
+                else:
+                    self.HISTORY_LAST_WRITTEN_LENGTH = len(self.history)
+
+        if do_write:
+            with open(self.file_path, 'wb') as f:
+                if self.log_each_step:
+                    np.save(f, self.history)
+                else:
+                    np.save(f, self.epochs)
+
 
 class SimpleTimer:
     def __init__(self):
@@ -536,3 +614,36 @@ def is_running_on_slurm():
     Returns True if running on SLURM, False otherwise.
     """
     return 'SLURM_JOB_ID' in os.environ or 'SLURM_JOB_NAME' in os.environ or 'SLURM_ARRAY_TASK_ID' in os.environ
+
+class LoadingThread:
+    def __init__(self, message: str):
+        self.message = message
+        self.thread = None
+        self.done = False
+        self.t0 = None
+
+    def __enter__(self):
+        self.start()
+        return self
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.stop()
+        if exc_type is not None:
+            print(f"\nError occurred: {exc_value}")
+
+    def start(self):
+        self.thread = threading.Thread(target=self.loading)
+        self.t0 = time()
+        self.thread.start()
+
+    def stop(self):
+        self.done = True
+        self.thread.join()
+
+    def loading(self):
+        while True:
+            if self.done:
+                break
+            sys.stdout.write(f'\r{self.message} {time() - self.t0:.1f}s')
+            sys.stdout.flush()
+            sleep(0.1)
+        sys.stdout.write(f'\r{self.message} {time() - self.t0:.1f}s. Done.\n')

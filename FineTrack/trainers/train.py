@@ -20,6 +20,7 @@ from FineTrack.experiment.experiment import (add_data_args,
                                                 add_tracking_args,
                                                 add_tractometer_args,
                                                 add_extractor_args,
+                                                add_verifyber_args,
                                                 add_rbx_args)
 from FineTrack.experiment.oracle_validator import OracleValidator
 from FineTrack.experiment.tractometer_validator import TractometerValidator
@@ -266,25 +267,30 @@ class FineTrackTraining(Experiment):
             f"Avg. log-ratio: {mean_ratio:.3f}")
 
         # Update monitors
-        self.train_reward_monitor.update(avg_reward)
-        self.train_reward_monitor.end_epoch(i_episode)
-        self.train_length_monitor.update(avg_length)
-        self.train_length_monitor.end_epoch(i_episode)
-        self.train_ratio_monitor.update(mean_ratio)
-        self.train_ratio_monitor.end_epoch(i_episode)
+        # self.train_reward_monitor.update(avg_reward)
+        # self.train_reward_monitor.end_epoch(i_episode)
+        # self.train_length_monitor.update(avg_length)
+        # self.train_length_monitor.end_epoch(i_episode)
+        # self.train_ratio_monitor.update(mean_ratio)
+        # self.train_ratio_monitor.end_epoch(i_episode)
 
         # Update comet logs
         if self.comet_experiment is not None:
+            # self.comet_monitor.update_train(
+            #     self.train_reward_monitor, i_episode)
+            # self.comet_monitor.update_train(
+            #     self.train_length_monitor, i_episode)
+            # self.comet_monitor.update_train(
+            #     self.train_ratio_monitor, i_episode)
+            self.comet_monitor.log_losses({
+                "train_reward": avg_reward,
+                "train_length": avg_length,
+                "train_ratio": mean_ratio,
+            }, i_episode)
+
             mean_ep_reward_factors = mean_rewards(reward_factors)
             self.comet_monitor.log_losses(
                 mean_ep_reward_factors, i_episode)
-
-            self.comet_monitor.update_train(
-                self.train_reward_monitor, i_episode)
-            self.comet_monitor.update_train(
-                self.train_length_monitor, i_episode)
-            self.comet_monitor.update_train(
-                self.train_ratio_monitor, i_episode)
             mean_ep_losses = mean_losses(losses)
             self.comet_monitor.log_losses(mean_ep_losses, i_episode)
 
@@ -435,3 +441,4 @@ def add_training_args(parser):
     add_tractometer_args(parser)
     add_extractor_args(parser)
     add_rbx_args(parser)
+    add_verifyber_args(parser)

@@ -176,7 +176,6 @@ class CrossQ(SACAuto):
             'actor_optimizer': self.actor_optimizer.state_dict(),
             'critic_optimizer': self.critic_optimizer.state_dict(),
             'alpha_optimizer': self.alpha_optimizer.state_dict(),
-            'replay_buffer': self.replay_buffer.state_dict(),
             'log_alpha': self.log_alpha,
             **extra_info
         }

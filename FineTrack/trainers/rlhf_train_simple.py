@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 
 from comet_ml import Experiment as CometExperiment
+from comet_ml import OfflineExperiment as CometOfflineExperiment
 
 from dipy.io.streamline import load_tractogram
 from dipy.io.streamline import save_tractogram
@@ -24,6 +25,7 @@ from FineTrack.environments.env import BaseEnv
 from FineTrack.tracking.tracker import Tracker
 from FineTrack.filterers.tractometer_filterer import TractometerFilterer
 from FineTrack.filterers.extractor.extractor_filterer import ExtractorFilterer
+from FineTrack.filterers.verifyber.verifyber_filterer import VerifyberFilterer
 from FineTrack.filterers.rbx.rbx_filterer import RbxFilterer
 from FineTrack.oracles.oracle import OracleSingleton
 from FineTrack.trainers.oracle.oracle_trainer import OracleTrainer
@@ -105,10 +107,23 @@ class RlhfTraining(FineTrackTraining):
         ################################################
         # Start by initializing the agent trainer.     #
         if comet_experiment is None:
-            comet_experiment = CometExperiment(project_name=self.hp.experiment,
-                                               workspace=self.hp.workspace, parse_args=False,
-                                               auto_metric_logging=False,
-                                               disabled=not self.hp.use_comet)
+            if not self.hp.offline:
+                comet_experiment = CometExperiment(project_name=self.hp.experiment,
+                                            workspace=self.hp.workspace, parse_args=False,
+                                            auto_metric_logging=False,
+                                            disabled=not self.hp.use_comet)
+            else:
+                print(f">>> Running in offline mode, no comet logging (in {self.hp.experiment_path}). <<<")
+                os.makedirs(self.hp.experiment_path, exist_ok=True)
+                
+                comet_experiment = CometOfflineExperiment(
+                    project_name=self.hp.experiment,
+                    workspace=self.hp.workspace,
+                    parse_args=False,
+                    auto_metric_logging=False,
+                    disabled=not self.hp.use_comet,
+                    offline_directory=self.hp.experiment_path
+                )
 
         comet_experiment.set_name(self.hp.experiment_id)
 
@@ -136,6 +151,7 @@ class RlhfTraining(FineTrackTraining):
         
         self.oracle_reward_trainer = OracleTrainer(
             comet_experiment,
+            self.hp.experiment_path,
             self.oracle_training_dir,
             self.hp.oracle_train_steps,
             enable_auto_checkpointing=False,
@@ -144,7 +160,8 @@ class RlhfTraining(FineTrackTraining):
             device=self.device,
             grad_accumulation_steps=self.hp.grad_accumulation_steps,
             metrics_prefix='reward',
-            first_oracle_train_steps=self.hp.first_oracle_train_steps
+            first_oracle_train_steps=self.hp.first_oracle_train_steps,
+            offline=self.hp.offline
         )
         self.oracle_reward_trainer.setup_model_training(self.oracle_reward.model)
 
@@ -160,6 +177,7 @@ class RlhfTraining(FineTrackTraining):
                                            lr=self.hp.oracle_lr)
         self.oracle_crit_trainer = OracleTrainer(
             comet_experiment,
+            self.hp.experiment_path,
             self.oracle_training_dir,
             self.hp.oracle_train_steps,
             enable_auto_checkpointing=False,
@@ -169,7 +187,8 @@ class RlhfTraining(FineTrackTraining):
             grad_accumulation_steps=self.hp.grad_accumulation_steps,
             metrics_prefix='crit',
             first_oracle_train_steps=self.hp.first_oracle_train_steps,
-            disable=self.oracle_crit == self.oracle_reward
+            disable=self.oracle_crit == self.oracle_reward,
+            offline=self.hp.offline
         )
         self.oracle_crit_trainer.setup_model_training(self.oracle_crit.model)
         self.oracle_crit_disabled = self.oracle_crit_trainer.disabled
@@ -282,14 +301,16 @@ class RlhfTraining(FineTrackTraining):
                 ExtractorFilterer())
             
             self.extractor_filterer = self.filterers[-1]
+
+        if self.hp.verifyber_validator:
+            self.filterers.append(
+                VerifyberFilterer(self.hp.verifyber_image_path))
         
         if self.hp.rbx_validator:
             self.filterers.append(
                 RbxFilterer(self.hp.atlas_directory, pipeline_path=self.hp.rbx_pipeline))
 
-        if self.hp.rbx_validator or self.hp.extractor_validator or self.hp.tractometer_validator:
-            pass
-        else:
+        if len(self.filterers) < 1:
             raise ValueError("At least one of the filterers must be enabled.")
 
         do_warmup = self.hp.warmup_agent_steps and current_ep < self.hp.warmup_agent_steps - 1
@@ -600,7 +621,7 @@ class RlhfTraining(FineTrackTraining):
                 LOGGER.info("Transforming tractogram to MNI space.")
                 sft, transform_map_subj = env.transform_tractogram_to_mni(sft)
                 transform_map.update(transform_map_subj)
-            elif self.hp.extractor_validator:
+            elif self.hp.extractor_validator or self.hp.verifyber_validator:
                 # Add the T1w file to the in_directory
                 LOGGER.info("Copying T1w file to the subject's directory.")
                 t1_filename = f"{env.subject_id}_t1.nii.gz"
@@ -700,7 +721,7 @@ def add_rlhf_training_args(parser: argparse.ArgumentParser):
                               help='Number of steps to train the oracle on the first training sequence, this is kinda of a warm-up to be able to quickly align the oracles to the dataset.')
     oracle_group.add_argument('--oracle_train_steps', type=int, required=True,
                               help='Number of steps to fine-tune the oracle during RLHF training.')
-    oracle_group.add_argument('--oracle_batch_size', type=int, default=2816,
+    oracle_group.add_argument('--oracle_batch_size', type=int, default=1408,
                               help='Batch size to use for training the oracle.')
     oracle_group.add_argument("--dataset_to_augment", type=str, help="Path to the dataset to augment.\n"
                               "If this is not set, the dataset will be created from scratch entirely by the\n"
