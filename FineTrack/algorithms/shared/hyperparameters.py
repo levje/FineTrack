@@ -51,6 +51,10 @@ class HParams:
     singularity_image: str
     atlas_directory: str
 
+    # Verifyber Filterer parameters
+    verifyber_validator: bool
+    verifyber_image_path: str
+
     # Tracking parameters
     npv: int
     theta: float # Angular thresholds

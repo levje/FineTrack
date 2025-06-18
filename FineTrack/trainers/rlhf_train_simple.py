@@ -25,6 +25,7 @@ from FineTrack.environments.env import BaseEnv
 from FineTrack.tracking.tracker import Tracker
 from FineTrack.filterers.tractometer_filterer import TractometerFilterer
 from FineTrack.filterers.extractor.extractor_filterer import ExtractorFilterer
+from FineTrack.filterers.verifyber.verifyber_filterer import VerifyberFilterer
 from FineTrack.filterers.rbx.rbx_filterer import RbxFilterer
 from FineTrack.oracles.oracle import OracleSingleton
 from FineTrack.trainers.oracle.oracle_trainer import OracleTrainer
@@ -300,14 +301,16 @@ class RlhfTraining(FineTrackTraining):
                 ExtractorFilterer())
             
             self.extractor_filterer = self.filterers[-1]
+
+        if self.hp.verifyber_validator:
+            self.filterers.append(
+                VerifyberFilterer(self.hp.verifyber_image_path))
         
         if self.hp.rbx_validator:
             self.filterers.append(
                 RbxFilterer(self.hp.atlas_directory, pipeline_path=self.hp.rbx_pipeline))
 
-        if self.hp.rbx_validator or self.hp.extractor_validator or self.hp.tractometer_validator:
-            pass
-        else:
+        if len(self.filterers) < 1:
             raise ValueError("At least one of the filterers must be enabled.")
 
         do_warmup = self.hp.warmup_agent_steps and current_ep < self.hp.warmup_agent_steps - 1
@@ -618,7 +621,7 @@ class RlhfTraining(FineTrackTraining):
                 LOGGER.info("Transforming tractogram to MNI space.")
                 sft, transform_map_subj = env.transform_tractogram_to_mni(sft)
                 transform_map.update(transform_map_subj)
-            elif self.hp.extractor_validator:
+            elif self.hp.extractor_validator or self.hp.verifyber_validator:
                 # Add the T1w file to the in_directory
                 LOGGER.info("Copying T1w file to the subject's directory.")
                 t1_filename = f"{env.subject_id}_t1.nii.gz"
@@ -718,7 +721,7 @@ def add_rlhf_training_args(parser: argparse.ArgumentParser):
                               help='Number of steps to train the oracle on the first training sequence, this is kinda of a warm-up to be able to quickly align the oracles to the dataset.')
     oracle_group.add_argument('--oracle_train_steps', type=int, required=True,
                               help='Number of steps to fine-tune the oracle during RLHF training.')
-    oracle_group.add_argument('--oracle_batch_size', type=int, default=2816,
+    oracle_group.add_argument('--oracle_batch_size', type=int, default=1408,
                               help='Batch size to use for training the oracle.')
     oracle_group.add_argument("--dataset_to_augment", type=str, help="Path to the dataset to augment.\n"
                               "If this is not set, the dataset will be created from scratch entirely by the\n"

@@ -20,6 +20,7 @@ from FineTrack.experiment.experiment import (add_data_args,
                                                 add_tracking_args,
                                                 add_tractometer_args,
                                                 add_extractor_args,
+                                                add_verifyber_args,
                                                 add_rbx_args)
 from FineTrack.experiment.oracle_validator import OracleValidator
 from FineTrack.experiment.tractometer_validator import TractometerValidator
@@ -440,3 +441,4 @@ def add_training_args(parser):
     add_tractometer_args(parser)
     add_extractor_args(parser)
     add_rbx_args(parser)
+    add_verifyber_args(parser)

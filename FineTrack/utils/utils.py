@@ -48,7 +48,7 @@ def register_loss_history(instance):
 def background_saver(interval=20):
     while True:
         sleep(interval)
-        print("Saving all LossHistory instances in the background...")
+        LOGGER.debug("Saving all LossHistory instances in the background...")
         with LOSS_HISTORY_LOCK:
             for instance in LOSS_HISTORY_REGISTRY:
                 try:
@@ -106,7 +106,7 @@ class LossHistory(object):
         self.log_each_step = log_each_step
         self.handle_out_dir = handle_out_dir
 
-        LOGGER.info(f"Creating new monitor for {name} at {self.file_path}")
+        LOGGER.debug(f"Creating new monitor for {name} at {self.file_path}")
 
         with THREAD_LOCK:
             global THREAD
@@ -126,8 +126,6 @@ class LossHistory(object):
         self.count += 1
 
         time_point = (self.count, value)
-        if self.name == "train_reward":
-            print(f"Updating {self.name} with value {value} at step {step}, epoch {epoch}")
         self.history.append(time_point)
         self._avg = self.sum / self.count
         self.num_iter += 1
@@ -616,3 +614,36 @@ def is_running_on_slurm():
     Returns True if running on SLURM, False otherwise.
     """
     return 'SLURM_JOB_ID' in os.environ or 'SLURM_JOB_NAME' in os.environ or 'SLURM_ARRAY_TASK_ID' in os.environ
+
+class LoadingThread:
+    def __init__(self, message: str):
+        self.message = message
+        self.thread = None
+        self.done = False
+        self.t0 = None
+
+    def __enter__(self):
+        self.start()
+        return self
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.stop()
+        if exc_type is not None:
+            print(f"\nError occurred: {exc_value}")
+
+    def start(self):
+        self.thread = threading.Thread(target=self.loading)
+        self.t0 = time()
+        self.thread.start()
+
+    def stop(self):
+        self.done = True
+        self.thread.join()
+
+    def loading(self):
+        while True:
+            if self.done:
+                break
+            sys.stdout.write(f'\r{self.message} {time() - self.t0:.1f}s')
+            sys.stdout.flush()
+            sleep(0.1)
+        sys.stdout.write(f'\r{self.message} {time() - self.t0:.1f}s. Done.\n')
