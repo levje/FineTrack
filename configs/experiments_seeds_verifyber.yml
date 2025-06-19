@@ -175,49 +175,49 @@ experiments:
 ##########################################
 # TractoInferno (extractor-based)
 ##########################################
-  - exp_name: "Verifyber-Inferno-SAC-1K"
-    project_name: "FineTrack-Inferno-Verifyber"
-    launch_script: "FineTrack/trainers/sac_auto_train.py"
-    dataset: "tractoinferno"
-    max_ep: 1000
-    reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
-    crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
+  # - exp_name: "Verifyber-Inferno-SAC-1K"
+  #   project_name: "FineTrack-Inferno-Verifyber"
+  #   launch_script: "FineTrack/trainers/sac_auto_train.py"
+  #   dataset: "tractoinferno"
+  #   max_ep: 1000
+  #   reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
+  #   crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
 
-  - exp_name: "Inferno-SAC-3K"
-    project_name: "FineTrack-Inferno-Verifyber"
-    launch_script: "FineTrack/trainers/sac_auto_train.py"
-    dataset: "tractoinferno"
-    max_ep: 3000
-    reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
-    crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
+  # - exp_name: "Inferno-SAC-3K"
+  #   project_name: "FineTrack-Inferno-Verifyber"
+  #   launch_script: "FineTrack/trainers/sac_auto_train.py"
+  #   dataset: "tractoinferno"
+  #   max_ep: 3000
+  #   reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
+  #   crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
 
   - exp_name: "Inferno-SAC-IRT-3K"
     project_name: "FineTrack-Inferno-Verifyber"
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     alg: "SACAuto"
-    extra_type: "rlhf"
+    extra_type: ["rlhf", "verifyber"]
     cpus: 4
     mem: "70000M"
     dataset: "tractoinferno"
     reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
     crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
-    time: "5-00:00:00"
+    time: "3-00:00:00"
 
-  - exp_name: "Inferno-CrossQ-3K"
-    project_name: "FineTrack-Inferno-Verifyber"
-    launch_script: "FineTrack/trainers/cross_q_train.py"
-    dataset: "tractoinferno"
-    reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
-    crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
+  # - exp_name: "Inferno-CrossQ-3K"
+  #   project_name: "FineTrack-Inferno-Verifyber"
+  #   launch_script: "FineTrack/trainers/cross_q_train.py"
+  #   dataset: "tractoinferno"
+  #   reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
+  #   crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
 
   - exp_name: "Inferno-CrossQ-IRT-3K"
     project_name: "FineTrack-Inferno-Verifyber"
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     alg: "CrossQ"
-    extra_type: "rlhf"
+    extra_type: ["rlhf", "verifyber"]
     cpus: 4
     mem: "70000M"
-    time: "5-00:00:00"
+    time: "3-00:00:00"
     warmup_agent_steps: 300
     dataset: "tractoinferno"
     reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
@@ -226,54 +226,54 @@ experiments:
 ##########################################
 # HCP (extractor-based)
 ##########################################
-  - exp_name: "HCP-SAC-1K"
-    project_name: "FineTrack-HCP-Verifyber"
-    launch_script: "FineTrack/trainers/sac_auto_train.py"
-    dataset: "hcp"
-    max_ep: 1000
-    time: "2-00:00:00"
-    reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
-    crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
+  # - exp_name: "HCP-SAC-1K"
+  #   project_name: "FineTrack-HCP-Verifyber"
+  #   launch_script: "FineTrack/trainers/sac_auto_train.py"
+  #   dataset: "hcp"
+  #   max_ep: 1000
+  #   time: "2-00:00:00"
+  #   reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
+  #   crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
 
-  - exp_name: "HCP-SAC-3K"
-    project_name: "FineTrack-HCP-Verifyber"
-    launch_script: "FineTrack/trainers/sac_auto_train.py"
-    dataset: "hcp"
-    max_ep: 3000
-    time: "2-00:00:00"
-    reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
-    crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
+  # - exp_name: "HCP-SAC-3K"
+  #   project_name: "FineTrack-HCP-Verifyber"
+  #   launch_script: "FineTrack/trainers/sac_auto_train.py"
+  #   dataset: "hcp"
+  #   max_ep: 3000
+  #   time: "2-00:00:00"
+  #   reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
+  #   crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
 
   - exp_name: "HCP-SAC-IRT-3K"
     project_name: "FineTrack-HCP-Verifyber"
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     alg: "SACAuto"
-    extra_type: "rlhf"
+    extra_type: ["rlhf", "verifyber"]
     cpus: 4
     mem: "70000M"
     dataset: "hcp"
-    time: "5-00:00:00"
+    time: "3-00:00:00"
     reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
     crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
 
-  - exp_name: "HCP-CrossQ-3K"
-    project_name: "FineTrack-HCP-Verifyber"
-    launch_script: "FineTrack/trainers/cross_q_train.py"
-    dataset: "hcp"
-    time: "2-00:00:00"
-    reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
-    crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
+  # - exp_name: "HCP-CrossQ-3K"
+  #   project_name: "FineTrack-HCP-Verifyber"
+  #   launch_script: "FineTrack/trainers/cross_q_train.py"
+  #   dataset: "hcp"
+  #   time: "2-00:00:00"
+  #   reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
+  #   crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
 
   - exp_name: "HCP-CrossQ-IRT-3K"
     project_name: "FineTrack-HCP-Verifyber"
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     alg: "CrossQ"
-    extra_type: "rlhf"
+    extra_type: ["rlhf", "verifyber"]
     cpus: 4
     mem: "70000M"
     warmup_agent_steps: 300
     dataset: "hcp"
-    time: "5-00:00:00"
+    time: "3-00:00:00"
     reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
     crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
 
@@ -284,11 +284,11 @@ experiments:
     project_name: "FineTrack-Inferno-Verifyber"
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     alg: "SACAuto"
-    extra_type: "rlhf"
+    extra_type: ["rlhf", "verifyber"]
     cpus: 4
     mem: "70000M"
     dataset: "tractoinferno"
-    time: "5-00:00:00"
+    time: "3-00:00:00"
     reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
     crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336_copy.ckpt"
 
@@ -296,12 +296,12 @@ experiments:
     project_name: "FineTrack-Inferno-Verifyber"
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     alg: "CrossQ"
-    extra_type: "rlhf"
+    extra_type: ["rlhf", "verifyber"]
     cpus: 4
     mem: "70000M"
     warmup_agent_steps: 300
     dataset: "tractoinferno"
-    time: "5-00:00:00"
+    time: "3-00:00:00"
     reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
     crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336_copy.ckpt"
 
@@ -309,11 +309,11 @@ experiments:
     project_name: "FineTrack-HCP-Verifyber"
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     alg: "SACAuto"
-    extra_type: "rlhf"
+    extra_type: ["rlhf", "verifyber"]
     cpus: 4
     mem: "70000M"
     dataset: "hcp"
-    time: "5-00:00:00"
+    time: "3-00:00:00"
     reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
     crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475_copy.ckpt"
 
@@ -321,11 +321,11 @@ experiments:
     project_name: "FineTrack-HCP-Verifyber"
     launch_script: "FineTrack/trainers/rlhf_train_simple.py"
     alg: "CrossQ"
-    extra_type: "rlhf"
+    extra_type: ["rlhf", "verifyber"]
     cpus: 4
     mem: "70000M"
     warmup_agent_steps: 300
     dataset: "hcp"
-    time: "5-00:00:00"
+    time: "3-00:00:00"
     reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
     crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475_copy.ckpt"
