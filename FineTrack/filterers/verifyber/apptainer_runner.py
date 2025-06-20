@@ -14,7 +14,8 @@ class GetTempDir():
             SLURM_TMPDIR = os.environ.get("SLURM_TMPDIR")
             if SLURM_TMPDIR:
                 self.using_slurm = True
-                self.temp_dir = SLURM_TMPDIR
+                self.temp_dir = os.path.join(SLURM_TMPDIR, "tmp_verifyber")
+                os.mkdir(self.temp_dir, exist_ok=True)  # Create a temporary directory within SLURM_TMPDIR
             else:
                 LOGGER.warning("SLURM_TMPDIR is not set. Please ensure you are running this on a SLURM cluster with a valid temporary directory.")
                 self.temp_dir = tempfile.TemporaryDirectory()
