@@ -1,0 +1,298 @@
+######################################
+# Experiment configuration file for TractOracle-V2
+# This file contains the configuration for the experiments
+# to be run. This is used by submit_experiments.py to 
+# generate SLURM-compatible scripts for running the experiments
+# with different parameters.
+# 
+# Now, we also aim to support using this method locally.
+# Everytime you wanna specify a path in the configuration below,
+# you can use the following formats:
+# 
+# 1. If you have the same path for LOCAL and CLUSTER nodes:
+#   some_dict:
+#     location: "~/path/to/file/common/to/both"
+#     ...
+#   ...
+# 
+# 2. If you have different paths for LOCAL and CLUSTER nodes:
+#   some_dict:
+#     location:
+#       local: "~/path/to/file/for/local"
+#       cluster: "~/path/to/file/for/cluster"
+#     ...
+#   ...
+# 
+# Depending on the node you are building the script for, only
+# the corresponding path will be used in the bash script generated.
+
+######################################
+## Data configuration
+## Bunch of paths pointing to where the data is stored
+## or where it should be stored.
+######################################  
+data: 
+  SOURCEDIR:
+    local: "~/Documents/FineTrack"
+    cluster: "~/FineTrack"
+  DATADIR:
+    local: "~/Documents/FineTrack/data/datasets"
+    cluster: "$SLURM_TMPDIR/data"
+  EXPDIR:
+    local: "~/Documents/FineTrack/data/experiments"
+    cluster: "/home/levj1404/scratch/FineTrack-Verifyber-IRT-Even-More"
+  LOGSDIR:
+    local: "~/Documents/FineTrack/data/logs"
+    cluster: "$SLURM_TMPDIR/logs"
+  PROJECTS_DIR:
+    local:
+    cluster: "~/projects/def-pmjodoin/levje"
+
+  ismrm2015:
+    name: "ismrm2015"
+    location:
+      local: "~/Documents/FineTrack/data/datasets/ismrm2015_2mm/ismrm2015.hdf5"
+      cluster: "~/projects/def-pmjodoin/levje/datasets/ismrm2015_2mm_ttl.tar.gz"
+    tractometer_reference:
+      local: "~/Documents/FineTrack/data/datasets/ismrm2015_2mm/scoring_data/t1.nii.gz" # Path within the dataset directory
+      cluster: "scoring_data/t1.nii.gz"
+    scoring_data:
+      local: "~/Documents/FineTrack/data/datasets/ismrm2015_2mm/scoring_data/" # Path within the dataset directory
+      cluster: "scoring_data/"
+  tractoinferno: 
+    name: "tractoinferno"
+    location:
+      local: "~/Documents/FineTrack/data/datasets/TractoInferno/tractoinferno_single.hdf5"
+      cluster: "~/projects/rrg-descotea/levje/datasets/tractoinferno/tractoinferno_fa.hdf5"
+  hcp: 
+    name: "hcp"
+    location:
+      local: "~/Documents/FineTrack/data/datasets/TractoInferno/tractoinferno_single.hdf5" # TODO: Wrong
+      cluster: "~/projects/rrg-descotea/levje/datasets/hcp_full_100/hcp_full_100_fa.hdf5"
+
+######################################
+## Global configuration
+## These configurations are shared across all experiments
+## These parameters can be overridden by the experiment
+## configurations below.
+######################################  
+global:
+  use_comet: True
+  hidden_dims: "1024-1024-1024"
+  npv: 2
+  min_length: 20
+  max_length: 200
+  noise: 0.0
+  replay_size: 1000000
+  binary_stopping_threshold: 0.1
+  theta: 30
+  n_dirs: 100
+  gamma: 0.95
+  n_actors: 4096
+  batch_size: 4096
+  utd: 1
+  lr: 0.0005
+  max_ep: 3000
+
+  # Oracle
+  oracle_bonus: 10
+  oracle_validator: True
+  oracle_stopping_criterion: True
+  reward_ckpt:
+    local: ""
+    cluster: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
+  crit_ckpt:
+    local: ""
+    cluster: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
+  
+  # Neighborhood
+  neighborhood_type: "axes"
+  neighborhood_radius: 1
+  flatten_state: True
+  fodf_encoder_ckpt: null
+  conv_state: False
+
+  # Misc
+  log_interval: 50
+  workspace: "ext-med-ia"
+  cpus: 2
+  time: "3-00:00:00"
+  mem: "40000M"
+  # seeds: [1111, 2222, 3333, 4444, 5555]
+  seeds: [1111]
+
+# Extra configuration parameters
+# These parameters can be added to an experiment configuration
+# identifying its category in the extras-type field.
+# End the name by _ to avoid putting this parameter when its null.
+extras:
+  rlhf:
+    pretrain_max_ep: 0
+    warmup_agent_steps: 150
+    agent_train_steps: 50
+    first_oracle_train_steps: 5
+    oracle_train_steps: 1
+    oracle_lr: 0.0005
+    dataset_to_augment_: null
+    nb_new_streamlines_per_iter: 250000
+    alg: "SACAuto"
+    rlhf_inter_npv: 2
+    oracle_batch_size: 1024
+    num_workers: 4
+
+  rbx:
+    rbx_validator: True
+    rbx_pipeline:
+      local: "/home/local/USHERBROOKE/levj1404/Documents/rbx_flow/main.nf"
+      cluster: "/home/levj1404/rbx_binary/rbx_flow/main.nf"
+
+    atlas_directory:
+      local: "/home/local/USHERBROOKE/levj1404/Documents/rbx_flow/atlas"
+      cluster: "/home/levj1404/rbx_binary/rbx_flow/atlas"
+
+  extractor:
+    extractor_validator: True
+    extractor_target:
+      local: ~/Documents/FineTrack/data/mni_template/JHU_MNI_SS_T1_brain_182x218x182_conv_f.nii.gz
+      cluster: ~/extractor_flow/templates/JHU_MNI_SS_T1_brain_182x218x182_conv_f.nii.gz
+
+  verifyber:
+    verifyber_validator: True
+    verifyber_image_path:
+      local: "~/Documents/verifyber/verifyber_container.sif"
+      cluster: "/home/levj1404/projects/rrg-descotea/levje/containers/verifyber_container.sif"
+
+
+######################################
+## Experiment configurations
+## 
+## You can add extra configuration parameters
+## to the experiment configurations by adding
+## extras-type: "rlhf"
+######################################  
+
+experiments:
+##########################################
+# TractoInferno (extractor-based)
+##########################################
+  - exp_name: "Inferno-SAC-PT-IRT-3K"
+    project_name: "FineTrack-Inferno-Verifyber"
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    alg: "SACAuto"
+    extra_type: ["rlhf", "verifyber"]
+    cpus: 4
+    mem: "70000M"
+    dataset: "tractoinferno"
+    reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
+    crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
+    time: "3-00:00:00"
+    pretrain_max_ep_: null
+    agent_checkpoint: "/home/levj1404/projects/rrg-descotea/levje/checkpoints_verifyber/inferno/SAC-3K/1111/last_model_state.ckpt"
+
+  - exp_name: "Inferno-CrossQ-PT-IRT-3K"
+    project_name: "FineTrack-Inferno-Verifyber"
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    alg: "CrossQ"
+    extra_type: ["rlhf", "verifyber"]
+    cpus: 4
+    mem: "70000M"
+    time: "3-00:00:00"
+    warmup_agent_steps: 300
+    dataset: "tractoinferno"
+    reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
+    crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
+    pretrain_max_ep_: null
+    agent_checkpoint: "/home/levj1404/projects/rrg-descotea/levje/checkpoints_verifyber/inferno/CrossQ-3K/1111/last_model_state.ckpt"
+
+##########################################
+# HCP (extractor-based)
+##########################################
+  - exp_name: "HCP-SAC-PT-IRT-3K"
+    project_name: "FineTrack-HCP-Verifyber"
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    alg: "SACAuto"
+    extra_type: ["rlhf", "verifyber"]
+    cpus: 4
+    mem: "70000M"
+    dataset: "hcp"
+    time: "3-00:00:00"
+    reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
+    crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
+    pretrain_max_ep_: null
+    agent_checkpoint: "/home/levj1404/projects/rrg-descotea/levje/checkpoints_verifyber/hcp/SAC-3K/1111/last_model_state.ckpt"
+
+  - exp_name: "HCP-CrossQ-PT-IRT-3K"
+    project_name: "FineTrack-HCP-Verifyber"
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    alg: "CrossQ"
+    extra_type: ["rlhf", "verifyber"]
+    cpus: 4
+    mem: "70000M"
+    warmup_agent_steps: 300
+    dataset: "hcp"
+    time: "3-00:00:00"
+    reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
+    crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
+    pretrain_max_ep_: null
+    agent_checkpoint: "/home/levj1404/projects/rrg-descotea/levje/checkpoints_verifyber/hcp/CrossQ-3K/1111/last_model_state.ckpt"
+
+##########################################
+# 2 oracles IRT experiments
+##########################################
+  - exp_name: "Inferno-SAC-IRT-3K-2Oracles"
+    project_name: "FineTrack-Inferno-Verifyber"
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    alg: "SACAuto"
+    extra_type: ["rlhf", "verifyber"]
+    cpus: 4
+    mem: "70000M"
+    dataset: "tractoinferno"
+    time: "3-00:00:00"
+    reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
+    crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336_copy.ckpt"
+    pretrain_max_ep_: null
+    agent_checkpoint: "/home/levj1404/projects/rrg-descotea/levje/checkpoints_verifyber/inferno/SAC-3K/1111/last_model_state.ckpt"
+
+  - exp_name: "Inferno-CrossQ-IRT-3K-2Oracles"
+    project_name: "FineTrack-Inferno-Verifyber"
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    alg: "CrossQ"
+    extra_type: ["rlhf", "verifyber"]
+    cpus: 4
+    mem: "70000M"
+    warmup_agent_steps: 300
+    dataset: "tractoinferno"
+    time: "3-00:00:00"
+    reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336.ckpt"
+    crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/tractoinferno/verifyber_based/epoch7-step1302336_copy.ckpt"
+    pretrain_max_ep_: null
+    agent_checkpoint: "/home/levj1404/projects/rrg-descotea/levje/checkpoints_verifyber/inferno/CrossQ-3K/1111/last_model_state.ckpt"
+
+  - exp_name: "HCP-SAC-IRT-3K-2Oracles"
+    project_name: "FineTrack-HCP-Verifyber"
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    alg: "SACAuto"
+    extra_type: ["rlhf", "verifyber"]
+    cpus: 4
+    mem: "70000M"
+    dataset: "hcp"
+    time: "3-00:00:00"
+    reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
+    crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475_copy.ckpt"
+    pretrain_max_ep_: null
+    agent_checkpoint: "/home/levj1404/projects/rrg-descotea/levje/checkpoints_verifyber/hcp/SAC-3K/1111/last_model_state.ckpt"
+
+  - exp_name: "HCP-CrossQ-IRT-3K-2Oracles"
+    project_name: "FineTrack-HCP-Verifyber"
+    launch_script: "FineTrack/trainers/rlhf_train_simple.py"
+    alg: "CrossQ"
+    extra_type: ["rlhf", "verifyber"]
+    cpus: 4
+    mem: "70000M"
+    warmup_agent_steps: 300
+    dataset: "hcp"
+    time: "3-00:00:00"
+    reward_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475.ckpt"
+    crit_ckpt: "/home/levj1404/projects/rrg-descotea/levje/oracles/hcp/verifyber_based/epoch48-step2120475_copy.ckpt"
+    pretrain_max_ep_: null
+    agent_checkpoint: "/home/levj1404/projects/rrg-descotea/levje/checkpoints_verifyber/hcp/CrossQ-3K/1111/last_model_state.ckpt"
